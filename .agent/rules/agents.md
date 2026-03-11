@@ -38,9 +38,9 @@
 
 - **最新架构版本**: `genesis/v1`
 - **活动任务清单**: `genesis/v1/05_TASKS.md`
-- **待办任务数**: 42 (已完成 22)
+- **待办任务数**: 42 (已完成 30)
 - **质疑报告**: `genesis/v1/07_CHALLENGE_REPORT.md` — 🟡 5 High / 5 Medium / 2 Low
-- **最近一次更新**: `2026-03-11T16:45`
+- **最近一次更新**: `2026-03-11T16:55`
 
 ### 🌊 Wave 0 ✅ — 契约先行 (2026-03-11)
 T0.1.1 (types.ts) ✅, T0.1.2 (Rust Command Traits) ✅
@@ -58,6 +58,13 @@ T2b.1.1 (Chat Panel) ✅, T2b.1.2 (翻译切换) ✅, T2b.1.3 (Settings) ✅, T2
 ### 🌊 Wave S3-frontend ✅ — 扩展集成前端 (2026-03-11)
 T3.1.1 (NotebookLM WebView) ✅, T3.1.2 (错误处理) ✅, T4.1.4 (Zotero UI) ✅, T4.1.5 (Python 引导) ✅
 **新增依赖**: @tanstack/react-virtual
+
+### 🌊 Wave 2a+4-backend ✅ — Codex 后端实现 (2026-03-11)
+T2a.1.1 (Engine Supervisor) ✅, T2a.1.2 (翻译编排) ✅, T2a.1.3 (翻译 IPC) ✅
+T4.1.1 (Zotero Connector) ✅, T4.1.2 (缓存淘汰) ✅, T4.1.3 (API 统计) ✅
+
+### 🌟 INT-S2 ✅ + INT-S3 ✅ — 集成验证 (2026-03-11)
+cargo check ✅, 25个 Command 注册 ✅, 16个 IPC 签名对齐 ✅
 
 ---
 

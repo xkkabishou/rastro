@@ -311,7 +311,7 @@ graph TD
 
 ### Phase 1: Core
 
-- [ ] **T2a.1.1** [REQ-002]: Engine Supervisor 进程管理
+- [x] **T2a.1.1** [REQ-002]: Engine Supervisor 进程管理
   - **描述**: 实现 `translation-manager` 的 `engine_supervisor` 模块：进程启动/停止、健康检查轮询、端口冲突检测、熔断机制（含 Challenge H5 修正：指数退避 + 分类型 + 用户覆盖）、Python 环境预检（含 Challenge H4 修正：`PYTHON_NOT_FOUND` 等错误码）
   - **输入**: T1a.2.4 产出的 IPC Handler 骨架 + `translation-engine-system.md` Section 6
   - **输出**: `src-tauri/src/translation_manager/engine_supervisor.rs`
@@ -327,7 +327,7 @@ graph TD
   - **依赖**: T1a.2.4
   - **优先级**: P0
 
-- [ ] **T2a.1.2** [REQ-002,008]: 翻译任务编排与缓存
+- [x] **T2a.1.2** [REQ-002,008]: 翻译任务编排与缓存
   - **描述**: 实现 `job_registry` + `artifact_index` + `http_client`：任务创建/去重/排队、缓存命中判断、进度轮询、结果入库
   - **输入**: T2a.1.1 产出的 Engine Supervisor + T1a.2.1 产出的 Storage 模块
   - **输出**: `src-tauri/src/translation_manager/job_registry.rs`, `artifact_index.rs`, `http_client.rs`
@@ -342,7 +342,7 @@ graph TD
   - **依赖**: T2a.1.1, T1a.2.1
   - **优先级**: P0
 
-- [ ] **T2a.1.3** [REQ-002]: 翻译 IPC Handlers 集成
+- [x] **T2a.1.3** [REQ-002]: 翻译 IPC Handlers 集成
   - **描述**: 实现 `request_translation`, `get_translation_job`, `cancel_translation`, `load_cached_translation`, `ensure_translation_engine`, `shutdown_translation_engine`, `get_translation_engine_status` 七个 Command
   - **输入**: T2a.1.2 产出的翻译编排模块
   - **输出**: `src-tauri/src/ipc/translation.rs` 完整实现
@@ -424,7 +424,7 @@ graph TD
   - **依赖**: T1b.2.3
   - **优先级**: P1
 
-- [ ] **INT-S2** [MILESTONE]: S2 集成验证 — 功能成型
+- [x] **INT-S2** [MILESTONE]: S2 集成验证 — 功能成型
   - **描述**: 验证翻译 + AI 问答 + Provider 切换的端到端功能
   - **输入**: Wave 2a + Wave 2b 所有任务产出
   - **输出**: 集成验证报告
@@ -480,7 +480,7 @@ graph TD
 
 ### Phase 1: Core
 
-- [ ] **T4.1.1** [REQ-007]: Zotero Connector 模块
+- [x] **T4.1.1** [REQ-007]: Zotero Connector 模块
   - **描述**: 实现 Zotero 本地数据库只读集成：自动发现 Zotero 路径、查询文献条目/附件、返回 PDF 路径。实现 `detect_zotero_library`, `fetch_zotero_items`, `open_zotero_attachment` 三个 IPC Handler
   - **输入**: T1a.2.1 产出的 Storage 模块 + `rust-backend-system.md` Section 11
   - **输出**: `src-tauri/src/zotero_connector/mod.rs` + `src-tauri/src/ipc/zotero.rs`
@@ -495,7 +495,7 @@ graph TD
   - **依赖**: T1a.2.1
   - **优先级**: P1
 
-- [ ] **T4.1.2** [REQ-008]: 翻译缓存淘汰策略
+- [x] **T4.1.2** [REQ-008]: 翻译缓存淘汰策略
   - **描述**: 实现 LRU 缓存淘汰：计算当前缓存总大小、超 500MB 后淘汰最旧缓存（按 `last_opened_at` 排序）。参见 Challenge M2。
   - **输入**: T2a.1.2 产出的 artifact_index 模块
   - **输出**: `src-tauri/src/translation_manager/cache_eviction.rs`
@@ -508,7 +508,7 @@ graph TD
   - **依赖**: T2a.1.2
   - **优先级**: P2
 
-- [ ] **T4.1.3** [REQ-009]: API 使用统计 IPC
+- [x] **T4.1.3** [REQ-009]: API 使用统计 IPC
   - **描述**: 实现 `get_usage_stats` IPC Handler，汇总各 Provider 的调用次数、Token 消耗和预估费用
   - **输入**: T1a.2.3 产出的 AI Integration（usage_meter 写入数据）
   - **输出**: `src-tauri/src/ipc/settings.rs` 中 `get_usage_stats` 实现
@@ -549,7 +549,7 @@ graph TD
   - **依赖**: T2a.1.1
   - **优先级**: P1
 
-- [ ] **INT-S3** [MILESTONE]: S3 集成验证 — 扩展集成
+- [x] **INT-S3** [MILESTONE]: S3 集成验证 — 扩展集成
   - **描述**: 验证 NotebookLM + Zotero + 缓存的端到端功能
   - **输入**: Wave 3 + Wave 4 所有任务产出
   - **输出**: 集成验证报告
