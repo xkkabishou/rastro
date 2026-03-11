@@ -5,13 +5,18 @@ node_modules/
 dist/
 src-tauri/target/
 src-tauri/gen/
+*.dmg
+*.app
 
 # 系统文件
+**/.DS_Store
 .DS_Store
 Thumbs.db
+._*
 
 # IDE
 .idea/
+.vscode/*.log
 *.swp
 *.swo
 *~
@@ -24,6 +29,18 @@ Thumbs.db
 # 日志
 *.log
 npm-debug.log*
+yarn-error.log*
 
 # Tauri 运行时
 src-tauri/runtime/
+
+# Rust
+*.rlib
+*.rmeta
+
+# Serena 缓存
+.serena/cache/
+
+# 临时文件
+*.tmp
+*.bak
