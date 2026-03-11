@@ -1,1 +1,1 @@
-{}
+{"desktop-capability":{"identifier":"desktop-capability","description":"Rastro 主窗口能力配置。","local":true,"windows":["main"],"permissions":["core:default","core:app:default","core:event:default","core:path:default","core:window:default","core:webview:default"]}}

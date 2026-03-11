@@ -1,6 +1,6 @@
 # 产品需求文档 (PRD) v1.0
 
-**项目名称**: Rasto
+**项目名称**: Rastro
 **功能名称**: AI 学术文献智能阅读器
 **文档状态**: 评审中 (Review)
 **版本号**: 1.0
@@ -11,7 +11,7 @@
 
 ## 1. 执行摘要 (Executive Summary)
 
-Rasto 是一款 macOS 桌面端 AI 学术文献阅读器，通过多 AI API 集成提供全文翻译（含图表）、AI 问答和一键 NotebookLM Studio 生成，大幅提升外文文献理解效率。
+Rastro 是一款 macOS 桌面端 AI 学术文献阅读器，通过多 AI API 集成提供全文翻译（含图表）、AI 问答和一键 NotebookLM Studio 生成，大幅提升外文文献理解效率。
 
 ---
 

@@ -7,7 +7,7 @@
 ---
 
 ## 1. 概览 (Overview)
-`frontend-system` 是 Rasto 的用户界面系统，一个基于 Tauri 2.0 Webview 构建、采用 React 18 + TypeScript 开发的 macOS 桌面级应用前端。
+`frontend-system` 是 Rastro 的用户界面系统，一个基于 Tauri 2.0 Webview 构建、采用 React 18 + TypeScript 开发的 macOS 桌面级应用前端。
 
 **核心职责**:
 - 提供 Apple HIG 风格的沉浸式阅读体验，处理 PDF 解析、缩放及隐式双语展示。
@@ -38,7 +38,7 @@
 ---
 
 ## 3. 背景与上下文 (Background)
-Rasto 旨在为中国科研工作者提供最高效的外文文献阅读环境。基于 **[ADR-001]** 确定的 Tauri + React 18 技术栈，结合多智能体协作开发策略 **[ADR-002]**，前端系统需首先明确接口通信契约与组件规范，以同时满足强烈的个性化设计风格要求（`frontend-design`, `ui-ux-pro-max`）及开发并行效率。
+Rastro 旨在为中国科研工作者提供最高效的外文文献阅读环境。基于 **[ADR-001]** 确定的 Tauri + React 18 技术栈，结合多智能体协作开发策略 **[ADR-002]**，前端系统需首先明确接口通信契约与组件规范，以同时满足强烈的个性化设计风格要求（`frontend-design`, `ui-ux-pro-max`）及开发并行效率。
 
 ---
 

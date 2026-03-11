@@ -1,12 +1,19 @@
 // E+F. Provider 配置与凭据 + 使用统计 Command (6 个)
 // 对应 rust-backend-system.md Section 7.3 E + F
 use serde::Serialize;
+use tauri::State;
+
+use crate::{
+    app_state::AppState,
+    models::ProviderId,
+    storage::{provider_settings, usage_events},
+};
 
 /// Provider 配置 DTO（脱敏）
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderConfigDto {
-    pub provider: String,
+    pub provider: ProviderId,
     pub model: String,
     pub base_url: Option<String>,
     pub is_active: bool,
@@ -19,7 +26,7 @@ pub struct ProviderConfigDto {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderConnectivityDto {
-    pub provider: String,
+    pub provider: ProviderId,
     pub model: String,
     pub success: bool,
     pub latency_ms: Option<u64>,
@@ -30,7 +37,7 @@ pub struct ProviderConnectivityDto {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoveProviderKeyResult {
-    pub provider: String,
+    pub provider: ProviderId,
     pub removed: bool,
 }
 
@@ -46,7 +53,7 @@ pub struct UsageStatsDto {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderUsageDto {
-    pub provider: String,
+    pub provider: ProviderId,
     pub model: String,
     pub by_feature: Vec<FeatureUsageDto>,
     pub input_tokens: u64,
@@ -79,43 +86,99 @@ pub struct UsageTotalDto {
 
 /// 返回脱敏配置与当前激活状态
 #[tauri::command]
-pub fn list_provider_configs() -> Result<Vec<ProviderConfigDto>, crate::errors::AppError> {
-    todo!()
+pub fn list_provider_configs(
+    state: State<'_, AppState>,
+) -> Result<Vec<ProviderConfigDto>, crate::errors::AppError> {
+    let records = {
+        let connection = state.storage.connection();
+        provider_settings::list_all(&connection)?
+    };
+
+    records
+        .into_iter()
+        .map(|record| build_provider_config_dto(&state, record))
+        .collect()
 }
 
 /// Key 写入 Keychain，DB 只存非敏感字段
 #[tauri::command]
 pub fn save_provider_key(
-    _provider: String,
-    _api_key: String,
+    state: State<'_, AppState>,
+    provider: ProviderId,
+    api_key: String,
 ) -> Result<ProviderConfigDto, crate::errors::AppError> {
-    todo!()
+    state.keychain.save_key(provider.as_str(), &api_key)?;
+
+    let record = {
+        let connection = state.storage.connection();
+        provider_settings::get_by_provider(&connection, provider.as_str())?
+    }
+    .expect("default provider rows should exist after migration");
+
+    build_provider_config_dto(&state, record)
 }
 
 /// 删除 Keychain 中的 Key
 #[tauri::command]
 pub fn remove_provider_key(
-    _provider: String,
+    state: State<'_, AppState>,
+    provider: ProviderId,
 ) -> Result<RemoveProviderKeyResult, crate::errors::AppError> {
-    todo!()
+    let removed = state.keychain.delete_key(provider.as_str())?;
+    Ok(RemoveProviderKeyResult { provider, removed })
 }
 
 /// 修改当前生效 Provider 与模型
 #[tauri::command]
 pub fn set_active_provider(
-    _provider: String,
-    _model: String,
+    state: State<'_, AppState>,
+    provider: ProviderId,
+    model: String,
 ) -> Result<ProviderConfigDto, crate::errors::AppError> {
-    todo!()
+    let record = {
+        let mut connection = state.storage.connection();
+        provider_settings::set_active(&mut connection, provider.as_str(), &model)?
+    };
+
+    build_provider_config_dto(&state, record)
 }
 
 /// 实际发送测试请求验证连接
 #[tauri::command]
-pub fn test_provider_connection(
-    _provider: String,
-    _model: Option<String>,
+pub async fn test_provider_connection(
+    state: State<'_, AppState>,
+    provider: ProviderId,
+    model: Option<String>,
 ) -> Result<ProviderConnectivityDto, crate::errors::AppError> {
-    todo!()
+    let result = state.ai_integration.test_connection(provider, model).await;
+    let tested_at = chrono::Utc::now().to_rfc3339();
+
+    {
+        let connection = state.storage.connection();
+        match &result {
+            Ok(_) => provider_settings::update_test_status(
+                &connection,
+                provider.as_str(),
+                Some("ok"),
+                Some(&tested_at),
+            )?,
+            Err(error) => provider_settings::update_test_status(
+                &connection,
+                provider.as_str(),
+                Some(&error.message),
+                Some(&tested_at),
+            )?,
+        }
+    }
+
+    let result = result?;
+    Ok(ProviderConnectivityDto {
+        provider: result.provider,
+        model: result.model,
+        success: result.success,
+        latency_ms: result.latency_ms,
+        error: result.error,
+    })
 }
 
 // --- F. 使用统计 (1 个) ---
@@ -123,9 +186,115 @@ pub fn test_provider_connection(
 /// 汇总问答、总结、翻译消耗
 #[tauri::command]
 pub fn get_usage_stats(
-    _from: Option<String>,
-    _to: Option<String>,
-    _provider: Option<String>,
+    state: State<'_, AppState>,
+    from: Option<String>,
+    to: Option<String>,
+    provider: Option<ProviderId>,
 ) -> Result<UsageStatsDto, crate::errors::AppError> {
-    todo!()
+    let events = {
+        let connection = state.storage.connection();
+        usage_events::list_all(&connection)?
+    };
+
+    let mut by_provider: Vec<ProviderUsageDto> = Vec::new();
+    let mut total_input = 0;
+    let mut total_output = 0;
+    let mut total_cost = 0.0;
+
+    for event in events.into_iter().filter(|event| {
+        let provider_matches = provider
+            .as_ref()
+            .map(|value| value.as_str() == event.provider)
+            .unwrap_or(true);
+        let from_matches = from
+            .as_ref()
+            .map(|value| event.created_at >= *value)
+            .unwrap_or(true);
+        let to_matches = to
+            .as_ref()
+            .map(|value| event.created_at <= *value)
+            .unwrap_or(true);
+
+        provider_matches && from_matches && to_matches
+    }) {
+        total_input += event.input_tokens;
+        total_output += event.output_tokens;
+        total_cost += event.estimated_cost;
+
+        let provider_id = event.provider.parse()?;
+        let position = by_provider
+            .iter()
+            .position(|entry| entry.provider == provider_id && entry.model == event.model);
+
+        let entry = if let Some(position) = position {
+            &mut by_provider[position]
+        } else {
+            by_provider.push(ProviderUsageDto {
+                provider: provider_id,
+                model: event.model.clone(),
+                by_feature: Vec::new(),
+                input_tokens: 0,
+                output_tokens: 0,
+                estimated_cost: 0.0,
+            });
+            by_provider
+                .last_mut()
+                .expect("just inserted provider bucket")
+        };
+
+        entry.input_tokens += event.input_tokens;
+        entry.output_tokens += event.output_tokens;
+        entry.estimated_cost += event.estimated_cost;
+
+        let feature_position = entry
+            .by_feature
+            .iter()
+            .position(|feature| feature.feature == event.feature);
+        let feature = if let Some(position) = feature_position {
+            &mut entry.by_feature[position]
+        } else {
+            entry.by_feature.push(FeatureUsageDto {
+                feature: event.feature.clone(),
+                count: 0,
+                input_tokens: 0,
+                output_tokens: 0,
+                estimated_cost: 0.0,
+            });
+            entry
+                .by_feature
+                .last_mut()
+                .expect("just inserted feature bucket")
+        };
+
+        feature.count += 1;
+        feature.input_tokens += event.input_tokens;
+        feature.output_tokens += event.output_tokens;
+        feature.estimated_cost += event.estimated_cost;
+    }
+
+    Ok(UsageStatsDto {
+        by_provider,
+        total: UsageTotalDto {
+            input_tokens: total_input,
+            output_tokens: total_output,
+            estimated_cost: total_cost,
+            currency: "USD".to_string(),
+        },
+    })
+}
+
+fn build_provider_config_dto(
+    state: &State<'_, AppState>,
+    record: provider_settings::ProviderSettingRecord,
+) -> Result<ProviderConfigDto, crate::errors::AppError> {
+    let raw_key = state.keychain.get_key(&record.provider)?;
+    Ok(ProviderConfigDto {
+        provider: record.provider.parse()?,
+        model: record.model,
+        base_url: record.base_url,
+        is_active: record.is_active,
+        masked_key: raw_key.as_ref().map(|value| state.keychain.mask_key(value)),
+        last_test_status: record.last_test_status,
+        last_tested_at: record.last_tested_at,
+    })
 }

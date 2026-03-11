@@ -38,16 +38,26 @@
 
 - **最新架构版本**: `genesis/v1`
 - **活动任务清单**: `genesis/v1/05_TASKS.md`
-- **待办任务数**: 42 (P0: 22, P1: 14, P2: 6)
+- **待办任务数**: 42 (已完成 22)
 - **质疑报告**: `genesis/v1/07_CHALLENGE_REPORT.md` — 🟡 5 High / 5 Medium / 2 Low
-- **最近一次更新**: `2026-03-11`
+- **最近一次更新**: `2026-03-11T16:45`
 
 ### 🌊 Wave 0 ✅ — 契约先行 (2026-03-11)
 T0.1.1 (types.ts) ✅, T0.1.2 (Rust Command Traits) ✅
 
-### 🌊 Wave 1a ∥ 1b — 双轮启动
-- **1a (Codex)**: T1a.1.1, T1a.1.2, T1a.2.1, T1a.2.2, T1a.2.3, T1a.2.4
-- **1b (Claude+Gemini)**: T1b.1.1, T1b.1.2, T1b.2.1, T1b.2.2, T1b.2.3
+### 🌊 Wave 1a ∥ 1b ✅ — 双轮启动 (2026-03-11)
+- **1a (Codex)**: T1a.1.1✅, T1a.1.2✅, T1a.2.1✅, T1a.2.2✅, T1a.2.3✅, T1a.2.4✅
+- **1b (Claude+Gemini)**: T1b.1.1✅, T1b.1.2✅, T1b.2.1✅, T1b.2.2✅, T1b.2.3✅
+- **INT-S1** ✅
+
+### 🌊 Wave 2b ✅ — 功能页面 (2026-03-11)
+T2b.1.1 (Chat Panel) ✅, T2b.1.2 (翻译切换) ✅, T2b.1.3 (Settings) ✅, T2b.1.4 (AI总结) ✅
+**技术债务补齐**: D1 (Design System) ✅, D2 (PdfViewer) ✅, D3 (IPC Client) ✅
+⚠️ 待安装依赖: react-markdown, rehype-sanitize, remark-gfm
+
+### 🌊 Wave S3-frontend ✅ — 扩展集成前端 (2026-03-11)
+T3.1.1 (NotebookLM WebView) ✅, T3.1.2 (错误处理) ✅, T4.1.4 (Zotero UI) ✅, T4.1.5 (Python 引导) ✅
+**新增依赖**: @tanstack/react-virtual
 
 ---
 

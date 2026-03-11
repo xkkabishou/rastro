@@ -1,0 +1,4 @@
+- 默认使用中文沟通；代码标识符使用英文；代码注释优先中文且保持简洁。
+- 用户要求：不要修改 `src/shared/types.ts`；不要触碰 `src/` 前端目录；Rust `serde` 序列化必须使用 `camelCase` 与 TypeScript DTO 对齐；`AppErrorCode` 使用 `SCREAMING_SNAKE_CASE`。
+- 编辑原则：遵循 KISS / YAGNI，保持向后兼容，优先复用现有模式；多步任务使用计划跟踪；每完成一个任务要更新 `genesis/v1/05_TASKS.md` 对应 checkbox。
+- 当前 Rust 风格：模块化拆分（`ipc/` 子模块），DTO 多用 `#[derive(Serialize, Deserialize)]` + `#[serde(rename_all = "camelCase")]`。

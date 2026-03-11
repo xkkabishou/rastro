@@ -20,7 +20,7 @@
 - [ADD] 安装 frontend-design + ui-ux-pro-max Agent Skills
 
 ## 2026-03-11 - Step 2 PRD 修订
-- [CHANGE] 项目名从 PaperAI 改为 Rasto
+- [CHANGE] 项目名从 PaperAI 改为 Rastro
 - [CHANGE] US-002 从「隐式双语翻译」重构为「PDF 全文翻译（含图表）」
 - [CHANGE] 集成 PDFMathTranslate 作为翻译引擎（方案 A）
 - [REMOVE] 删除独立的 US-005 图表翻译，合并至 US-002

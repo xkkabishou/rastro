@@ -1,4 +1,4 @@
-# Rasto 质疑报告 (Challenge Report)
+# Rastro 质疑报告 (Challenge Report)
 
 > **审查日期**: 2026-03-11  
 > **审查范围**: genesis/v1 全部设计文档  
@@ -244,7 +244,7 @@ PRD 假设缓存上限 500MB，超出后 LRU 淘汰。但后端设计中虽有 `
 **文档**: `rust-backend-system.md` Section 8.3
 
 **问题描述**:
-如果 Rasto App 被 force quit，Python 进程变成孤儿。`ensure_engine()` 设计了端口检测 + 健康签名验证可以接管，但未定义：如果孤儿进程卡在翻译中间（有 active job），接管后是否清理旧任务？
+如果 Rastro App 被 force quit，Python 进程变成孤儿。`ensure_engine()` 设计了端口检测 + 健康签名验证可以接管，但未定义：如果孤儿进程卡在翻译中间（有 active job），接管后是否清理旧任务？
 
 **建议**: 接管后先调用 `GET /v1/jobs` 检查活跃任务状态，如为 stale 则标记 cancelled。
 

@@ -1,9 +1,12 @@
 // B+C. Translation Engine 生命周期 + 翻译任务 Command (7 个)
 // 对应 rust-backend-system.md Section 7.3 B + C
 use serde::{Deserialize, Serialize};
+use tauri::State;
+
+use crate::app_state::AppState;
 
 /// 翻译引擎状态
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TranslationEngineStatus {
     pub running: bool,
@@ -54,51 +57,68 @@ pub struct RequestTranslationInput {
 
 /// 若未运行则启动引擎；force=true 可绕过熔断状态
 #[tauri::command]
-pub fn ensure_translation_engine(
-    _expected_port: Option<u16>,
-    _force: Option<bool>,
+pub async fn ensure_translation_engine(
+    state: State<'_, AppState>,
+    expected_port: Option<u16>,
+    force: Option<bool>,
 ) -> Result<TranslationEngineStatus, crate::errors::AppError> {
-    todo!()
+    state
+        .translation_manager
+        .ensure_engine(expected_port, force.unwrap_or(false))
+        .await
 }
 
 /// 优雅关闭翻译引擎，必要时强杀
 #[tauri::command]
-pub fn shutdown_translation_engine(
-    _force: Option<bool>,
+pub async fn shutdown_translation_engine(
+    state: State<'_, AppState>,
+    force: Option<bool>,
 ) -> Result<TranslationEngineStatus, crate::errors::AppError> {
-    todo!()
+    state
+        .translation_manager
+        .shutdown_engine(force.unwrap_or(false))
+        .await
 }
 
 /// 仅查询引擎状态，不触发启动
 #[tauri::command]
-pub fn get_translation_engine_status() -> Result<TranslationEngineStatus, crate::errors::AppError> {
-    todo!()
+pub async fn get_translation_engine_status(
+    state: State<'_, AppState>,
+) -> Result<TranslationEngineStatus, crate::errors::AppError> {
+    state.translation_manager.get_engine_status().await
 }
 
 // --- C. 翻译任务 (4 个) ---
 
 /// 提交翻译任务，命中缓存则直接返回完成态
 #[tauri::command]
-pub fn request_translation(
-    _input: RequestTranslationInput,
+pub async fn request_translation(
+    state: State<'_, AppState>,
+    input: RequestTranslationInput,
 ) -> Result<TranslationJobDto, crate::errors::AppError> {
-    todo!()
+    state.translation_manager.request_translation(input).await
 }
 
 /// 获取单任务状态
 #[tauri::command]
 pub fn get_translation_job(
-    _job_id: String,
+    state: State<'_, AppState>,
+    job_id: String,
 ) -> Result<TranslationJobDto, crate::errors::AppError> {
-    todo!()
+    state.translation_manager.get_job(job_id)
 }
 
 /// 取消排队或运行中的翻译任务
 #[tauri::command]
-pub fn cancel_translation(
-    _job_id: String,
+pub async fn cancel_translation(
+    state: State<'_, AppState>,
+    job_id: String,
 ) -> Result<CancelTranslationResult, crate::errors::AppError> {
-    todo!()
+    let cancelled = state
+        .translation_manager
+        .cancel_translation(job_id.clone())
+        .await?;
+    Ok(CancelTranslationResult { job_id, cancelled })
 }
 
 /// 取消翻译结果
@@ -112,9 +132,12 @@ pub struct CancelTranslationResult {
 /// 前端重新打开文档时快速恢复缓存
 #[tauri::command]
 pub fn load_cached_translation(
-    _document_id: String,
-    _provider: Option<String>,
-    _model: Option<String>,
+    state: State<'_, AppState>,
+    document_id: String,
+    provider: Option<String>,
+    model: Option<String>,
 ) -> Result<Option<TranslationJobDto>, crate::errors::AppError> {
-    todo!()
+    state
+        .translation_manager
+        .load_cached_translation(document_id, provider, model)
 }

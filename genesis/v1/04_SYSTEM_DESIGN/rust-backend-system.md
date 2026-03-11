@@ -7,7 +7,7 @@
 ---
 
 ## 1. 概览 (Overview)
-`rust-backend-system` 是 Rasto 在 Tauri 2.0 中承载本地业务逻辑的核心枢纽层，负责把前端交互、AI Provider、PDF 翻译引擎、本地存储和 Zotero 数据源连接成一个可组合的本地应用后端。
+`rust-backend-system` 是 Rastro 在 Tauri 2.0 中承载本地业务逻辑的核心枢纽层，负责把前端交互、AI Provider、PDF 翻译引擎、本地存储和 Zotero 数据源连接成一个可组合的本地应用后端。
 
 **核心职责**:
 - 作为前端唯一可信后端，暴露稳定的 Tauri IPC Command 契约。
@@ -58,7 +58,7 @@ graph TD
     AI -->|HTTPS| APIS["OpenAI / Claude / Gemini"]
     KC -->|Security.framework| KEYCHAIN["macOS Keychain"]
     ZT -->|SQLite readonly| ZDB["Zotero.sqlite"]
-    DB -->|rusqlite| SQLITE["Rasto app.db"]
+    DB -->|rusqlite| SQLITE["Rastro app.db"]
 
     style IPC fill:#fff3e0,stroke:#f57c00
     style TM fill:#e8f5e9,stroke:#388e3c
@@ -168,7 +168,7 @@ src-tauri/
 
 ### 5.2 应用数据目录
 默认根目录建议为:
-`~/Library/Application Support/com.rasto.app/`
+`~/Library/Application Support/com.rastro.app/`
 
 ```text
 app.db
@@ -558,7 +558,7 @@ sequenceDiagram
 6. 启动命令建议:
 
 ```bash
-python3 -m rasto_translation_engine --host 127.0.0.1 --port 8890
+python3 -m rastro_translation_engine --host 127.0.0.1 --port 8890
 ```
 
 7. 启动后最多等待 15 秒；每 500ms 轮询一次 `/healthz`。
@@ -609,7 +609,7 @@ python3 -m rasto_translation_engine --host 127.0.0.1 --port 8890
 ### 10.1 Keychain 存储约定
 | 字段 | 值 |
 |------|----|
-| service | `com.rasto.ai` |
+| service | `com.rastro.ai` |
 | account | `provider:<provider>`，例如 `provider:openai` |
 | secret | 原始 API Key |
 

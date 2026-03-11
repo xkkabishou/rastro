@@ -1,11 +1,11 @@
-# ADR-001: Rasto 技术栈选择
+# ADR-001: Rastro 技术栈选择
 
 ## 状态
 Accepted
 
 ## 背景
 
-Rasto 是一款面向中国科研工作者的 macOS 桌面端 AI 学术文献阅读器。核心功能包括：PDF 全文翻译（含图表、布局保留）、AI 问答、AI 总结、NotebookLM Studio 一键生成、Zotero 集成。首发 macOS，后期支持 Windows。
+Rastro 是一款面向中国科研工作者的 macOS 桌面端 AI 学术文献阅读器。核心功能包括：PDF 全文翻译（含图表、布局保留）、AI 问答、AI 总结、NotebookLM Studio 一键生成、Zotero 集成。首发 macOS，后期支持 Windows。
 
 ### 关键约束
 - **跨平台需求**: macOS 首发，后期 Windows
@@ -129,7 +129,7 @@ Rasto 是一款面向中国科研工作者的 macOS 桌面端 AI 学术文献阅
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                  Rasto App                       │
+│                  Rastro App                       │
 ├─────────────────────────────────────────────────┤
 │  前端 (WebView)                                  │
 │  ├── React 18 + TypeScript                      │

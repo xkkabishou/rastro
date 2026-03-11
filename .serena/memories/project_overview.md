@@ -1,0 +1,5 @@
+- 项目名：antigravity-paper / Rasto，本地科研文献阅读助手，当前代码库包含 Tauri 2 Rust 后端和 TypeScript 前端契约。
+- 当前阶段：genesis/v1，Wave 0 已完成 IPC 契约与 Rust command 骨架，Wave 1a 负责 Rust 后端基础设施。
+- 主要目录：`src-tauri/` 为 Rust/Tauri 后端；`src/shared/types.ts` 为前后端 IPC 契约；`genesis/v1/` 为 PRD、架构、系统设计和任务清单；`src/` 为前端目录（当前任务约束禁止改动）。
+- 现有 Rust 入口：`src-tauri/src/main.rs`，注册 25 个 `#[tauri::command]`；`src-tauri/src/ipc/*.rs` 为 command 骨架；`src-tauri/src/errors.rs` 定义统一错误模型。
+- 目标平台：Darwin / macOS。

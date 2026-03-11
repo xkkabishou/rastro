@@ -1,6 +1,6 @@
 # 系统架构总览 (Architecture Overview)
 
-**项目**: Rasto - AI 学术文献阅读器
+**项目**: Rastro - AI 学术文献阅读器
 **版本**: 1.0
 **日期**: 2026-03-11
 
@@ -12,7 +12,7 @@
 
 ```mermaid
 graph TD
-    User["🧑‍🔬 科研工作者"] -->|使用| App["Rasto App (Tauri)"]
+    User["🧑‍🔬 科研工作者"] -->|使用| App["Rastro App (Tauri)"]
     App -->|HTTP API| AI["☁️ AI APIs<br/>(OpenAI / Claude / Gemini)"]
     App -->|HTTP localhost:8890| PMT["🐍 PDFMathTranslate<br/>(Python 本地服务)"]
     App -->|WebView 自动化| NLM["☁️ Google NotebookLM"]
@@ -28,7 +28,7 @@ graph TD
 
 ### 1.2 关键用户 (Key Users)
 
-- **科研工作者**: 使用 Rasto 阅读、翻译和理解英文学术文献的中国研究人员和学生
+- **科研工作者**: 使用 Rastro 阅读、翻译和理解英文学术文献的中国研究人员和学生
 
 ### 1.3 外部系统 (External Systems)
 
@@ -173,7 +173,7 @@ graph LR
     FE -->|WebView| NLM["☁️ NotebookLM"]
     BE -->|SQLite Read| ZT["📚 Zotero"]
 
-    subgraph "Rasto App (单一部署)"
+    subgraph "Rastro App (单一部署)"
         FE
         BE
     end

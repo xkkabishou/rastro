@@ -1,4 +1,4 @@
-# Rasto 任务清单 (Task List)
+# Rastro 任务清单 (Task List)
 
 > **版本**: genesis/v1  
 > **生成日期**: 2026-03-11  
@@ -113,7 +113,7 @@ graph TD
   - **依赖**: T0.1.1
   - **优先级**: P0
 
-- [ ] **INT-S0** [MILESTONE]: S0 集成验证 — 契约先行
+- [x] **INT-S0** [MILESTONE]: S0 集成验证 — 契约先行
   - **描述**: 验证前后端契约对齐
   - **输入**: T0.1.1, T0.1.2 产出
   - **输出**: 契约对齐确认（Command 名称 + DTO 字段一一匹配）
@@ -134,7 +134,7 @@ graph TD
 
 ### Phase 1: Foundation
 
-- [ ] **T1a.1.1** [基础]: Tauri 2.0 项目初始化
+- [x] **T1a.1.1** [基础]: Tauri 2.0 项目初始化
   - **描述**: 使用 `create-tauri-app` 初始化项目，配置 Cargo.toml 依赖（rusqlite, reqwest, serde, security-framework）
   - **输入**: T0.1.2 产出的 Rust Command 骨架
   - **输出**: 可编译的 `src-tauri/` 项目 + `tauri.conf.json`
@@ -147,7 +147,7 @@ graph TD
   - **依赖**: T0.1.2
   - **优先级**: P0
 
-- [ ] **T1a.1.2** [REQ-003,008]: SQLite Schema 与 Migration
+- [x] **T1a.1.2** [REQ-003,008]: SQLite Schema 与 Migration
   - **描述**: 实现 `rust-backend-system.md` Section 6.2 全部 7 张表的 CREATE TABLE + Migration 逻辑
   - **输入**: `rust-backend-system.md` Section 6.2 SQL 定义
   - **输出**: `src-tauri/migrations/001_init.sql` + `src-tauri/src/storage/migration.rs`
@@ -162,7 +162,7 @@ graph TD
 
 ### Phase 2: Core
 
-- [ ] **T1a.2.1** [REQ-003,008]: Storage 模块 CRUD 实现
+- [x] **T1a.2.1** [REQ-003,008]: Storage 模块 CRUD 实现
   - **描述**: 为 `documents`, `chat_sessions`, `chat_messages`, `translation_jobs`, `translation_artifacts`, `usage_events`, `provider_settings` 实现 CRUD 函数
   - **输入**: T1a.1.2 产出的 SQLite Schema
   - **输出**: `src-tauri/src/storage/` 下各实体的 repository 模块
@@ -175,7 +175,7 @@ graph TD
   - **依赖**: T1a.1.2
   - **优先级**: P0
 
-- [ ] **T1a.2.2** [REQ-004]: Keychain 模块实现
+- [x] **T1a.2.2** [REQ-004]: Keychain 模块实现
   - **描述**: 实现 macOS Keychain 的 API Key 读写和脱敏功能（`save_key`, `get_key`, `delete_key`, `mask_key`）
   - **输入**: `rust-backend-system.md` Section 10.1 Keychain 约定
   - **输出**: `src-tauri/src/keychain/mod.rs`
@@ -188,7 +188,7 @@ graph TD
   - **依赖**: T1a.1.1
   - **优先级**: P0
 
-- [ ] **T1a.2.3** [REQ-003,005]: AI Integration 模块
+- [x] **T1a.2.3** [REQ-003,005]: AI Integration 模块
   - **描述**: 实现三大 Provider (OpenAI/Claude/Gemini) 的 HTTP 客户端 + 流式响应处理 + Usage 统计
   - **输入**: T1a.2.1 产出的 Storage 模块（写 usage_events）+ T1a.2.2 产出的 Keychain 模块（读 API Key）
   - **输出**: `src-tauri/src/ai_integration/` 含 `provider_registry.rs`, `chat_service.rs`, `summary_service.rs`, `usage_meter.rs`
@@ -201,7 +201,7 @@ graph TD
   - **依赖**: T1a.2.1, T1a.2.2
   - **优先级**: P0
 
-- [ ] **T1a.2.4** [REQ-001~005]: IPC Handlers 首批实现
+- [x] **T1a.2.4** [REQ-001~005]: IPC Handlers 首批实现
   - **描述**: 将 T0.1.2 的 `todo!()` 占位替换为实际逻辑：`open_document`, `ask_ai`, `cancel_ai_stream`, `generate_summary`, `list_chat_sessions`, `get_chat_messages`, `list_provider_configs`, `save_provider_key`, `set_active_provider`, `test_provider_connection`, `get_backend_health`, `list_recent_documents`
   - **输入**: T1a.2.1 Storage + T1a.2.2 Keychain + T1a.2.3 AI Integration
   - **输出**: `src-tauri/src/ipc/` 各模块实际实现
@@ -223,7 +223,7 @@ graph TD
 
 ### Phase 1: Foundation
 
-- [ ] **T1b.1.1** [基础]: React + Vite + TypeScript 项目初始化
+- [x] **T1b.1.1** [基础]: React + Vite + TypeScript 项目初始化
   - **描述**: 初始化前端项目，集成 Tauri API、Zustand、Tailwind CSS、Radix UI、framer-motion、Lucide React
   - **输入**: T0.1.1 产出的 `types.ts`
   - **输出**: `src/` 前端项目（`vite.config.ts`, `package.json`, `tailwind.config.js`）
@@ -236,7 +236,7 @@ graph TD
   - **依赖**: T0.1.1
   - **优先级**: P0
 
-- [ ] **T1b.1.2** [基础]: Design System 基础设施
+- [x] **T1b.1.2** [基础]: Design System 基础设施
   - **描述**: 使用 `frontend-design` + `ui-ux-pro-max` Skills 建立设计系统：颜色 tokens（HIG 风格）、字体（SF Pro 降级链）、间距、圆角、阴影、暗色模式变量
   - **输入**: `frontend-system.md` Section 7 技术选型 + Apple HIG 参考
   - **输出**: `src/styles/` 设计 token 文件 + `src/components/ui/` 基础组件（Button, Input, Card, Dialog）
@@ -251,7 +251,7 @@ graph TD
 
 ### Phase 2: Core
 
-- [ ] **T1b.2.1** [REQ-001]: App Layout 三栏布局
+- [x] **T1b.2.1** [REQ-001]: App Layout 三栏布局
   - **描述**: 实现 HIG 风格三栏布局（Sidebar + PDF 主区域 + 右侧面板），支持面板折叠/展开动画
   - **输入**: T1b.1.2 产出的 Design System
   - **输出**: `src/layouts/AppLayout.tsx` + `src/components/Sidebar.tsx`
@@ -264,7 +264,7 @@ graph TD
   - **依赖**: T1b.1.2
   - **优先级**: P0
 
-- [ ] **T1b.2.2** [REQ-001]: PDF Viewer 核心渲染
+- [x] **T1b.2.2** [REQ-001]: PDF Viewer 核心渲染
   - **描述**: 集成 pdf.js，实现 PDF 文件打开、页面渲染、翻页、缩放（25%-400%）、懒加载（前后各预加载 2 页）
   - **输入**: T1b.2.1 产出的 App Layout
   - **输出**: `src/components/pdf-viewer/PdfViewer.tsx` + Worker 配置
@@ -277,7 +277,7 @@ graph TD
   - **依赖**: T1b.2.1
   - **优先级**: P0
 
-- [ ] **T1b.2.3** [基础]: IPC Client 封装层
+- [x] **T1b.2.3** [基础]: IPC Client 封装层
   - **描述**: 封装 `@tauri-apps/api/core` 的 `invoke()` 调用，创建类型安全的 API 客户端（自动错误处理、Loading 状态管理）
   - **输入**: T0.1.1 产出的 `types.ts` + T1b.2.1 产出的 Layout
   - **输出**: `src/lib/ipc-client.ts`（封装所有 30+ Command 的类型安全调用函数）
@@ -290,7 +290,7 @@ graph TD
   - **依赖**: T0.1.1, T1b.2.1
   - **优先级**: P0
 
-- [ ] **INT-S1** [MILESTONE]: S1 集成验证 — 双轮启动
+- [x] **INT-S1** [MILESTONE]: S1 集成验证 — 双轮启动
   - **描述**: 验证后端可启动 + 前端可渲染 PDF + IPC 通道连通
   - **输入**: Wave 1a + Wave 1b 所有任务产出
   - **输出**: 集成验证报告
@@ -364,7 +364,7 @@ graph TD
 
 ### Phase 1: Core
 
-- [ ] **T2b.1.1** [REQ-003]: Chat Panel 聊天面板
+- [x] **T2b.1.1** [REQ-003]: Chat Panel 聊天面板
   - **描述**: 实现右侧 AI 对话面板：拖拽段落引用、消息列表（含引用块样式）、流式 Markdown 渲染、自动滚动到底部、对话历史加载
   - **输入**: T1b.2.3 产出的 IPC Client（`ask_ai`, `list_chat_sessions`, `get_chat_messages` 调用）
   - **输出**: `src/components/chat-panel/ChatPanel.tsx`, `ChatMessage.tsx`, `ChatInput.tsx`
@@ -379,7 +379,7 @@ graph TD
   - **依赖**: T1b.2.3
   - **优先级**: P0
 
-- [ ] **T2b.1.2** [REQ-002]: 翻译 PDF 切换展示
+- [x] **T2b.1.2** [REQ-002]: 翻译 PDF 切换展示
   - **描述**: 实现"隐式双语对照"功能：翻译完成后 pdf.js 切换渲染翻译 PDF，按住 Option 键切换回原始 PDF（带渐变淡入动画）。参见 Challenge H3 修正方案。
   - **输入**: T1b.2.2 产出的 PDF Viewer + T1b.2.3 产出的 IPC Client（翻译状态监听）
   - **输出**: `src/components/pdf-viewer/TranslationSwitch.tsx` + 翻译进度骨架屏
@@ -396,7 +396,7 @@ graph TD
   - **依赖**: T1b.2.2, T1b.2.3
   - **优先级**: P0
 
-- [ ] **T2b.1.3** [REQ-004,009]: Settings Panel 设置面板
+- [x] **T2b.1.3** [REQ-004,009]: Settings Panel 设置面板
   - **描述**: 实现设置页面：API Key 输入（脱敏显示）、Provider 切换、模型选择、连接测试、使用统计展示
   - **输入**: T1b.2.3 产出的 IPC Client（`save_provider_key`, `set_active_provider`, `test_provider_connection`, `get_usage_stats` 调用）
   - **输出**: `src/components/settings/SettingsPanel.tsx`, `ProviderCard.tsx`, `UsageChart.tsx`
@@ -411,7 +411,7 @@ graph TD
   - **依赖**: T1b.2.3
   - **优先级**: P0
 
-- [ ] **T2b.1.4** [REQ-005]: AI 文献总结面板
+- [x] **T2b.1.4** [REQ-005]: AI 文献总结面板
   - **描述**: 实现总结功能 UI：工具栏"总结"按钮、流式 Markdown 渲染、结构化总结展示（研究背景/方法/结论/创新点）
   - **输入**: T1b.2.3 产出的 IPC Client（`generate_summary` 调用）
   - **输出**: `src/components/summary/SummaryPanel.tsx`
@@ -445,7 +445,7 @@ graph TD
 
 ### Phase 1: Core
 
-- [ ] **T3.1.1** [REQ-006]: NotebookLM WebView 模块
+- [x] **T3.1.1** [REQ-006]: NotebookLM WebView 模块
   - **描述**: 实现 NotebookLM 内嵌 WebView：Google 登录（一次性）、自动创建 Notebook、上传当前 PDF、触发 Studio 生成（思维导图/PPT/测验/闪卡等 9 种类型）。此模块为 Frontend 自治（参见 Challenge H2），不经过 Backend IPC。
   - **输入**: T1b.2.1 产出的 App Layout
   - **输出**: `src/components/notebooklm/NotebookLMView.tsx`, `src/lib/notebooklm-automation.ts`
@@ -458,7 +458,7 @@ graph TD
   - **依赖**: T1b.2.1
   - **优先级**: P1
 
-- [ ] **T3.1.2** [REQ-006]: NotebookLM 错误处理与状态管理
+- [x] **T3.1.2** [REQ-006]: NotebookLM 错误处理与状态管理
   - **描述**: 处理 WebView 加载超时、Google 登录过期、NotebookLM 使用限制等异常状态
   - **输入**: T3.1.1 产出的 NotebookLM WebView 模块
   - **输出**: 错误提示 UI + 重试逻辑
@@ -521,7 +521,7 @@ graph TD
   - **依赖**: T1a.2.3
   - **优先级**: P2
 
-- [ ] **T4.1.4** [REQ-007]: Zotero 侧边栏 UI
+- [x] **T4.1.4** [REQ-007]: Zotero 侧边栏 UI
   - **描述**: 实现左侧 Sidebar 的 Zotero 文献列表展示：虚拟化列表（@tanstack/react-virtual）、搜索过滤、点击打开 PDF
   - **输入**: T4.1.1 产出的 Zotero IPC + T1b.2.1 产出的 Sidebar
   - **输出**: `src/components/sidebar/ZoteroList.tsx`
@@ -536,7 +536,7 @@ graph TD
   - **依赖**: T4.1.1, T1b.2.1
   - **优先级**: P1
 
-- [ ] **T4.1.5** [基础]: Python 环境引导 UI
+- [x] **T4.1.5** [基础]: Python 环境引导 UI
   - **描述**: 实现首次启动引导组件：检测 Python 环境 → 显示安装指引（检测 `PYTHON_NOT_FOUND`/`PYTHON_VERSION_MISMATCH`/`PDFMATHTRANSLATE_NOT_INSTALLED` 错误码）。参见 Challenge H4。
   - **输入**: T2a.1.1 产出的 Engine Supervisor（Python 预检错误码）
   - **输出**: `src/components/setup/SetupWizard.tsx`

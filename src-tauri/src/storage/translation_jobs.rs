@@ -1,0 +1,258 @@
+// translation_jobs 表仓储
+#![allow(dead_code)]
+
+use rusqlite::{params, Connection, OptionalExtension, Row};
+use uuid::Uuid;
+
+/// translation_jobs 表记录
+#[derive(Debug, Clone)]
+pub struct TranslationJobRecord {
+    pub job_id: String,
+    pub document_id: String,
+    pub engine_job_id: Option<String>,
+    pub cache_key: String,
+    pub provider: String,
+    pub model: String,
+    pub source_lang: String,
+    pub target_lang: String,
+    pub status: String,
+    pub stage: String,
+    pub progress: f64,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+    pub created_at: String,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+}
+
+/// 新建翻译任务参数
+#[derive(Debug, Clone)]
+pub struct CreateTranslationJobParams {
+    pub document_id: String,
+    pub engine_job_id: Option<String>,
+    pub cache_key: String,
+    pub provider: String,
+    pub model: String,
+    pub source_lang: String,
+    pub target_lang: String,
+    pub status: String,
+    pub stage: String,
+    pub progress: f64,
+    pub created_at: String,
+}
+
+fn map_row(row: &Row<'_>) -> rusqlite::Result<TranslationJobRecord> {
+    Ok(TranslationJobRecord {
+        job_id: row.get("job_id")?,
+        document_id: row.get("document_id")?,
+        engine_job_id: row.get("engine_job_id")?,
+        cache_key: row.get("cache_key")?,
+        provider: row.get("provider")?,
+        model: row.get("model")?,
+        source_lang: row.get("source_lang")?,
+        target_lang: row.get("target_lang")?,
+        status: row.get("status")?,
+        stage: row.get("stage")?,
+        progress: row.get("progress")?,
+        error_code: row.get("error_code")?,
+        error_message: row.get("error_message")?,
+        created_at: row.get("created_at")?,
+        started_at: row.get("started_at")?,
+        finished_at: row.get("finished_at")?,
+    })
+}
+
+/// 创建翻译任务
+pub fn create(
+    connection: &Connection,
+    params: &CreateTranslationJobParams,
+) -> rusqlite::Result<TranslationJobRecord> {
+    let job_id = Uuid::new_v4().to_string();
+
+    connection.execute(
+        "INSERT INTO translation_jobs (
+            job_id,
+            document_id,
+            engine_job_id,
+            cache_key,
+            provider,
+            model,
+            source_lang,
+            target_lang,
+            status,
+            stage,
+            progress,
+            created_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![
+            job_id,
+            params.document_id,
+            params.engine_job_id,
+            params.cache_key,
+            params.provider,
+            params.model,
+            params.source_lang,
+            params.target_lang,
+            params.status,
+            params.stage,
+            params.progress,
+            params.created_at,
+        ],
+    )?;
+
+    get_by_id(connection, &job_id)
+        .map(|record| record.expect("inserted translation job should be queryable immediately"))
+}
+
+/// 查询单个翻译任务
+pub fn get_by_id(
+    connection: &Connection,
+    job_id: &str,
+) -> rusqlite::Result<Option<TranslationJobRecord>> {
+    connection
+        .query_row(
+            "SELECT * FROM translation_jobs WHERE job_id = ?1",
+            params![job_id],
+            map_row,
+        )
+        .optional()
+}
+
+/// 更新引擎侧 job_id
+pub fn set_engine_job_id(
+    connection: &Connection,
+    job_id: &str,
+    engine_job_id: Option<&str>,
+) -> rusqlite::Result<()> {
+    connection.execute(
+        "UPDATE translation_jobs
+         SET engine_job_id = ?1
+         WHERE job_id = ?2",
+        params![engine_job_id, job_id],
+    )?;
+    Ok(())
+}
+
+/// 更新翻译任务状态
+#[allow(clippy::too_many_arguments)]
+pub fn update_status(
+    connection: &Connection,
+    job_id: &str,
+    status: &str,
+    stage: &str,
+    progress: f64,
+    error_code: Option<&str>,
+    error_message: Option<&str>,
+    started_at: Option<&str>,
+    finished_at: Option<&str>,
+) -> rusqlite::Result<()> {
+    connection.execute(
+        "UPDATE translation_jobs
+         SET status = ?1,
+             stage = ?2,
+             progress = ?3,
+             error_code = ?4,
+             error_message = ?5,
+             started_at = COALESCE(?6, started_at),
+             finished_at = ?7
+         WHERE job_id = ?8",
+        params![
+            status,
+            stage,
+            progress,
+            error_code,
+            error_message,
+            started_at,
+            finished_at,
+            job_id,
+        ],
+    )?;
+    Ok(())
+}
+
+/// 查询文档最近的完成态翻译任务
+pub fn find_latest_completed_for_document(
+    connection: &Connection,
+    document_id: &str,
+    provider: Option<&str>,
+    model: Option<&str>,
+) -> rusqlite::Result<Option<TranslationJobRecord>> {
+    let mut statement = connection.prepare(
+        "SELECT * FROM translation_jobs
+         WHERE document_id = ?1
+           AND status = 'completed'
+         ORDER BY finished_at DESC, created_at DESC",
+    )?;
+
+    let rows = statement.query_map(params![document_id], map_row)?;
+
+    for row in rows {
+        let record = row?;
+        let provider_matches = provider
+            .map(|value| value == record.provider)
+            .unwrap_or(true);
+        let model_matches = model.map(|value| value == record.model).unwrap_or(true);
+
+        if provider_matches && model_matches {
+            return Ok(Some(record));
+        }
+    }
+
+    Ok(None)
+}
+
+/// 查询指定 cache_key 最近的任务
+pub fn find_latest_by_cache_key(
+    connection: &Connection,
+    cache_key: &str,
+) -> rusqlite::Result<Option<TranslationJobRecord>> {
+    connection
+        .query_row(
+            "SELECT * FROM translation_jobs
+             WHERE cache_key = ?1
+             ORDER BY created_at DESC
+             LIMIT 1",
+            params![cache_key],
+            map_row,
+        )
+        .optional()
+}
+
+/// 查询指定 cache_key 最近的完成态任务
+pub fn find_latest_completed_by_cache_key(
+    connection: &Connection,
+    cache_key: &str,
+) -> rusqlite::Result<Option<TranslationJobRecord>> {
+    connection
+        .query_row(
+            "SELECT * FROM translation_jobs
+             WHERE cache_key = ?1
+               AND status = 'completed'
+             ORDER BY finished_at DESC, created_at DESC
+             LIMIT 1",
+            params![cache_key],
+            map_row,
+        )
+        .optional()
+}
+
+/// 列出全部已完成的翻译任务
+pub fn list_completed(connection: &Connection) -> rusqlite::Result<Vec<TranslationJobRecord>> {
+    let mut statement = connection.prepare(
+        "SELECT * FROM translation_jobs
+         WHERE status = 'completed'
+         ORDER BY finished_at ASC, created_at ASC",
+    )?;
+
+    let rows = statement.query_map([], map_row)?;
+    rows.collect()
+}
+
+/// 删除翻译任务（其产物索引会随外键级联删除）
+pub fn delete_by_id(connection: &Connection, job_id: &str) -> rusqlite::Result<()> {
+    connection.execute(
+        "DELETE FROM translation_jobs WHERE job_id = ?1",
+        params![job_id],
+    )?;
+    Ok(())
+}

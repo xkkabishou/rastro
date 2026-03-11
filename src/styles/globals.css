@@ -1,0 +1,444 @@
+@import "tailwindcss";
+
+/* =============================================================================
+ * Rastro Design System — Apple HIG 风格
+ * 权威源: frontend-system.md Section 7
+ * 设计原则: Apple Human Interface Guidelines (macOS)
+ * ============================================================================= */
+
+/* ---------------------------------------------------------------------------
+ * Tailwind v4 @theme 注册
+ * 将 CSS 变量注册为 Tailwind tokens，允许在类名中使用
+ * --------------------------------------------------------------------------- */
+
+@theme {
+  /* 配色 — 主色 */
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-active: var(--color-primary-active);
+
+  /* 配色 — 语义色 */
+  --color-secondary: var(--color-secondary);
+  --color-accent: var(--color-accent);
+  --color-destructive: var(--color-destructive);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+
+  /* 背景 */
+  --color-bg: var(--color-bg);
+  --color-bg-secondary: var(--color-bg-secondary);
+  --color-bg-tertiary: var(--color-bg-tertiary);
+  --color-bg-elevated: var(--color-bg-elevated);
+  --color-bg-overlay: var(--color-bg-overlay);
+
+  /* 文字 */
+  --color-text: var(--color-text);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-tertiary: var(--color-text-tertiary);
+  --color-text-quaternary: var(--color-text-quaternary);
+  --color-text-on-primary: var(--color-text-on-primary);
+
+  /* 边框 */
+  --color-border: var(--color-border);
+  --color-border-secondary: var(--color-border-secondary);
+  --color-border-focus: var(--color-border-focus);
+
+  /* 圆角 */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-full: 9999px;
+
+  /* 间距（4px/8px 基准） */
+  --space-0: 0;
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-2-5: 10px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* 阴影 — Apple 风格多层 */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 0 0 1px rgba(0, 0, 0, 0.03), 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-overlay: 0 25px 50px -12px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  --shadow-button: 0 1px 2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.02);
+
+  /* 过渡动画 */
+  --transition-fast: 120ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --transition-normal: 200ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --transition-slow: 350ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --transition-spring: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* 字体 */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Helvetica Neue", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* 毛玻璃 */
+  --blur-sm: 8px;
+  --blur-md: 16px;
+  --blur-lg: 24px;
+  --blur-xl: 40px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Light Mode 颜色变量（默认）
+ * --------------------------------------------------------------------------- */
+
+@layer base {
+  :root {
+    /* 主色调 — Apple Blue */
+    --color-primary: #007AFF;
+    --color-primary-hover: #0066D6;
+    --color-primary-active: #0055B3;
+
+    /* 语义色 */
+    --color-secondary: #5856D6;
+    --color-accent: #FF9500;
+    --color-destructive: #FF3B30;
+    --color-success: #34C759;
+    --color-warning: #FF9F0A;
+
+    /* 背景层级 */
+    --color-bg: #FFFFFF;
+    --color-bg-secondary: #F5F5F7;
+    --color-bg-tertiary: #EFEFEF;
+    --color-bg-elevated: #FFFFFF;
+    --color-bg-overlay: rgba(255, 255, 255, 0.72);
+
+    /* 文本层级 */
+    --color-text: #1D1D1F;
+    --color-text-secondary: #6E6E73;
+    --color-text-tertiary: #86868B;
+    --color-text-quaternary: #AEAEB2;
+    --color-text-on-primary: #FFFFFF;
+
+    /* 边框 */
+    --color-border: rgba(0, 0, 0, 0.08);
+    --color-border-secondary: rgba(0, 0, 0, 0.04);
+    --color-border-focus: #007AFF;
+
+    /* 分割线 */
+    --color-separator: rgba(60, 60, 67, 0.12);
+    --color-separator-opaque: #C6C6C8;
+
+    /* 交互状态 */
+    --color-hover: rgba(0, 0, 0, 0.04);
+    --color-active: rgba(0, 0, 0, 0.06);
+    --color-selected: rgba(0, 122, 255, 0.08);
+
+    /* 专用 — 聊天面板 */
+    --color-chat-user-bg: #007AFF;
+    --color-chat-user-text: #FFFFFF;
+    --color-chat-assistant-bg: #F0F0F5;
+    --color-chat-assistant-text: #1D1D1F;
+
+    /* 专用 — 代码块 */
+    --color-code-bg: #F5F5F7;
+    --color-code-text: #1D1D1F;
+
+    /* 兼容旧变量 */
+    --background: var(--color-bg);
+    --foreground: var(--color-text);
+  }
+
+  /* ---------------------------------------------------------------------------
+   * Dark Mode 颜色变量
+   * --------------------------------------------------------------------------- */
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      /* 主色调 — Apple Blue Dark */
+      --color-primary: #0A84FF;
+      --color-primary-hover: #409CFF;
+      --color-primary-active: #64B5FF;
+
+      /* 语义色 */
+      --color-secondary: #5E5CE6;
+      --color-accent: #FF9F0A;
+      --color-destructive: #FF453A;
+      --color-success: #30D158;
+      --color-warning: #FFD60A;
+
+      /* 背景层级 */
+      --color-bg: #1C1C1E;
+      --color-bg-secondary: #2C2C2E;
+      --color-bg-tertiary: #3A3A3C;
+      --color-bg-elevated: #2C2C2E;
+      --color-bg-overlay: rgba(44, 44, 46, 0.72);
+
+      /* 文本层级 */
+      --color-text: #F5F5F7;
+      --color-text-secondary: #A1A1A6;
+      --color-text-tertiary: #8E8E93;
+      --color-text-quaternary: #636366;
+      --color-text-on-primary: #FFFFFF;
+
+      /* 边框 */
+      --color-border: rgba(255, 255, 255, 0.10);
+      --color-border-secondary: rgba(255, 255, 255, 0.06);
+      --color-border-focus: #0A84FF;
+
+      /* 分割线 */
+      --color-separator: rgba(84, 84, 88, 0.65);
+      --color-separator-opaque: #38383A;
+
+      /* 交互状态 */
+      --color-hover: rgba(255, 255, 255, 0.06);
+      --color-active: rgba(255, 255, 255, 0.08);
+      --color-selected: rgba(10, 132, 255, 0.15);
+
+      /* 专用 — 聊天面板 */
+      --color-chat-user-bg: #0A84FF;
+      --color-chat-user-text: #FFFFFF;
+      --color-chat-assistant-bg: #2C2C2E;
+      --color-chat-assistant-text: #F5F5F7;
+
+      /* 专用 — 代码块 */
+      --color-code-bg: #2C2C2E;
+      --color-code-text: #F5F5F7;
+    }
+  }
+
+  /* ---------------------------------------------------------------------------
+   * 全局基础样式
+   * --------------------------------------------------------------------------- */
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "kern" 1, "liga" 1;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    color: var(--color-text);
+    background-color: var(--color-bg);
+    line-height: 1.5;
+    letter-spacing: -0.011em;
+  }
+
+  /* 选中文本样式 */
+  ::selection {
+    background-color: rgba(0, 122, 255, 0.2);
+    color: inherit;
+  }
+
+  /* macOS 滚动条美化 */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.25);
+    background-clip: padding-box;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      background-clip: padding-box;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+      background-clip: padding-box;
+    }
+  }
+
+  /* Focus Ring — Apple 风格 */
+  *:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+    border-radius: inherit;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 工具类 — Apple HIG 组件级别样式
+ * --------------------------------------------------------------------------- */
+
+@layer components {
+  /* 毛玻璃面板 */
+  .glass-panel {
+    background: var(--color-bg-overlay);
+    backdrop-filter: blur(var(--blur-xl));
+    -webkit-backdrop-filter: blur(var(--blur-xl));
+    border: 1px solid var(--color-border);
+  }
+
+  /* Apple 风格卡片 */
+  .apple-card {
+    background: var(--color-bg-elevated);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    border: 1px solid var(--color-border-secondary);
+  }
+
+  /* 导航项 — 激活态 */
+  .nav-item-active {
+    background: var(--color-selected);
+    color: var(--color-primary);
+  }
+
+  /* 输入框基础 */
+  .input-base {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-2) var(--space-3);
+    font-size: 0.875rem;
+    color: var(--color-text);
+    transition: border-color var(--transition-fast),
+                box-shadow var(--transition-fast);
+  }
+
+  .input-base:focus {
+    border-color: var(--color-border-focus);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+    outline: none;
+  }
+
+  .input-base::placeholder {
+    color: var(--color-text-quaternary);
+  }
+
+  /* 分割线 */
+  .separator {
+    height: 1px;
+    background: var(--color-separator);
+    border: none;
+    margin: 0;
+  }
+
+  /* 流式文本渲染动画 */
+  .streaming-cursor::after {
+    content: "▊";
+    animation: blink 1s step-end infinite;
+    color: var(--color-primary);
+    margin-left: 1px;
+  }
+
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
+  /* Markdown 渲染容器 */
+  .markdown-body {
+    color: var(--color-text);
+    font-size: 0.9375rem;
+    line-height: 1.7;
+    word-wrap: break-word;
+  }
+
+  .markdown-body h1, .markdown-body h2, .markdown-body h3 {
+    color: var(--color-text);
+    font-weight: 600;
+    margin-top: 1.25em;
+    margin-bottom: 0.5em;
+  }
+
+  .markdown-body p {
+    margin-bottom: 0.75em;
+  }
+
+  .markdown-body code {
+    background: var(--color-code-bg);
+    color: var(--color-code-text);
+    padding: 0.15em 0.35em;
+    border-radius: var(--radius-xs);
+    font-size: 0.85em;
+    font-family: var(--font-mono);
+  }
+
+  .markdown-body pre {
+    background: var(--color-code-bg);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    overflow-x: auto;
+    margin-bottom: 0.75em;
+  }
+
+  .markdown-body pre code {
+    background: transparent;
+    padding: 0;
+    font-size: 0.8125rem;
+  }
+
+  .markdown-body blockquote {
+    border-left: 3px solid var(--color-primary);
+    padding-left: var(--space-3);
+    color: var(--color-text-secondary);
+    margin-left: 0;
+    margin-bottom: 0.75em;
+  }
+
+  .markdown-body ul, .markdown-body ol {
+    padding-left: 1.5em;
+    margin-bottom: 0.75em;
+  }
+
+  .markdown-body table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 0.75em;
+  }
+
+  .markdown-body th, .markdown-body td {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    text-align: left;
+  }
+
+  .markdown-body th {
+    background: var(--color-bg-secondary);
+    font-weight: 600;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 翻译叠加层动画
+ * --------------------------------------------------------------------------- */
+
+@layer utilities {
+  .translation-overlay {
+    will-change: opacity;
+    transition: opacity 300ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  }
+
+  .translation-overlay-hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .translation-overlay-visible {
+    opacity: 1;
+  }
+}

@@ -12,7 +12,7 @@
 
 ## 文档清单
 - [x] 00_MANIFEST.md (本文件)
-- [x] 01_PRD.md — Rasto 产品需求文档（9 个 User Stories）
+- [x] 01_PRD.md — Rastro 产品需求文档（9 个 User Stories）
 - [x] 02_ARCHITECTURE_OVERVIEW.md — 3 系统架构总览
 - [x] 03_ADR/ — ADR-001 技术栈 + ADR-002 多模型协作
 - [ ] 04_SYSTEM_DESIGN/ (待 /design-system 生成)

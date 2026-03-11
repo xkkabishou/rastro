@@ -4,13 +4,39 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "@tailwindcss/postcss": "^4.2.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "autoprefixer": "^10.4.27",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  },
+  "dependencies": {
+    "@radix-ui/themes": "^3.3.0",
+    "@tanstack/react-virtual": "^3.13.21",
+    "@tauri-apps/api": "^2.10.1",
+    "framer-motion": "^12.35.2",
+    "lucide-react": "^0.577.0",
+    "pdfjs-dist": "^5.5.207",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1",
+    "zustand": "^5.0.11"
   }
 }

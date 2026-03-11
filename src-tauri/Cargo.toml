@@ -1,15 +1,32 @@
 [package]
-name = "rasto"
+name = "rastro"
 version = "0.1.0"
 edition = "2021"
-description = "Rasto - 科研文献阅读助手"
+description = "Rastro - 科研文献阅读助手"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # Tauri 核心
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["test"] }
 # 序列化
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+chrono = { version = "0.4", features = ["serde", "clock"] }
+dirs = "6"
+futures-util = "0.3"
+parking_lot = "0.12"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+sha2 = "0.10"
+tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread", "sync", "time"] }
+tokio-util = "0.7"
+uuid = { version = "1", features = ["serde", "v4"] }
+libc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
+
+[dev-dependencies]
+axum = "0.8"

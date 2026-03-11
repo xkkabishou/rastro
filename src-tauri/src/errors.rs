@@ -1,10 +1,12 @@
-// Rasto 后端错误模型
+// Rastro 后端错误模型
 // 与 src/shared/types.ts 中的 AppError / AppErrorCode 一一对应
+#![allow(dead_code)]
+
 use serde::Serialize;
 use std::collections::HashMap;
 
 /// 应用错误码（共 17 个，与 TypeScript AppErrorCode 对齐）
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum AppErrorCode {
     // 文档相关
@@ -65,6 +67,17 @@ impl AppError {
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(AppErrorCode::InternalError, message, false)
     }
+
+    /// 按需追加诊断字段
+    pub fn with_detail(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<serde_json::Value>,
+    ) -> Self {
+        let details = self.details.get_or_insert_with(HashMap::new);
+        details.insert(key.into(), value.into());
+        self
+    }
 }
 
 impl std::fmt::Display for AppError {
@@ -74,3 +87,25 @@ impl std::fmt::Display for AppError {
 }
 
 impl std::error::Error for AppError {}
+
+impl From<rusqlite::Error> for AppError {
+    fn from(value: rusqlite::Error) -> Self {
+        Self::internal(format!("SQLite 错误: {value}"))
+    }
+}
+
+impl From<std::io::Error> for AppError {
+    fn from(value: std::io::Error) -> Self {
+        Self::internal(format!("I/O 错误: {value}"))
+    }
+}
+
+impl From<reqwest::Error> for AppError {
+    fn from(value: reqwest::Error) -> Self {
+        Self::new(
+            AppErrorCode::ProviderConnectionFailed,
+            format!("HTTP 请求失败: {value}"),
+            true,
+        )
+    }
+}

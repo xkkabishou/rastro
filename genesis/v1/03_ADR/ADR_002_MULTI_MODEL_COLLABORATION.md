@@ -5,7 +5,7 @@ Accepted
 
 ## 背景
 
-Rasto 由多个 AI 模型协作开发：Claude + Gemini 做前端，Codex 做后端。需要明确执行顺序和职责分配，确保并行开发不冲突。
+Rastro 由多个 AI 模型协作开发：Claude + Gemini 做前端，Codex 做后端。需要明确执行顺序和职责分配，确保并行开发不冲突。
 
 ---
 

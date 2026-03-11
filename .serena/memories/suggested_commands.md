@@ -1,0 +1,7 @@
+- 查看任务与设计：`sed -n '1,220p' genesis/v1/05_TASKS.md`、`sed -n '1,260p' genesis/v1/04_SYSTEM_DESIGN/rust-backend-system.md`
+- Rust 构建：`cargo build`（工作目录 `src-tauri/`）
+- Rust 测试：`cargo test` 或按模块过滤 `cargo test storage`
+- Tauri 运行：`cargo tauri dev` 或 `tauri dev`（取决于本机 CLI 是否安装）
+- TypeScript 契约检查：`npx tsc --noEmit`
+- 快速搜索：`rg <pattern> src-tauri src/shared genesis/v1`
+- 列目录/文件：`find src-tauri -maxdepth 3 -type f | sort`

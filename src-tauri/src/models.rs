@@ -1,0 +1,258 @@
+// 领域枚举与共享类型约束
+#![allow(dead_code)]
+
+use std::{fmt, str::FromStr};
+
+use serde::{Deserialize, Serialize};
+
+use crate::errors::{AppError, AppErrorCode};
+
+/// AI 服务商标识
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProviderId {
+    Openai,
+    Claude,
+    Gemini,
+}
+
+impl ProviderId {
+    /// 返回 Provider 的稳定字符串值
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Openai => "openai",
+            Self::Claude => "claude",
+            Self::Gemini => "gemini",
+        }
+    }
+}
+
+impl fmt::Display for ProviderId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for ProviderId {
+    type Err = AppError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "openai" => Ok(Self::Openai),
+            "claude" => Ok(Self::Claude),
+            "gemini" => Ok(Self::Gemini),
+            other => Err(AppError::new(
+                AppErrorCode::UnsupportedTranslationProvider,
+                format!("不支持的 Provider: {other}"),
+                false,
+            )),
+        }
+    }
+}
+
+/// 文档来源类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DocumentSourceType {
+    Local,
+    Zotero,
+}
+
+impl DocumentSourceType {
+    /// 返回来源类型的稳定字符串值
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Zotero => "zotero",
+        }
+    }
+}
+
+impl fmt::Display for DocumentSourceType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for DocumentSourceType {
+    type Err = AppError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "local" => Ok(Self::Local),
+            "zotero" => Ok(Self::Zotero),
+            other => Err(AppError::new(
+                AppErrorCode::DocumentUnsupported,
+                format!("不支持的文档来源: {other}"),
+                false,
+            )),
+        }
+    }
+}
+
+/// 聊天消息角色
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ChatRole {
+    User,
+    Assistant,
+    System,
+}
+
+impl ChatRole {
+    /// 返回消息角色的稳定字符串值
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Assistant => "assistant",
+            Self::System => "system",
+        }
+    }
+}
+
+impl fmt::Display for ChatRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// 翻译任务状态
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TranslationJobStatus {
+    Queued,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+impl TranslationJobStatus {
+    /// 返回状态的稳定字符串值
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Running => "running",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+impl fmt::Display for TranslationJobStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// 翻译阶段
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TranslationStage {
+    Preflight,
+    Queued,
+    Extracting,
+    Translating,
+    Postprocessing,
+    Packaging,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+impl TranslationStage {
+    /// 返回阶段的稳定字符串值
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Preflight => "preflight",
+            Self::Queued => "queued",
+            Self::Extracting => "extracting",
+            Self::Translating => "translating",
+            Self::Postprocessing => "postprocessing",
+            Self::Packaging => "packaging",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+impl fmt::Display for TranslationStage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// 翻译产物类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactKind {
+    TranslatedPdf,
+    BilingualPdf,
+    FigureReport,
+    Manifest,
+}
+
+impl ArtifactKind {
+    /// 返回产物类型的稳定字符串值
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::TranslatedPdf => "translated_pdf",
+            Self::BilingualPdf => "bilingual_pdf",
+            Self::FigureReport => "figure_report",
+            Self::Manifest => "manifest",
+        }
+    }
+}
+
+impl fmt::Display for ArtifactKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// 总结 prompt 配置
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum SummaryPromptProfile {
+    #[serde(rename = "default")]
+    #[default]
+    Default,
+    #[serde(rename = "paper-review")]
+    PaperReview,
+}
+
+impl SummaryPromptProfile {
+    /// 返回 prompt profile 的稳定字符串值
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::PaperReview => "paper-review",
+        }
+    }
+}
+
+/// 使用统计功能维度
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UsageFeature {
+    Chat,
+    Summary,
+    Translation,
+}
+
+impl UsageFeature {
+    /// 返回功能维度的稳定字符串值
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Chat => "chat",
+            Self::Summary => "summary",
+            Self::Translation => "translation",
+        }
+    }
+}
+
+impl fmt::Display for UsageFeature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}

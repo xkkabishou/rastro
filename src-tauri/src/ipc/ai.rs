@@ -1,6 +1,14 @@
 // D. AI 问答与总结 Command (5 个)
 // 对应 rust-backend-system.md Section 7.3 D
 use serde::{Deserialize, Serialize};
+use tauri::State;
+
+use crate::{
+    ai_integration::{AskAiRequest, GenerateSummaryRequest},
+    app_state::AppState,
+    models::{ChatRole, ProviderId, SummaryPromptProfile},
+    storage::{chat_messages, chat_sessions},
+};
 
 /// AI 流式句柄
 #[derive(Debug, Serialize)]
@@ -8,7 +16,7 @@ use serde::{Deserialize, Serialize};
 pub struct AIStreamHandle {
     pub stream_id: String,
     pub session_id: String,
-    pub provider: String,
+    pub provider: ProviderId,
     pub model: String,
     pub started_at: String,
 }
@@ -19,7 +27,7 @@ pub struct AIStreamHandle {
 pub struct AskAiInput {
     pub document_id: String,
     pub session_id: Option<String>,
-    pub provider: Option<String>,
+    pub provider: Option<ProviderId>,
     pub model: Option<String>,
     pub user_message: String,
     pub context_quote: Option<String>,
@@ -31,9 +39,9 @@ pub struct AskAiInput {
 pub struct GenerateSummaryInput {
     pub document_id: String,
     pub file_path: String,
-    pub provider: Option<String>,
+    pub provider: Option<ProviderId>,
     pub model: Option<String>,
-    pub prompt_profile: Option<String>,
+    pub prompt_profile: Option<SummaryPromptProfile>,
 }
 
 /// 聊天会话 DTO
@@ -42,7 +50,7 @@ pub struct GenerateSummaryInput {
 pub struct ChatSessionDto {
     pub session_id: String,
     pub document_id: String,
-    pub provider: String,
+    pub provider: ProviderId,
     pub model: String,
     pub title: Option<String>,
     pub created_at: String,
@@ -55,7 +63,7 @@ pub struct ChatSessionDto {
 pub struct ChatMessageDto {
     pub message_id: String,
     pub session_id: String,
-    pub role: String,
+    pub role: ChatRole,
     pub content_md: String,
     pub context_quote: Option<String>,
     pub input_tokens: u32,
@@ -74,40 +82,136 @@ pub struct CancelAiStreamResult {
 
 /// 启动流式对话
 #[tauri::command]
-pub fn ask_ai(
-    _input: AskAiInput,
+pub async fn ask_ai(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    input: AskAiInput,
 ) -> Result<AIStreamHandle, crate::errors::AppError> {
-    todo!()
+    let result = state
+        .ai_integration
+        .ask(
+            app,
+            AskAiRequest {
+                document_id: input.document_id,
+                session_id: input.session_id,
+                provider: input.provider,
+                model: input.model,
+                user_message: input.user_message,
+                context_quote: input.context_quote,
+            },
+        )
+        .await?;
+
+    Ok(AIStreamHandle {
+        stream_id: result.stream_id,
+        session_id: result.session_id,
+        provider: result.provider,
+        model: result.model,
+        started_at: result.started_at,
+    })
 }
 
 /// 取消当前 AI 流
 #[tauri::command]
 pub fn cancel_ai_stream(
-    _stream_id: String,
+    state: State<'_, AppState>,
+    stream_id: String,
 ) -> Result<CancelAiStreamResult, crate::errors::AppError> {
-    todo!()
+    let cancelled = state.ai_integration.cancel_stream(&stream_id);
+    Ok(CancelAiStreamResult {
+        stream_id,
+        cancelled,
+    })
 }
 
 /// 生成文献总结，走统一流式通道
 #[tauri::command]
-pub fn generate_summary(
-    _input: GenerateSummaryInput,
+pub async fn generate_summary(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    input: GenerateSummaryInput,
 ) -> Result<AIStreamHandle, crate::errors::AppError> {
-    todo!()
+    let result = state
+        .ai_integration
+        .generate_summary(
+            app,
+            GenerateSummaryRequest {
+                document_id: input.document_id,
+                file_path: input.file_path,
+                provider: input.provider,
+                model: input.model,
+                prompt_profile: input.prompt_profile.unwrap_or_default(),
+            },
+        )
+        .await?;
+
+    Ok(AIStreamHandle {
+        stream_id: result.stream_id,
+        session_id: result.session_id,
+        provider: result.provider,
+        model: result.model,
+        started_at: result.started_at,
+    })
 }
 
 /// 返回当前文档的历史会话列表
 #[tauri::command]
 pub fn list_chat_sessions(
-    _document_id: String,
+    state: State<'_, AppState>,
+    document_id: String,
 ) -> Result<Vec<ChatSessionDto>, crate::errors::AppError> {
-    todo!()
+    let records = {
+        let connection = state.storage.connection();
+        chat_sessions::list_by_document(&connection, &document_id)?
+    };
+
+    records
+        .into_iter()
+        .map(|record| {
+            Ok(ChatSessionDto {
+                session_id: record.session_id,
+                document_id: record.document_id,
+                provider: record.provider.parse()?,
+                model: record.model,
+                title: record.title,
+                created_at: record.created_at,
+                updated_at: record.updated_at,
+            })
+        })
+        .collect()
 }
 
 /// 返回指定会话的历史消息
 #[tauri::command]
 pub fn get_chat_messages(
-    _session_id: String,
+    state: State<'_, AppState>,
+    session_id: String,
 ) -> Result<Vec<ChatMessageDto>, crate::errors::AppError> {
-    todo!()
+    let records = {
+        let connection = state.storage.connection();
+        chat_messages::list_by_session(&connection, &session_id)?
+    };
+
+    records
+        .into_iter()
+        .map(|record| {
+            let role = match record.role.as_str() {
+                "user" => ChatRole::User,
+                "assistant" => ChatRole::Assistant,
+                _ => ChatRole::System,
+            };
+
+            Ok(ChatMessageDto {
+                message_id: record.message_id,
+                session_id: record.session_id,
+                role,
+                content_md: record.content_md,
+                context_quote: record.context_quote,
+                input_tokens: record.input_tokens,
+                output_tokens: record.output_tokens,
+                estimated_cost: record.estimated_cost,
+                created_at: record.created_at,
+            })
+        })
+        .collect()
 }

@@ -1,12 +1,26 @@
-// Rasto 后端入口
+// Rastro 后端入口
 // 注册所有 25 个 #[tauri::command] 到 Tauri Builder
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod ai_integration;
+mod app_state;
 mod errors;
 mod ipc;
+mod keychain;
+mod models;
+mod storage;
+mod translation_manager;
+mod zotero_connector;
+
+use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
+        .setup(|app| {
+            let state = app_state::AppState::initialize().expect("初始化后端状态失败");
+            app.manage(state);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // A. 文档与应用状态 (4 个)
             ipc::document::get_backend_health,
@@ -42,5 +56,5 @@ fn main() {
             ipc::zotero::open_zotero_attachment,
         ])
         .run(tauri::generate_context!())
-        .expect("启动 Rasto 失败");
+        .expect("启动 Rastro 失败");
 }

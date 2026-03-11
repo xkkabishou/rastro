@@ -12,7 +12,7 @@
 该系统不是直接暴露 PDFMathTranslate 官方的默认 HTTP API，而是一个**基于 PDFMathTranslate 的本地包装服务**：
 - 对外统一监听 `http://127.0.0.1:8890`
 - 对内复用 PDFMathTranslate 的版面解析、文本翻译、公式保留和 PDF 重建能力
-- 补齐 Rasto 所需的本地单用户任务管理、进度查询、缓存协作和 Claude 自定义适配能力
+- 补齐 Rastro 所需的本地单用户任务管理、进度查询、缓存协作和 Claude 自定义适配能力
 
 **核心职责**:
 - 接收 Rust 后端下发的翻译任务。
@@ -27,7 +27,7 @@
 ### 2.1 目标 (Goals)
 - 对 Rust 后端提供稳定、简单、可本地部署的 HTTP API。
 - 兼容 PDFMathTranslate 的核心优势：版式保留、公式不翻译、学术 PDF 友好。
-- 适配 Rasto 的产品需求：任务状态机、结果文件路径返回、图表翻译开关、进度汇报。
+- 适配 Rastro 的产品需求：任务状态机、结果文件路径返回、图表翻译开关、进度汇报。
 - 在单机桌面场景下避免引入 Redis / Celery 这类重型依赖。
 - 把 Provider 选择统一收敛为 `openai` / `claude` / `gemini` 三类产品语义。
 
@@ -54,7 +54,7 @@
   - 采用本地 HTTP 包装层而非直接把上游 HTTP API 原样嵌入
 
 ### 3.2 本项目的取舍
-Rasto 选择“**本地 FastAPI 包装服务 + PDFMathTranslate 内核**”而不是上游的 Redis/Celery HTTP API，原因如下:
+Rastro 选择“**本地 FastAPI 包装服务 + PDFMathTranslate 内核**”而不是上游的 Redis/Celery HTTP API，原因如下:
 
 | 方案 | 优点 | 缺点 | 结论 |
 |------|------|------|------|
@@ -312,14 +312,14 @@ stateDiagram-v2
 ## 7. Provider 适配策略 (Provider Mapping)
 
 ### 7.1 映射表
-| Rasto Provider | 引擎适配方式 | 备注 |
+| Rastro Provider | 引擎适配方式 | 备注 |
 |---------------|-------------|------|
 | `openai` | 直接使用 PDFMathTranslate 的 OpenAI 路径 | MVP 默认主路径 |
 | `gemini` | 直接使用 PDFMathTranslate 的 Gemini 路径 | 支持图表翻译时优先使用 Vision 能力 |
 | `claude` | 自定义 `AnthropicAdapter`，对接 PDFMathTranslate 的翻译接口 | 非上游默认能力，需要维护 |
 
 ### 7.2 `AnthropicAdapter` 设计
-由于上游 PDFMathTranslate 并未把 Claude 作为默认稳定翻译后端，Rasto 在包装层提供一个自定义适配器:
+由于上游 PDFMathTranslate 并未把 Claude 作为默认稳定翻译后端，Rastro 在包装层提供一个自定义适配器:
 - 输入: PDFMathTranslate 拆出的文本块、图表标签块。
 - 输出: 保持原有块级接口的中文译文。
 - 特点:
@@ -445,7 +445,7 @@ stateDiagram-v2
 
 ### 11.1 启动命令
 ```bash
-python3 -m rasto_translation_engine --host 127.0.0.1 --port 8890
+python3 -m rastro_translation_engine --host 127.0.0.1 --port 8890
 ```
 
 ### 11.2 Python 依赖
@@ -459,10 +459,10 @@ python3 -m rasto_translation_engine --host 127.0.0.1 --port 8890
 ### 11.3 环境变量建议
 | 变量 | 作用 |
 |------|------|
-| `RASTO_ENGINE_HOST` | 默认 `127.0.0.1` |
-| `RASTO_ENGINE_PORT` | 默认 `8890` |
-| `RASTO_ENGINE_LOG_LEVEL` | `info` / `debug` |
-| `RASTO_ENGINE_TMP_DIR` | 中间文件目录 |
+| `RASTRO_ENGINE_HOST` | 默认 `127.0.0.1` |
+| `RASTRO_ENGINE_PORT` | 默认 `8890` |
+| `RASTRO_ENGINE_LOG_LEVEL` | `info` / `debug` |
+| `RASTRO_ENGINE_TMP_DIR` | 中间文件目录 |
 
 ---
 
