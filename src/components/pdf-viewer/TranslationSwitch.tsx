@@ -82,12 +82,12 @@ export const TranslationSwitch: React.FC = () => {
           <p className="text-[10px] text-[var(--color-text-secondary)] flex items-center gap-1.5">
             {bilingualMode ? (
               <>
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]" />
                 原文模式 · 松开 ⌥ Option 恢复译文
               </>
             ) : (
               <>
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
                 译文模式 · 按住 ⌥ Option 查看原文
               </>
             )}

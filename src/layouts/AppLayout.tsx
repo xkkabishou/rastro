@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from '../components/sidebar/Sidebar';
 import { RightPanel } from '../components/panel/RightPanel';
 import { TranslationSwitch } from '../components/pdf-viewer/TranslationSwitch';
@@ -8,20 +8,50 @@ import { PanelRightOpen, PanelLeftOpen } from 'lucide-react';
 export const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [isRightPanelOpen, setRightPanelOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // 响应式监听
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 1024px)');
+    const handleMediaChange = (e: MediaQueryListEvent | MediaQueryList) => {
+      setIsMobile(e.matches);
+      if (e.matches) {
+        setSidebarOpen(false); // 小屏幕默认折叠
+      } else {
+        setSidebarOpen(true);  // 大屏幕默认打开
+      }
+    };
+    
+    // 初始化
+    handleMediaChange(mql);
+    
+    // 监听变化
+    mql.addEventListener('change', handleMediaChange);
+    return () => mql.removeEventListener('change', handleMediaChange);
+  }, []);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[var(--color-bg)] text-[var(--color-text)]">
+    <div className="flex h-screen w-full overflow-hidden bg-[var(--color-bg)] text-[var(--color-text)] relative">
       {/* 左侧 Sidebar */}
       <Sidebar
         isOpen={isSidebarOpen}
+        isMobile={isMobile}
         onToggle={() => setSidebarOpen(!isSidebarOpen)}
         onOpenSettings={() => setRightPanelOpen(true)}
       />
 
+      {/* 小屏幕下的灰色蒙层 (当 Sidebar 打开时) */}
+      {isMobile && isSidebarOpen && (
+        <div 
+          className="absolute inset-0 z-20 bg-black/20 backdrop-blur-sm"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* 主内容区域（PDF Viewer） */}
       <motion.main
         layout
-        className="flex-1 relative h-full flex flex-col bg-[var(--color-bg-secondary)]"
+        className="flex-1 relative h-full flex flex-col bg-[var(--color-bg-secondary)] min-w-0"
       >
         {/* 控制按钮 */}
         <div className="absolute top-3 left-3 z-10">

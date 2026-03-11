@@ -587,12 +587,19 @@ mod tests {
     use std::{
         fs,
         path::{Path, PathBuf},
+        sync::Mutex,
         time::{SystemTime, UNIX_EPOCH},
     };
 
     use rusqlite::Connection;
 
-    use super::{extract_year, resolve_attachment_path, ZoteroConnector, ZoteroLibrary};
+    use crate::errors::AppErrorCode;
+
+    use super::{
+        extract_year, map_sqlite_error, resolve_attachment_path, ZoteroConnector, ZoteroLibrary,
+    };
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn extract_year_handles_zotero_date_variants() {
@@ -738,6 +745,42 @@ mod tests {
         assert_eq!(attachment.file_path, pdf_path);
     }
 
+    #[test]
+    fn detect_returns_zotero_not_found_when_configured_path_is_missing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let previous_db = std::env::var_os("RASTRO_ZOTERO_DB_PATH");
+        let previous_profile = std::env::var_os("RASTRO_ZOTERO_PROFILE_DIR");
+        let previous_home = std::env::var_os("HOME");
+        let isolated_home = temp_profile_dir("zotero-empty-home");
+        std::env::set_var(
+            "RASTRO_ZOTERO_DB_PATH",
+            temp_profile_dir("missing-zotero-db").join("missing.sqlite"),
+        );
+        std::env::remove_var("RASTRO_ZOTERO_PROFILE_DIR");
+        std::env::set_var("HOME", &isolated_home);
+
+        let error = ZoteroConnector::detect().expect_err("missing db should not be detected");
+
+        restore_env("RASTRO_ZOTERO_DB_PATH", previous_db);
+        restore_env("RASTRO_ZOTERO_PROFILE_DIR", previous_profile);
+        restore_env("HOME", previous_home);
+        assert_eq!(error.code, AppErrorCode::ZoteroNotFound);
+    }
+
+    #[test]
+    fn map_sqlite_error_maps_locked_database_to_retryable_app_error() {
+        let error = map_sqlite_error(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::DatabaseLocked,
+                extended_code: rusqlite::ErrorCode::DatabaseLocked as i32,
+            },
+            Some("database is locked".to_string()),
+        ));
+
+        assert_eq!(error.code, AppErrorCode::ZoteroDbLocked);
+        assert!(error.retryable);
+    }
+
     fn temp_profile_dir(prefix: &str) -> PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -746,5 +789,13 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("{prefix}-{unique}"));
         fs::create_dir_all(&dir).expect("temp profile dir should exist");
         dir
+    }
+
+    fn restore_env(key: &str, value: Option<std::ffi::OsString>) {
+        if let Some(value) = value {
+            std::env::set_var(key, value);
+        } else {
+            std::env::remove_var(key);
+        }
     }
 }

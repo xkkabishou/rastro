@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.rastro.app",
   "build": {
-    "frontendDist": "app"
+    "frontendDist": "../dist",
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev"
   },
   "app": {
     "windows": [
@@ -25,11 +27,14 @@
     }
   },
   "bundle": {
-    "active": false,
-    "targets": "all",
+    "active": true,
+    "targets": ["dmg"],
     "icon": [
       "icons/icon.png"
-    ]
+    ],
+    "macOS": {
+      "signingIdentity": null
+    }
   },
   "plugins": {}
 }

@@ -12,10 +12,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const baseClasses = "inline-flex items-center justify-center rounded-xl font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:pointer-events-none disabled:opacity-50";
     
     const variants = {
-      primary: "bg-blue-600 text-white hover:bg-blue-700 shadow-sm",
-      secondary: "bg-gray-100 text-gray-900 hover:bg-gray-200",
-      ghost: "hover:bg-gray-100 hover:text-gray-900 text-gray-600",
-      destructive: "bg-red-500 text-white hover:bg-red-600"
+      primary: "bg-primary text-text-on-primary hover:bg-primary-hover shadow-sm",
+      secondary: "bg-bg-secondary text-text hover:bg-bg-tertiary",
+      ghost: "hover:bg-hover hover:text-text text-text-secondary",
+      destructive: "bg-destructive text-text-on-primary hover:opacity-90"
     };
     
     const sizes = {
@@ -31,6 +31,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         whileTap={{ scale: 0.96 }}
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
         className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${className}`}
+        aria-label={size === 'icon' && !props['aria-label'] && typeof props.children !== 'string' ? "图标按钮" : props['aria-label']}
         {...(props as any)}
       />
     );

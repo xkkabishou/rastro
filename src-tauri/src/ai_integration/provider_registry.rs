@@ -1,7 +1,7 @@
 // Provider 配置解析与请求适配
 use std::{str::FromStr, time::Instant};
 
-use reqwest::{Client, RequestBuilder};
+use reqwest::{Client, RequestBuilder, StatusCode};
 use serde_json::{json, Value};
 
 use crate::{
@@ -237,10 +237,12 @@ pub async fn test_connection(
         });
     }
 
-    Err(AppError::new(
-        AppErrorCode::ProviderConnectionFailed,
-        format!("Provider 测试失败: HTTP {}", response.status()),
-        true,
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    Err(map_provider_http_error(
+        status,
+        &body,
+        "Provider 测试失败",
     ))
 }
 
@@ -250,5 +252,104 @@ pub fn default_base_url(provider: ProviderId) -> &'static str {
         ProviderId::Openai => "https://api.openai.com/v1",
         ProviderId::Claude => "https://api.anthropic.com/v1",
         ProviderId::Gemini => "https://generativelanguage.googleapis.com/v1beta",
+    }
+}
+
+pub(crate) fn map_provider_http_error(
+    status: StatusCode,
+    response_body: &str,
+    context: &str,
+) -> AppError {
+    let normalized = response_body.to_ascii_lowercase();
+    let code = if status == StatusCode::TOO_MANY_REQUESTS
+        || normalized.contains("rate limit")
+        || normalized.contains("too many requests")
+    {
+        AppErrorCode::ProviderRateLimited
+    } else if status == StatusCode::PAYMENT_REQUIRED
+        || normalized.contains("insufficient_quota")
+        || normalized.contains("insufficient credit")
+        || normalized.contains("insufficient funds")
+        || normalized.contains("quota exceeded")
+        || normalized.contains("billing")
+    {
+        AppErrorCode::ProviderInsufficientCredit
+    } else {
+        AppErrorCode::ProviderConnectionFailed
+    };
+
+    let trimmed_body = response_body.trim();
+    let message = if trimmed_body.is_empty() {
+        format!("{context}: HTTP {status}")
+    } else {
+        format!("{context}: HTTP {status} - {trimmed_body}")
+    };
+
+    let mut error = AppError::new(
+        code,
+        message,
+        matches!(
+            code,
+            AppErrorCode::ProviderRateLimited | AppErrorCode::ProviderConnectionFailed
+        ),
+    )
+    .with_detail("status", status.as_u16());
+
+    if !trimmed_body.is_empty() {
+        error = error.with_detail("responseBody", trimmed_body.to_string());
+    }
+
+    error
+}
+
+#[cfg(test)]
+mod tests {
+    use reqwest::StatusCode;
+
+    use crate::{
+        ai_integration::provider_registry::map_provider_http_error,
+        errors::AppErrorCode,
+    };
+
+    #[test]
+    fn maps_rate_limit_responses_to_provider_rate_limited() {
+        let error = map_provider_http_error(
+            StatusCode::TOO_MANY_REQUESTS,
+            r#"{"error":"rate limit exceeded"}"#,
+            "Provider 测试失败",
+        );
+
+        assert_eq!(error.code, AppErrorCode::ProviderRateLimited);
+        assert!(error.retryable);
+        assert_eq!(
+            error.details.as_ref().unwrap()["status"],
+            serde_json::json!(429)
+        );
+    }
+
+    #[test]
+    fn maps_payment_failures_to_provider_insufficient_credit() {
+        let error = map_provider_http_error(
+            StatusCode::PAYMENT_REQUIRED,
+            r#"{"error":"insufficient_quota"}"#,
+            "流式请求失败",
+        );
+
+        assert_eq!(error.code, AppErrorCode::ProviderInsufficientCredit);
+        assert!(!error.retryable);
+        assert!(error.message.contains("insufficient_quota"));
+    }
+
+    #[test]
+    fn falls_back_to_provider_connection_failed_for_other_statuses() {
+        let error = map_provider_http_error(
+            StatusCode::BAD_GATEWAY,
+            "",
+            "Provider 测试失败",
+        );
+
+        assert_eq!(error.code, AppErrorCode::ProviderConnectionFailed);
+        assert!(error.retryable);
+        assert_eq!(error.details.as_ref().unwrap()["status"], 502);
     }
 }

@@ -96,3 +96,52 @@ pub fn update_test_status(
     )?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::storage::Storage;
+
+    use super::{get_active, get_by_provider, list_all, set_active, update_test_status};
+
+    #[test]
+    fn set_active_switches_single_active_provider_and_updates_model() {
+        let storage = Storage::new_in_memory().unwrap();
+
+        let updated = {
+            let mut connection = storage.connection();
+            set_active(&mut connection, "gemini", "gemini-2.5-pro").unwrap()
+        };
+
+        assert_eq!(updated.provider, "gemini");
+        assert_eq!(updated.model, "gemini-2.5-pro");
+        assert!(updated.is_active);
+
+        let connection = storage.connection();
+        let active = get_active(&connection).unwrap().unwrap();
+        assert_eq!(active.provider, "gemini");
+
+        let all = list_all(&connection).unwrap();
+        assert_eq!(all.iter().filter(|record| record.is_active).count(), 1);
+    }
+
+    #[test]
+    fn update_test_status_persists_last_check_metadata() {
+        let storage = Storage::new_in_memory().unwrap();
+        let connection = storage.connection();
+
+        update_test_status(
+            &connection,
+            "openai",
+            Some("ok"),
+            Some("2026-03-11T12:00:00Z"),
+        )
+        .unwrap();
+
+        let record = get_by_provider(&connection, "openai").unwrap().unwrap();
+        assert_eq!(record.last_test_status.as_deref(), Some("ok"));
+        assert_eq!(
+            record.last_tested_at.as_deref(),
+            Some("2026-03-11T12:00:00Z")
+        );
+    }
+}

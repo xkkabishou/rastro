@@ -1,3 +1,29 @@
-node_modules
-node_modules
-node_modules
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 日志
+*.log
+npm-debug.log*
+
+# Tauri 运行时
+src-tauri/runtime/

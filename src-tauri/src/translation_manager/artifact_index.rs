@@ -243,6 +243,21 @@ pub fn normalize_progress(progress: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use chrono::Utc;
+
+    use crate::{
+        errors::AppErrorCode,
+        models::DocumentSourceType,
+        storage::{documents, translation_jobs, Storage},
+        translation_manager::http_client::EngineJobResult,
+    };
+
     use super::{normalize_progress, CacheKeyInput, TranslationArtifactIndex};
 
     #[test]
@@ -282,5 +297,102 @@ mod tests {
     fn normalize_progress_accepts_engine_percent_values() {
         assert!((normalize_progress(56.0) - 0.56).abs() < f64::EPSILON);
         assert!((normalize_progress(0.56) - 0.56).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn validate_completed_record_reports_cache_corruption_when_artifacts_are_missing() {
+        let storage = Storage::new_in_memory().unwrap();
+        let record = seed_completed_job(&storage);
+        let cache_root = temp_dir("artifact-index-validate");
+        let index = TranslationArtifactIndex::new(&cache_root).unwrap();
+
+        let error = index
+            .validate_completed_record(&storage, &record)
+            .expect_err("missing artifact index should be treated as corruption");
+
+        assert_eq!(error.code, AppErrorCode::CacheCorrupted);
+        assert_eq!(
+            error.details.as_ref().unwrap()["jobId"],
+            serde_json::json!(record.job_id)
+        );
+    }
+
+    #[test]
+    fn persist_result_rejects_nonexistent_relative_artifact_paths() {
+        let storage = Storage::new_in_memory().unwrap();
+        let record = seed_completed_job(&storage);
+        let cache_root = temp_dir("artifact-index-persist");
+        let index = TranslationArtifactIndex::new(&cache_root).unwrap();
+
+        let error = index
+            .persist_result(
+                &storage,
+                &record.job_id,
+                &record.document_id,
+                &EngineJobResult {
+                    translated_pdf_path: Some("translated.pdf".to_string()),
+                    bilingual_pdf_path: None,
+                    figure_report_path: None,
+                    manifest_path: None,
+                },
+                "2026-03-11T10:00:00Z",
+            )
+            .expect_err("relative artifact path should be rejected");
+
+        assert_eq!(error.code, AppErrorCode::TranslationFailed);
+        assert_eq!(
+            error.details.as_ref().unwrap()["artifactKind"],
+            serde_json::json!("translated_pdf")
+        );
+    }
+
+    fn seed_completed_job(storage: &Storage) -> translation_jobs::TranslationJobRecord {
+        let timestamp = Utc::now().to_rfc3339();
+        let document_id = {
+            let connection = storage.connection();
+            documents::upsert(
+                &connection,
+                &documents::UpsertDocumentParams {
+                    file_path: "/tmp/demo.pdf".to_string(),
+                    file_sha256: "sha-demo".to_string(),
+                    title: "Demo".to_string(),
+                    page_count: 3,
+                    source_type: DocumentSourceType::Local,
+                    zotero_item_key: None,
+                    timestamp: timestamp.clone(),
+                },
+            )
+            .unwrap()
+            .document_id
+        };
+
+        let connection = storage.connection();
+        translation_jobs::create(
+            &connection,
+            &translation_jobs::CreateTranslationJobParams {
+                document_id,
+                engine_job_id: Some("engine-1".to_string()),
+                cache_key: "sha256:cache".to_string(),
+                provider: "openai".to_string(),
+                model: "gpt-4o-mini".to_string(),
+                source_lang: "en".to_string(),
+                target_lang: "zh-CN".to_string(),
+                status: "completed".to_string(),
+                stage: "completed".to_string(),
+                progress: 1.0,
+                created_at: timestamp,
+            },
+        )
+        .unwrap()
+    }
+
+    fn temp_dir(prefix: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("{prefix}-{unique}"));
+        fs::create_dir_all(&path).unwrap();
+        path
     }
 }

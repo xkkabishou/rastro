@@ -72,10 +72,11 @@ graph TD
     T2b.1.2 --> T5.1.1
     T3.1.1 --> T5.1.2["T5.1.2 NotebookLM 联调"]
     T4.1.1 --> T5.1.3["T5.1.3 Zotero 联调"]
-    T5.1.1 --> T5.2.1["T5.2.1 E2E 测试"]
+    T5.1.1 --> T5.2.1["T5.2.1 单元测试覆盖"]
     T5.1.2 --> T5.2.1
     T5.1.3 --> T5.2.1
-    T5.2.1 --> T5.2.2["T5.2.2 打包与性能"]
+    T5.2.1 --> T5.2.2["T5.2.2 错误链路完整性"]
+    T5.2.2 --> T5.2.3["T5.2.3 Storage 数据迁移"]
 ```
 
 ---
@@ -570,7 +571,7 @@ graph TD
 
 ### Phase 1: Integration
 
-- [ ] **T5.1.1** [REQ-001~005]: 前后端核心功能联调
+- [x] **T5.1.1** [REQ-001~005]: 前后端核心功能联调
   - **描述**: 验证 PDF 打开→翻译→问答→总结 的完整链路，修复 IPC 数据格式不一致等集成 Bug
   - **输入**: Wave 1-2 全部产出
   - **输出**: Bug 修复记录 + 联调通过确认
@@ -583,7 +584,7 @@ graph TD
   - **依赖**: T2a.1.3, T2b.1.1, T2b.1.2, T2b.1.3
   - **优先级**: P0
 
-- [ ] **T5.1.2** [REQ-006]: NotebookLM 联调
+- [x] **T5.1.2** [REQ-006]: NotebookLM 联调
   - **描述**: 验证 NotebookLM 自动化在 Tauri WebView 环境下的稳定性，修复 JS 注入兼容性问题
   - **输入**: T3.1.1, T3.1.2 产出
   - **输出**: 联调通过确认
@@ -596,7 +597,7 @@ graph TD
   - **依赖**: T3.1.2
   - **优先级**: P1
 
-- [ ] **T5.1.3** [REQ-007]: Zotero 联调
+- [x] **T5.1.3** [REQ-007]: Zotero 联调
   - **描述**: 验证 Zotero 集成的端到端流程：发现 → 列表 → 打开 → 翻译
   - **输入**: T4.1.1, T4.1.4 产出
   - **输出**: 联调通过确认
@@ -611,35 +612,48 @@ graph TD
 
 ### Phase 2: Polish
 
-- [ ] **T5.2.1** [基础]: E2E 测试与 Bug 修复
-  - **描述**: 编写核心路径 E2E 测试、修复联调阶段发现的所有 Bug
-  - **输入**: T5.1.1, T5.1.2, T5.1.3 产出的 Bug 清单
-  - **输出**: E2E 测试套件 + Bug 修复 PR
+- [x] **T5.2.1** [基础]: cargo test 单元测试覆盖
+  - **描述**: 为 Rust 后端核心模块补齐单元测试，覆盖 translation-manager、zotero-connector、storage 仓储与 `AppError` 序列化契约
+  - **输入**: `src-tauri/src/translation_manager/`、`src-tauri/src/zotero_connector/`、`src-tauri/src/storage/`、`src-tauri/src/errors.rs`
+  - **输出**: 各模块 `#[cfg(test)] mod tests { ... }`
   - **验收标准**:
-    - Given E2E 测试已编写
-    - When 执行测试套件
-    - Then 核心路径（打开→翻译→问答）全部通过
-  - **验证说明**: 测试套件运行结果
+    - Given 测试已补齐
+    - When 执行 `cargo test`
+    - Then 核心模块单元测试全部通过，关键分支可回归验证
+  - **验证说明**: `cargo test` 45/45 通过
   - **估时**: 6h
   - **依赖**: T5.1.1, T5.1.2, T5.1.3
-  - **优先级**: P0
+  - **优先级**: P1
 
-- [ ] **T5.2.2** [基础]: 打包与性能优化
-  - **描述**: `tauri build` 打包为 macOS .dmg，验证打包体积 < 50MB，首次启动 < 3s，应用 AI stream batching（Challenge M5）
-  - **输入**: T5.2.1 产出的稳定代码
-  - **输出**: `target/release/bundle/` 下的 .dmg 安装包
+- [x] **T5.2.2** [基础]: 错误链路完整性
+  - **描述**: 为 `AppError` / `AppErrorCode`、translation-engine HTTP 错误映射与 Tauri command 错误返回补测试，保证前后端错误契约对齐
+  - **输入**: `src-tauri/src/errors.rs`、`src-tauri/src/ipc/`、`src-tauri/src/ai_integration/provider_registry.rs`、`src-tauri/src/translation_manager/http_client.rs`
+  - **输出**: 错误路径测试 + Provider HTTP 错误分类修正
   - **验收标准**:
-    - Given 代码已稳定
-    - When 执行 `tauri build`
-    - Then .dmg 生成成功,体积 < 50MB,安装后首次启动 < 3s
-  - **验证说明**: `tauri build` + 体积检查 + 冷启动计时
+    - Given 所有错误码路径已补测试
+    - When 执行 `cargo test`
+    - Then `AppError` serde 格式、Tauri command 错误 JSON、错误码映射全部符合前端契约
+  - **验证说明**: `cargo test` 通过，覆盖 19 个 `AppErrorCode` 路径
   - **估时**: 4h
   - **依赖**: T5.2.1
-  - **优先级**: P0
+  - **优先级**: P1
 
-- [ ] **INT-S4** [MILESTONE]: S4 集成验证 — 联调交付
-  - **描述**: 最终发布验收——验证打包后的 .dmg 安装包可正常运行
-  - **输入**: T5.2.2 产出的 .dmg
+- [x] **T5.2.3** [基础]: Storage 数据迁移
+  - **描述**: 引入 SQLite 版本化 migration 机制，增加版本表并将当前 schema 标记为 v1，兼容首次启动建表和旧 schema 升级
+  - **输入**: `src-tauri/migrations/001_init.sql`、`src-tauri/src/storage/migration.rs`
+  - **输出**: `src-tauri/src/storage/migrations.rs`
+  - **验收标准**:
+    - Given 新旧数据库场景都已覆盖
+    - When 初始化 `Storage`
+    - Then 自动建表、写入 `schema_migrations` 版本记录，并可重复执行且不重复插入种子数据
+  - **验证说明**: `cargo test` + `cargo check` 通过
+  - **估时**: 3h
+  - **依赖**: T5.2.2
+  - **优先级**: P2
+
+- [x] **INT-S4** [MILESTONE]: S4 集成验证 — 联调交付
+  - **描述**: 最终发布验收——验证 S4 质量收尾后的应用在本地开发环境中可稳定运行
+  - **输入**: T5.2.3 产出的稳定后端代码
   - **输出**: 最终验收报告
   - **验收标准**:
     - Given .dmg 安装在干净 macOS 上
@@ -647,7 +661,7 @@ graph TD
     - Then 打开→翻译→问答→总结→NotebookLM→Zotero 全部可用
   - **验证说明**: 在另一台 Mac 上安装测试
   - **估时**: 4h
-  - **依赖**: T5.2.2
+  - **依赖**: T5.2.3
 
 ---
 

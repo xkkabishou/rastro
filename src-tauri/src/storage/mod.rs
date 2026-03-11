@@ -3,6 +3,7 @@ pub mod chat_messages;
 pub mod chat_sessions;
 pub mod documents;
 pub mod migration;
+pub mod migrations;
 pub mod provider_settings;
 pub mod translation_artifacts;
 pub mod translation_jobs;
@@ -42,7 +43,7 @@ impl Storage {
 
         {
             let conn = storage.connection.lock();
-            migration::run(&conn)?;
+            migrations::run(&conn)?;
         }
 
         Ok(storage)

@@ -190,4 +190,40 @@ mod tests {
         assert!(registry.cancel_queued("job-1"));
         assert!(registry.inflight_job_for_cache_key("cache-1").is_none());
     }
+
+    #[test]
+    fn dequeue_tracks_active_job_and_finish_clears_indexes() {
+        let mut registry = JobRegistry::default();
+        registry.register("job-1".to_string(), sample_request("cache-1"));
+        registry.register("job-2".to_string(), sample_request("cache-2"));
+
+        assert_eq!(registry.queue_len(), 2);
+        assert_eq!(registry.dequeue_next().as_deref(), Some("job-1"));
+        assert_eq!(registry.active_job_id(), Some("job-1"));
+
+        registry.finish("job-1");
+
+        assert!(registry.inflight_job_for_cache_key("cache-1").is_none());
+        assert_eq!(registry.dequeue_next().as_deref(), Some("job-2"));
+        assert_eq!(registry.active_job_id(), Some("job-2"));
+    }
+
+    #[test]
+    fn worker_running_and_cancel_requested_flags_are_tracked() {
+        let mut registry = JobRegistry::default();
+        registry.register("job-1".to_string(), sample_request("cache-1"));
+
+        assert!(registry.try_mark_worker_running());
+        assert!(!registry.try_mark_worker_running());
+
+        let next_job = registry.dequeue_next().unwrap();
+        registry.set_engine_job_id(&next_job, Some("engine-1".to_string()));
+        let cancel_target = registry.mark_cancel_requested(&next_job).unwrap();
+
+        assert_eq!(cancel_target.as_deref(), Some("engine-1"));
+        assert!(registry.snapshot(&next_job).unwrap().cancel_requested);
+
+        registry.mark_worker_idle();
+        assert!(registry.try_mark_worker_running());
+    }
 }

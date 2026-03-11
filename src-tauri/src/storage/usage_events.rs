@@ -96,3 +96,54 @@ pub fn list_all(connection: &Connection) -> rusqlite::Result<Vec<UsageEventRecor
     let rows = statement.query_map([], map_row)?;
     rows.collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::storage::Storage;
+
+    use super::{create, list_all, CreateUsageEventParams};
+
+    #[test]
+    fn create_and_list_all_roundtrip_usage_events_in_descending_order() {
+        let storage = Storage::new_in_memory().unwrap();
+        let connection = storage.connection();
+
+        let first = create(
+            &connection,
+            &CreateUsageEventParams {
+                document_id: Some("doc-1".to_string()),
+                provider: "openai".to_string(),
+                model: "gpt-4o-mini".to_string(),
+                feature: "chat".to_string(),
+                input_tokens: 120,
+                output_tokens: 48,
+                estimated_cost: 0.12,
+                currency: "USD".to_string(),
+                created_at: "2026-03-11T08:00:00Z".to_string(),
+            },
+        )
+        .unwrap();
+        let second = create(
+            &connection,
+            &CreateUsageEventParams {
+                document_id: None,
+                provider: "claude".to_string(),
+                model: "claude-3-5-sonnet-latest".to_string(),
+                feature: "summary".to_string(),
+                input_tokens: 300,
+                output_tokens: 160,
+                estimated_cost: 0.42,
+                currency: "USD".to_string(),
+                created_at: "2026-03-11T09:00:00Z".to_string(),
+            },
+        )
+        .unwrap();
+
+        let records = list_all(&connection).unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].event_id, second.event_id);
+        assert_eq!(records[1].event_id, first.event_id);
+        assert_eq!(records[0].feature, "summary");
+        assert_eq!(records[1].document_id.as_deref(), Some("doc-1"));
+    }
+}

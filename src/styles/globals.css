@@ -231,6 +231,7 @@
     background-color: var(--color-bg);
     line-height: 1.5;
     letter-spacing: -0.011em;
+    transition: background-color var(--transition-slow), color var(--transition-slow), border-color var(--transition-slow);
   }
 
   /* 选中文本样式 */

@@ -282,3 +282,106 @@ fn map_engine_error(error: EngineErrorPayload) -> AppError {
 
     mapped
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, time::Duration};
+
+    use axum::{
+        http::StatusCode,
+        response::IntoResponse,
+        routing::get,
+        Json, Router,
+    };
+    use serde_json::json;
+    use tokio::net::TcpListener;
+
+    use crate::errors::AppErrorCode;
+
+    use super::{map_engine_error, TranslationHttpClient};
+
+    #[test]
+    fn map_engine_error_covers_all_engine_error_branches() {
+        let cases = [
+            ("ENGINE_BUSY", AppErrorCode::EngineUnavailable),
+            ("PROVIDER_AUTH_MISSING", AppErrorCode::ProviderKeyMissing),
+            (
+                "UNSUPPORTED_PROVIDER",
+                AppErrorCode::UnsupportedTranslationProvider,
+            ),
+            ("TRANSLATION_TIMEOUT", AppErrorCode::EngineTimeout),
+            ("JOB_CANCELLED", AppErrorCode::TranslationCancelled),
+            ("UNKNOWN", AppErrorCode::TranslationFailed),
+        ];
+
+        for (engine_code, expected) in cases {
+            let error = map_engine_error(super::EngineErrorPayload {
+                code: engine_code.to_string(),
+                message: format!("mapped from {engine_code}"),
+                retryable: Some(true),
+                details: Some(HashMap::from([("source".to_string(), json!("engine"))])),
+            });
+
+            assert_eq!(error.code, expected);
+            assert_eq!(
+                error.details.as_ref().unwrap()["engineCode"],
+                json!(engine_code)
+            );
+            assert_eq!(error.details.as_ref().unwrap()["source"], json!("engine"));
+        }
+    }
+
+    #[tokio::test]
+    async fn parse_response_maps_request_timeout_status_to_engine_timeout() {
+        async fn timeout_handler() -> impl IntoResponse {
+            (
+                StatusCode::REQUEST_TIMEOUT,
+                Json(json!({ "message": "timeout" })),
+            )
+        }
+
+        let address = spawn_server(Router::new().route("/healthz", get(timeout_handler))).await;
+        let client = TranslationHttpClient::new("127.0.0.1", address.port()).unwrap();
+
+        let error = client.healthz().await.expect_err("408 should map to AppError");
+        assert_eq!(error.code, AppErrorCode::EngineTimeout);
+        assert_eq!(
+            error.details.as_ref().unwrap()["responseBody"],
+            json!("{\"message\":\"timeout\"}")
+        );
+    }
+
+    #[tokio::test]
+    async fn parse_response_maps_engine_error_envelope_from_http_body() {
+        async fn engine_error_handler() -> impl IntoResponse {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": {
+                        "code": "JOB_CANCELLED",
+                        "message": "job was cancelled",
+                        "retryable": false,
+                        "details": { "jobId": "job-1" }
+                    }
+                })),
+            )
+        }
+
+        let address = spawn_server(Router::new().route("/healthz", get(engine_error_handler))).await;
+        let client = TranslationHttpClient::new("127.0.0.1", address.port()).unwrap();
+
+        let error = client.healthz().await.expect_err("engine envelope should map");
+        assert_eq!(error.code, AppErrorCode::TranslationCancelled);
+        assert_eq!(error.details.as_ref().unwrap()["jobId"], json!("job-1"));
+    }
+
+    async fn spawn_server(router: Router) -> std::net::SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        address
+    }
+}

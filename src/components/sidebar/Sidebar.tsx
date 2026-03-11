@@ -11,6 +11,7 @@ type SidebarSection = 'recent' | 'zotero';
 
 interface SidebarProps {
   isOpen: boolean;
+  isMobile?: boolean;
   onToggle: () => void;
   onOpenSettings?: () => void;
 }
@@ -19,18 +20,18 @@ interface SidebarProps {
 // 主组件
 // ---------------------------------------------------------------------------
 
-export const Sidebar = ({ isOpen, onToggle, onOpenSettings }: SidebarProps) => {
+export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: SidebarProps) => {
   const [activeSection, setActiveSection] = useState<SidebarSection>('recent');
 
   return (
     <AnimatePresence initial={false}>
       {isOpen && (
         <motion.aside
-          initial={{ width: 0, opacity: 0 }}
-          animate={{ width: 260, opacity: 1 }}
-          exit={{ width: 0, opacity: 0 }}
+          initial={{ width: 0, opacity: 0, x: isMobile ? -260 : 0 }}
+          animate={{ width: 260, opacity: 1, x: 0 }}
+          exit={{ width: 0, opacity: 0, x: isMobile ? -260 : 0 }}
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          className="h-full border-r border-[var(--color-border)] bg-[var(--color-bg)]/90 backdrop-blur-xl overflow-hidden flex flex-col pt-8"
+          className={`h-full border-r border-[var(--color-border)] bg-[var(--color-bg)]/90 backdrop-blur-xl overflow-hidden flex flex-col pt-8 ${isMobile ? 'absolute left-0 top-0 bottom-0 z-30' : 'relative'}`}
         >
           {/* 头部 */}
           <div className="flex items-center justify-between px-4 pb-4 border-b border-[var(--color-separator)] shrink-0">

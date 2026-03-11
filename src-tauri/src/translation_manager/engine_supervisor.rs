@@ -557,12 +557,226 @@ fn valid_health_signature(health: &HealthzResponse) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::version_is_supported;
+    use std::{
+        fs,
+        net::TcpListener,
+        path::PathBuf,
+        sync::{Arc, Mutex},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use parking_lot::Mutex as ParkingMutex;
+
+    use crate::{
+        errors::AppErrorCode,
+        ipc::translation::TranslationEngineStatus,
+        translation_manager::{
+            http_client::{HealthzResponse, TranslationHttpClient},
+        },
+    };
+
+    use super::{valid_health_signature, version_is_supported, EngineSupervisor};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn python_version_guard_accepts_312_plus() {
         assert!(version_is_supported("Python 3.12.1"));
         assert!(version_is_supported("Python 3.13.0"));
         assert!(!version_is_supported("Python 3.11.9"));
+    }
+
+    #[test]
+    fn valid_health_signature_requires_expected_service_and_engine_version() {
+        assert!(valid_health_signature(&HealthzResponse {
+            status: "ok".to_string(),
+            service: Some("translation-engine-system".to_string()),
+            version: None,
+            engine: None,
+            engine_version: Some("1.0.0".to_string()),
+            python_version: None,
+            uptime_seconds: None,
+            queue_depth: None,
+            active_job_id: None,
+            supported_providers: None,
+        }));
+
+        assert!(!valid_health_signature(&HealthzResponse {
+            status: "ok".to_string(),
+            service: Some("other-service".to_string()),
+            version: None,
+            engine: None,
+            engine_version: Some("1.0.0".to_string()),
+            python_version: None,
+            uptime_seconds: None,
+            queue_depth: None,
+            active_job_id: None,
+            supported_providers: None,
+        }));
+    }
+
+    #[tokio::test]
+    async fn ensure_started_returns_port_conflict_when_port_is_already_bound() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let supervisor = test_supervisor(port);
+
+        let error = supervisor
+            .ensure_started(false)
+            .await
+            .expect_err("bound port should fail fast");
+
+        assert_eq!(error.code, AppErrorCode::EnginePortConflict);
+    }
+
+    #[tokio::test]
+    async fn ensure_started_respects_open_circuit_breaker() {
+        let port = free_port();
+        let supervisor = test_supervisor(port);
+        supervisor.record_runtime_failure().await;
+        supervisor.record_runtime_failure().await;
+        supervisor.record_runtime_failure().await;
+
+        let error = supervisor
+            .ensure_started(false)
+            .await
+            .expect_err("open circuit should block engine start");
+
+        assert_eq!(error.code, AppErrorCode::EngineUnavailable);
+        assert!(error.retryable);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preflight_python_reports_missing_binary() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let supervisor = test_supervisor(free_port());
+        let previous = std::env::var_os("RASTRO_ENGINE_PYTHON");
+        std::env::set_var("RASTRO_ENGINE_PYTHON", "/tmp/definitely-missing-python");
+
+        let error = supervisor
+            .preflight_python()
+            .expect_err("missing interpreter should fail");
+
+        restore_env(previous);
+        assert_eq!(error.code, AppErrorCode::PythonNotFound);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preflight_python_reports_version_mismatch() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let supervisor = test_supervisor(free_port());
+        let previous = std::env::var_os("RASTRO_ENGINE_PYTHON");
+        let script = write_fake_python(
+            "python-version-mismatch",
+            r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "Python 3.11.9"
+  exit 0
+fi
+exit 0
+"#,
+        );
+        std::env::set_var("RASTRO_ENGINE_PYTHON", &script);
+
+        let error = supervisor
+            .preflight_python()
+            .expect_err("unsupported version should fail");
+
+        restore_env(previous);
+        assert_eq!(error.code, AppErrorCode::PythonVersionMismatch);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preflight_python_reports_missing_translation_modules() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let supervisor = test_supervisor(free_port());
+        let previous = std::env::var_os("RASTRO_ENGINE_PYTHON");
+        let script = write_fake_python(
+            "python-missing-module",
+            r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "Python 3.12.4"
+  exit 0
+fi
+if [ "$1" = "-c" ]; then
+  if [ "$2" = "import pdf2zh" ]; then
+    exit 0
+  fi
+  exit 1
+fi
+exit 0
+"#,
+        );
+        std::env::set_var("RASTRO_ENGINE_PYTHON", &script);
+
+        let error = supervisor
+            .preflight_python()
+            .expect_err("missing engine module should fail");
+
+        restore_env(previous);
+        assert_eq!(error.code, AppErrorCode::PdfmathtranslateNotInstalled);
+    }
+
+    fn test_supervisor(port: u16) -> EngineSupervisor {
+        let data_dir = temp_dir("engine-supervisor-test");
+        let status = Arc::new(ParkingMutex::new(TranslationEngineStatus {
+            running: false,
+            pid: None,
+            port,
+            engine_version: None,
+            circuit_breaker_open: false,
+            last_health_check: None,
+        }));
+        let http_client = TranslationHttpClient::new("127.0.0.1", port).unwrap();
+
+        EngineSupervisor::new(
+            "127.0.0.1".to_string(),
+            port,
+            data_dir,
+            status,
+            http_client,
+        )
+        .unwrap()
+    }
+
+    fn free_port() -> u16 {
+        TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port()
+    }
+
+    fn temp_dir(prefix: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("{prefix}-{unique}"));
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    fn write_fake_python(prefix: &str, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = temp_dir(prefix).join("python-shim");
+        fs::write(&path, body).unwrap();
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions).unwrap();
+        path
+    }
+
+    fn restore_env(previous: Option<std::ffi::OsString>) {
+        if let Some(value) = previous {
+            std::env::set_var("RASTRO_ENGINE_PYTHON", value);
+        } else {
+            std::env::remove_var("RASTRO_ENGINE_PYTHON");
+        }
     }
 }

@@ -120,3 +120,79 @@ pub fn open_zotero_attachment(
         Some(attachment.parent_item_key),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{path::PathBuf, sync::Mutex, time::{SystemTime, UNIX_EPOCH}};
+
+    use serde_json::json;
+    use tauri::{
+        ipc::CallbackFn,
+        test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY},
+        webview::InvokeRequest,
+        WebviewWindowBuilder,
+    };
+
+    use super::fetch_zotero_items;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn fetch_zotero_items_command_serializes_zotero_not_found_errors() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let previous_db = std::env::var_os("RASTRO_ZOTERO_DB_PATH");
+        let previous_profile = std::env::var_os("RASTRO_ZOTERO_PROFILE_DIR");
+        let previous_home = std::env::var_os("HOME");
+        let isolated_home = temp_path("ipc-zotero-empty-home");
+        std::env::set_var(
+            "RASTRO_ZOTERO_DB_PATH",
+            temp_path("ipc-zotero-missing").join("missing.sqlite"),
+        );
+        std::env::remove_var("RASTRO_ZOTERO_PROFILE_DIR");
+        std::env::set_var("HOME", &isolated_home);
+
+        let app = mock_builder()
+            .invoke_handler(tauri::generate_handler![fetch_zotero_items])
+            .build(mock_context(noop_assets()))
+            .unwrap();
+        let webview = WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap();
+
+        let error = get_ipc_response(
+            &webview,
+            InvokeRequest {
+                cmd: "fetch_zotero_items".into(),
+                callback: CallbackFn(0),
+                error: CallbackFn(1),
+                url: "http://tauri.localhost".parse().unwrap(),
+                body: json!({}).into(),
+                headers: Default::default(),
+                invoke_key: INVOKE_KEY.to_string(),
+            },
+        )
+        .expect_err("missing zotero database should surface as invoke error");
+
+        restore_env("RASTRO_ZOTERO_DB_PATH", previous_db);
+        restore_env("RASTRO_ZOTERO_PROFILE_DIR", previous_profile);
+        restore_env("HOME", previous_home);
+        assert_eq!(error["code"], "ZOTERO_NOT_FOUND");
+        assert_eq!(error["retryable"], false);
+    }
+
+    fn temp_path(prefix: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}-{unique}"))
+    }
+
+    fn restore_env(key: &str, value: Option<std::ffi::OsString>) {
+        if let Some(value) = value {
+            std::env::set_var(key, value);
+        } else {
+            std::env::remove_var(key);
+        }
+    }
+}

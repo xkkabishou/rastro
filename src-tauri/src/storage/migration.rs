@@ -1,9 +1,8 @@
-// 数据库 migration 执行器
+// 兼容旧模块名，实际迁移逻辑已迁移到 migrations.rs
 use rusqlite::Connection;
 
-const INIT_SQL: &str = include_str!("../../migrations/001_init.sql");
-
-/// 执行首个 schema migration
+/// 执行数据库 schema 迁移
+#[allow(dead_code)]
 pub fn run(connection: &Connection) -> rusqlite::Result<()> {
-    connection.execute_batch(INIT_SQL)
+    super::migrations::run(connection)
 }

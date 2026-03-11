@@ -235,6 +235,49 @@ mod tests {
         );
     }
 
+    #[test]
+    fn protected_job_is_skipped_during_eviction() {
+        let storage = Storage::new_in_memory().expect("in-memory storage should initialize");
+        let base_dir = temp_dir("cache-eviction-protected");
+        let protected_pdf =
+            write_cache_artifact(&base_dir, "sha-protected", "cache-protected", "translated.pdf", 6);
+        let other_pdf =
+            write_cache_artifact(&base_dir, "sha-other", "cache-other", "translated.pdf", 5);
+
+        let protected_job_id = seed_completed_job(
+            &storage,
+            "/tmp/protected.pdf",
+            "sha-protected",
+            "2026-01-01T00:00:00Z",
+            &protected_pdf,
+        );
+        let other_job_id = seed_completed_job(
+            &storage,
+            "/tmp/other.pdf",
+            "sha-other",
+            "2026-02-01T00:00:00Z",
+            &other_pdf,
+        );
+
+        evict_if_needed_with_limit(&storage, Some(&protected_job_id), 8)
+            .expect("eviction should succeed");
+
+        assert!(protected_pdf.exists(), "protected artifact should remain");
+        assert!(!other_pdf.exists(), "non-protected artifact should be evicted");
+
+        let connection = storage.connection();
+        assert!(
+            translation_jobs::get_by_id(&connection, &protected_job_id)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            translation_jobs::get_by_id(&connection, &other_job_id)
+                .unwrap()
+                .is_none()
+        );
+    }
+
     fn seed_completed_job(
         storage: &Storage,
         file_path: &str,

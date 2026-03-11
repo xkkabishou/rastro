@@ -54,7 +54,7 @@ export type ChatRole = "user" | "assistant" | "system";
 // 统一错误模型
 // ---------------------------------------------------------------------------
 
-/** 应用错误码（共 17 个） */
+/** 应用错误码（共 19 个） */
 export type AppErrorCode =
   // 文档相关
   | "DOCUMENT_NOT_FOUND"

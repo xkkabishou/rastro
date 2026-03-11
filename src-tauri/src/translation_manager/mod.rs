@@ -358,14 +358,9 @@ impl TranslationManager {
 
         let source_lang = input.source_lang.unwrap_or_else(|| "en".to_string());
         let target_lang = input.target_lang.unwrap_or_else(|| "zh-CN".to_string());
-        let output_mode = input.output_mode.unwrap_or_else(|| "bilingual".to_string());
-        if !matches!(output_mode.as_str(), "translated" | "bilingual") {
-            return Err(AppError::new(
-                AppErrorCode::TranslationFailed,
-                format!("不支持的输出模式: {output_mode}"),
-                false,
-            ));
-        }
+        let output_mode = normalize_output_mode(
+            input.output_mode.unwrap_or_else(|| "bilingual".to_string()),
+        )?;
 
         let figure_translation = input.figure_translation.unwrap_or(true);
         let skip_reference_pages = input.skip_reference_pages.unwrap_or(true);
@@ -745,5 +740,46 @@ fn default_stage_for_status(status: &str) -> &str {
         "failed" => "failed",
         "cancelled" => "cancelled",
         _ => "queued",
+    }
+}
+
+fn normalize_output_mode(output_mode: String) -> Result<String, AppError> {
+    match output_mode.as_str() {
+        "translated" | "translated_only" => Ok("translated_only".to_string()),
+        "bilingual" => Ok(output_mode),
+        _ => Err(AppError::new(
+            AppErrorCode::TranslationFailed,
+            format!("不支持的输出模式: {output_mode}"),
+            false,
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::errors::AppErrorCode;
+
+    use super::normalize_output_mode;
+
+    #[test]
+    fn normalize_output_mode_accepts_contract_value_and_legacy_alias() {
+        assert_eq!(
+            normalize_output_mode("translated_only".to_string()).unwrap(),
+            "translated_only"
+        );
+        assert_eq!(
+            normalize_output_mode("translated".to_string()).unwrap(),
+            "translated_only"
+        );
+        assert_eq!(
+            normalize_output_mode("bilingual".to_string()).unwrap(),
+            "bilingual"
+        );
+    }
+
+    #[test]
+    fn normalize_output_mode_rejects_unknown_values() {
+        let error = normalize_output_mode("side_by_side".to_string()).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::TranslationFailed);
     }
 }

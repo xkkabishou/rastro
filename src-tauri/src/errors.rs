@@ -5,7 +5,7 @@
 use serde::Serialize;
 use std::collections::HashMap;
 
-/// 应用错误码（共 17 个，与 TypeScript AppErrorCode 对齐）
+/// 应用错误码（共 19 个，与 TypeScript AppErrorCode 对齐）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum AppErrorCode {
@@ -40,6 +40,7 @@ pub enum AppErrorCode {
 
 /// 统一错误对象——所有 Command 失败时返回此类型
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppError {
     /// 错误码
     pub code: AppErrorCode,
@@ -107,5 +108,89 @@ impl From<reqwest::Error> for AppError {
             format!("HTTP 请求失败: {value}"),
             true,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppError, AppErrorCode};
+
+    const ALL_ERROR_CODES: &[(AppErrorCode, &str)] = &[
+        (AppErrorCode::DocumentNotFound, "DOCUMENT_NOT_FOUND"),
+        (AppErrorCode::DocumentUnsupported, "DOCUMENT_UNSUPPORTED"),
+        (AppErrorCode::EngineUnavailable, "ENGINE_UNAVAILABLE"),
+        (AppErrorCode::EnginePortConflict, "ENGINE_PORT_CONFLICT"),
+        (AppErrorCode::EngineTimeout, "ENGINE_TIMEOUT"),
+        (AppErrorCode::PythonNotFound, "PYTHON_NOT_FOUND"),
+        (
+            AppErrorCode::PythonVersionMismatch,
+            "PYTHON_VERSION_MISMATCH",
+        ),
+        (
+            AppErrorCode::PdfmathtranslateNotInstalled,
+            "PDFMATHTRANSLATE_NOT_INSTALLED",
+        ),
+        (AppErrorCode::TranslationFailed, "TRANSLATION_FAILED"),
+        (
+            AppErrorCode::TranslationCancelled,
+            "TRANSLATION_CANCELLED",
+        ),
+        (AppErrorCode::ProviderKeyMissing, "PROVIDER_KEY_MISSING"),
+        (
+            AppErrorCode::ProviderConnectionFailed,
+            "PROVIDER_CONNECTION_FAILED",
+        ),
+        (AppErrorCode::ProviderRateLimited, "PROVIDER_RATE_LIMITED"),
+        (
+            AppErrorCode::ProviderInsufficientCredit,
+            "PROVIDER_INSUFFICIENT_CREDIT",
+        ),
+        (
+            AppErrorCode::UnsupportedTranslationProvider,
+            "UNSUPPORTED_TRANSLATION_PROVIDER",
+        ),
+        (AppErrorCode::ZoteroNotFound, "ZOTERO_NOT_FOUND"),
+        (AppErrorCode::ZoteroDbLocked, "ZOTERO_DB_LOCKED"),
+        (AppErrorCode::CacheCorrupted, "CACHE_CORRUPTED"),
+        (AppErrorCode::InternalError, "INTERNAL_ERROR"),
+    ];
+
+    #[test]
+    fn app_error_code_serializes_to_expected_contract_literals() {
+        assert_eq!(ALL_ERROR_CODES.len(), 19);
+
+        for (code, expected) in ALL_ERROR_CODES {
+            assert_eq!(serde_json::to_string(code).unwrap(), format!("\"{expected}\""));
+        }
+    }
+
+    #[test]
+    fn app_error_serializes_with_camel_case_and_optional_details() {
+        let error = AppError::new(
+            AppErrorCode::EngineTimeout,
+            "translation-engine 启动超时",
+            true,
+        )
+        .with_detail("cooldownUntil", "30s")
+        .with_detail("retryAfterSeconds", 30);
+
+        let value = serde_json::to_value(&error).unwrap();
+        assert_eq!(value["code"], "ENGINE_TIMEOUT");
+        assert_eq!(value["message"], "translation-engine 启动超时");
+        assert_eq!(value["retryable"], true);
+        assert_eq!(value["details"]["cooldownUntil"], "30s");
+        assert_eq!(value["details"]["retryAfterSeconds"], 30);
+        assert!(value.get("retry_able").is_none());
+    }
+
+    #[test]
+    fn app_error_omits_details_when_absent_and_internal_helper_uses_internal_error_code() {
+        let error = AppError::internal("数据库损坏");
+        let value = serde_json::to_value(&error).unwrap();
+
+        assert_eq!(value["code"], "INTERNAL_ERROR");
+        assert_eq!(value["message"], "数据库损坏");
+        assert_eq!(value["retryable"], false);
+        assert!(value.get("details").is_none());
     }
 }

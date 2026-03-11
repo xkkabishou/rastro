@@ -300,10 +300,12 @@ async fn run_stream_request<R: tauri::Runtime>(
         .await?;
 
     if !response.status().is_success() {
-        return Err(AppError::new(
-            AppErrorCode::ProviderConnectionFailed,
-            format!("流式请求失败: HTTP {}", response.status()),
-            true,
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(provider_registry::map_provider_http_error(
+            status,
+            &body,
+            "流式请求失败",
         ));
     }
 

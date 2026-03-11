@@ -141,3 +141,120 @@ pub fn load_cached_translation(
         .translation_manager
         .load_cached_translation(document_id, provider, model)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        collections::HashMap,
+        fs,
+        path::PathBuf,
+        sync::Arc,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use parking_lot::Mutex as ParkingMutex;
+    use serde_json::json;
+    use tauri::{
+        ipc::CallbackFn,
+        test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY},
+        webview::InvokeRequest,
+        WebviewWindowBuilder,
+    };
+
+    use crate::{
+        ai_integration::AiIntegration,
+        app_state::AppState,
+        keychain::KeychainService,
+        storage::Storage,
+        translation_manager::TranslationManager,
+    };
+
+    use super::{request_translation, TranslationEngineStatus};
+
+    #[test]
+    fn request_translation_command_serializes_document_not_found_errors() {
+        let app = mock_builder()
+            .manage(build_test_state())
+            .invoke_handler(tauri::generate_handler![request_translation])
+            .build(mock_context(noop_assets()))
+            .unwrap();
+        let webview = WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap();
+
+        let error = get_ipc_response(
+            &webview,
+            InvokeRequest {
+                cmd: "request_translation".into(),
+                callback: CallbackFn(0),
+                error: CallbackFn(1),
+                url: "http://tauri.localhost".parse().unwrap(),
+                body: json!({
+                    "input": {
+                        "documentId": "doc-1",
+                        "filePath": "/tmp/missing.pdf"
+                    }
+                })
+                .into(),
+                headers: Default::default(),
+                invoke_key: INVOKE_KEY.to_string(),
+            },
+        )
+        .expect_err("missing translation file should surface as invoke error");
+
+        assert_eq!(error["code"], "DOCUMENT_NOT_FOUND");
+        assert_eq!(error["retryable"], false);
+        assert_eq!(
+            error["details"]["filePath"],
+            json!("/tmp/missing.pdf")
+        );
+    }
+
+    fn build_test_state() -> AppState {
+        let data_dir = temp_dir("ipc-translation-test");
+        let storage = Storage::new_in_memory().unwrap();
+        let keychain = KeychainService::new();
+        let ai_integration = AiIntegration::new(storage.clone(), keychain.clone());
+        let translation_status = Arc::new(ParkingMutex::new(TranslationEngineStatus {
+            running: false,
+            pid: None,
+            port: 8890,
+            engine_version: None,
+            circuit_breaker_open: false,
+            last_health_check: None,
+        }));
+        let translation_manager = TranslationManager::new(
+            data_dir.clone(),
+            storage.clone(),
+            keychain.clone(),
+            translation_status.clone(),
+        )
+        .unwrap();
+
+        AppState {
+            data_dir,
+            storage,
+            keychain,
+            ai_integration,
+            translation_manager,
+            translation_status,
+            zotero_status: Arc::new(ParkingMutex::new(crate::ipc::zotero::ZoteroStatusDto {
+                detected: false,
+                database_path: None,
+                item_count: None,
+                status_message: "未检测 Zotero".to_string(),
+            })),
+            runtime_flags: Arc::new(ParkingMutex::new(HashMap::new())),
+        }
+    }
+
+    fn temp_dir(prefix: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("{prefix}-{unique}"));
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+}
