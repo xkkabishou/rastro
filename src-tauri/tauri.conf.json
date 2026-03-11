@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicholasgasior/tauri/refs/heads/v2/crates/tauri/schema.json",
+  "productName": "Rasto",
+  "version": "0.1.0",
+  "identifier": "com.rasto.app",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "windows": []
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all",
+    "icon": []
+  }
+}

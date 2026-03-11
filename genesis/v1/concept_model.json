@@ -1,0 +1,48 @@
+{
+  "entities": [
+    { "name": "PDFDocument", "type": "数据", "necessity": "必须", "description": "学术论文 PDF 文件，系统的核心数据对象" },
+    { "name": "User", "type": "角色", "necessity": "必须", "description": "科研工作者/学生，应用的终端用户" },
+    { "name": "AIProvider", "type": "服务", "necessity": "必须", "description": "外部 AI 模型接口（OpenAI GPT / Anthropic Claude / Google Gemini），支持可切换" },
+    { "name": "Translation", "type": "数据", "necessity": "必须", "description": "翻译结果，隐式双语对照模式——默认显示中文译文，按快捷键显示英文原文" },
+    { "name": "FigureTranslation", "type": "数据", "necessity": "必须", "description": "图表翻译结果，包含文字标签翻译和 AI 内容理解描述，需 Vision API" },
+    { "name": "ChatSession", "type": "数据", "necessity": "必须", "description": "AI 问答对话会话，包含消息历史和关联的文献上下文，需持久化保存" },
+    { "name": "TextSelection", "type": "交互", "necessity": "必须", "description": "用户在 PDF 中选取的文本段落，可拖入聊天框触发 AI 交互" },
+    { "name": "Summary", "type": "数据", "necessity": "必须", "description": "AI 生成的文献结构化总结（摘要、方法、结论、创新点等）" },
+    { "name": "NotebookLMSession", "type": "外部服务", "necessity": "期望", "description": "Google NotebookLM 集成（浏览器自动化模式），用于生成思维导图和测验" },
+    { "name": "TranslationCache", "type": "数据", "necessity": "必须", "description": "翻译结果的本地缓存，避免重复 API 调用消耗额度" },
+    { "name": "APIKeyConfig", "type": "配置", "necessity": "必须", "description": "用户的 API Key 配置，支持多 Provider 可切换，安全存储于系统密钥链" },
+    { "name": "ZoteroIntegration", "type": "外部服务", "necessity": "期望", "description": "Zotero 文献管理工具集成，用于文献库管理（收藏、分类、标签）" },
+    { "name": "ReaderApp", "type": "应用", "necessity": "必须", "description": "macOS 桌面端应用壳（后期增加 Windows），苹果风设计" }
+  ],
+  "flows": [
+    { "from": "User", "action": "打开", "to": "PDFDocument", "data": "文件路径", "note": "通过文件拖拽、菜单打开、或 Zotero 导入 PDF" },
+    { "from": "User", "action": "翻译页面", "to": "PDFDocument → Translation", "data": "页面文本", "note": "调用 AI API 逐段翻译，流式返回，默认显示中文，快捷键切换显示英文原文" },
+    { "from": "User", "action": "翻译图表", "to": "Figure → FigureTranslation", "data": "图表截图", "note": "使用 Vision API 翻译图表中的文字标签 + 理解图表内容给出中文描述" },
+    { "from": "User", "action": "拖入聊天", "to": "TextSelection → ChatSession", "data": "选中文本 + 用户问题", "note": "拖拽段落进入聊天框，发起 AI 问答，对话历史持久化" },
+    { "from": "AIProvider", "action": "回答", "to": "ChatSession", "data": "AI 响应（流式）", "note": "基于文献上下文的问答回复" },
+    { "from": "User", "action": "总结", "to": "PDFDocument → Summary", "data": "全文文本", "note": "一键生成结构化文献总结" },
+    { "from": "User", "action": "推送到 NotebookLM", "to": "NotebookLMSession", "data": "文献内容/PDF", "note": "通过浏览器自动化将文献推送至 NotebookLM 生成思维导图和测验" },
+    { "from": "Translation", "action": "缓存", "to": "TranslationCache", "data": "翻译结果 + 文件哈希", "note": "已翻译内容持久化缓存到本地" },
+    { "from": "User", "action": "切换 AI", "to": "APIKeyConfig → AIProvider", "data": "Provider 选择", "note": "在 OpenAI/Claude/Gemini 之间切换 AI 后端" }
+  ],
+  "missing_components": [
+    { "component": "API Key 安全存储", "category": "配置管理", "priority": "高", "reason": "用户输入的 API Key 需安全存储（macOS Keychain / 系统级加密），不能明文保存" },
+    { "component": "PDF 文本提取引擎", "category": "核心依赖", "priority": "高", "reason": "翻译前提是准确提取 PDF 文本，需处理双栏排版、特殊字符等场景" },
+    { "component": "翻译缓存策略", "category": "持久化", "priority": "高", "reason": "避免重复翻译消耗 API 额度，需要文件哈希 + 页面级缓存" },
+    { "component": "错误处理与重试", "category": "错误处理", "priority": "高", "reason": "AI API 调用可能超时/限流/余额不足，需优雅降级和友好提示" },
+    { "component": "应用分发机制", "category": "工程", "priority": "中", "reason": "macOS App 需要代码签名、公证（Notarization）、DMG 打包" },
+    { "component": "Zotero 集成协议", "category": "外部集成", "priority": "中", "reason": "需要调研 Zotero 的集成方式（本地数据库读取、API、或 Zotero Connector）" },
+    { "component": "对话历史持久化", "category": "持久化", "priority": "高", "reason": "AI 问答记录需保存，下次打开同一文献能看到之前的对话" },
+    { "component": "主题跟随/深色模式", "category": "UX", "priority": "中", "reason": "苹果风设计需支持 macOS 系统级浅色/深色模式切换" },
+    { "component": "API 额度监控", "category": "日志监控", "priority": "低", "reason": "用户可能希望了解 API 调用量和剩余额度" }
+  ],
+  "questions_for_user": [
+    "【已确认】AI API: OpenAI GPT / Claude / Gemini，可切换",
+    "【已确认】图表翻译: 文字标签翻译 + AI 内容理解，两者都要",
+    "【已确认】NotebookLM: 参考已有 notebooklm skill（浏览器自动化方案）",
+    "【待确认】技术栈: 用户是小白，需要详细对比后选择",
+    "【已确认】翻译呈现: 隐式双语对照，默认中文，快捷键显示英文原文",
+    "【已确认】文献管理: 用 Zotero，不内置",
+    "【已确认】对话历史: 需要持久化"
+  ]
+}
