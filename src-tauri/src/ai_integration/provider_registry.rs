@@ -20,6 +20,54 @@ pub struct ProviderRuntimeConfig {
     pub api_key: String,
 }
 
+/// 校验 base_url 安全性：HTTPS + 禁止 userinfo。
+/// 允许用户显式配置自定义 HTTPS 代理域名，避免运行时拦截已保存配置。
+pub fn validate_base_url(url: &str) -> Result<(), AppError> {
+    let parsed = Url::parse(url).map_err(|_| {
+        AppError::new(
+            AppErrorCode::InvalidProviderBaseUrl,
+            "无效的 URL 格式",
+            false,
+        )
+    })?;
+
+    let host = parsed.host_str().ok_or_else(|| {
+        AppError::new(
+            AppErrorCode::InvalidProviderBaseUrl,
+            "base_url 缺少主机名",
+            false,
+        )
+    })?;
+    let is_local = host == "127.0.0.1" || host == "localhost";
+
+    if parsed.scheme() != "https" && !is_local {
+        return Err(AppError::new(
+            AppErrorCode::InvalidProviderBaseUrl,
+            "自定义 base_url 必须使用 HTTPS 协议",
+            false,
+        ));
+    }
+
+    #[cfg(not(debug_assertions))]
+    if is_local {
+        return Err(AppError::new(
+            AppErrorCode::InvalidProviderBaseUrl,
+            "生产环境不允许使用 localhost 作为 API 地址",
+            false,
+        ));
+    }
+
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(AppError::new(
+            AppErrorCode::InvalidProviderBaseUrl,
+            "base_url 不允许包含用户名或密码",
+            false,
+        ));
+    }
+
+    Ok(())
+}
+
 /// 解析 Provider 的生效配置
 pub fn resolve_runtime_config(
     ai: &AiIntegration,
@@ -36,15 +84,22 @@ pub fn resolve_runtime_config(
     }
     .ok_or_else(|| {
         AppError::new(
-            AppErrorCode::ProviderKeyMissing,
+            AppErrorCode::ProviderNotConfigured,
             "未找到可用的 Provider 配置",
             false,
         )
     })?;
 
-    let provider = explicit_provider.unwrap_or_else(|| {
-        ProviderId::from_str(&setting.provider).expect("provider_settings should stay normalized")
-    });
+    let provider = match explicit_provider {
+        Some(p) => p,
+        None => ProviderId::from_str(&setting.provider).map_err(|_| {
+            AppError::new(
+                AppErrorCode::InternalError,
+                format!("数据库中的 Provider 标识无效: {}", setting.provider),
+                false,
+            )
+        })?,
+    };
     let model = explicit_model.unwrap_or_else(|| setting.model.clone());
     let api_key = match ai.keychain.get_key(provider.as_str())? {
         Some(value) => value,
@@ -65,13 +120,21 @@ pub fn resolve_runtime_config(
         }
     };
 
+    let resolved_base_url = setting
+        .base_url
+        .as_ref()
+        .map(|value| normalize_base_url(provider, value))
+        .unwrap_or_else(|| default_base_url(provider).to_string());
+
+    // 读取后校验：防止历史脏数据将 API Key 发往非法域名
+    if setting.base_url.is_some() {
+        validate_base_url(&resolved_base_url)?;
+    }
+
     Ok(ProviderRuntimeConfig {
         provider,
         model,
-        base_url: setting
-            .base_url
-            .map(|value| normalize_base_url(provider, &value))
-            .unwrap_or_else(|| default_base_url(provider).to_string()),
+        base_url: resolved_base_url,
         api_key,
     })
 }
@@ -358,11 +421,7 @@ pub async fn test_connection(
 
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
-    Err(map_provider_http_error(
-        status,
-        &body,
-        "Provider 测试失败",
-    ))
+    Err(map_provider_http_error(status, &body, "Provider 测试失败"))
 }
 
 /// 返回 Provider 默认 base URL
@@ -423,17 +482,50 @@ pub(crate) fn map_provider_http_error(
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
     use reqwest::StatusCode;
+    use serde_json::json;
 
     use crate::{
         ai_integration::provider_registry::{
             extract_stream_delta, extract_stream_thinking, map_provider_http_error,
-            normalize_base_url,
+            normalize_base_url, validate_base_url,
         },
         errors::AppErrorCode,
         models::ProviderId,
     };
+
+    #[test]
+    fn validate_base_url_accepts_https_domains() {
+        assert!(validate_base_url("https://api.openai.com/v1").is_ok());
+        assert!(validate_base_url("https://api.anthropic.com/v1").is_ok());
+        assert!(validate_base_url("https://generativelanguage.googleapis.com/v1beta").is_ok());
+        assert!(validate_base_url("https://sub2api.chiikawa.org/v1").is_ok());
+    }
+
+    #[test]
+    fn validate_base_url_rejects_non_https() {
+        let err = validate_base_url("http://api.openai.com/v1").unwrap_err();
+        assert_eq!(err.code, AppErrorCode::InvalidProviderBaseUrl);
+    }
+
+    #[test]
+    fn validate_base_url_rejects_urls_without_host_component() {
+        let err = validate_base_url("mailto:test@example.com").unwrap_err();
+        assert_eq!(err.code, AppErrorCode::InvalidProviderBaseUrl);
+    }
+
+    #[test]
+    fn validate_base_url_rejects_url_with_userinfo() {
+        let err = validate_base_url("https://user:pass@api.openai.com/v1").unwrap_err();
+        assert_eq!(err.code, AppErrorCode::InvalidProviderBaseUrl);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn validate_base_url_allows_localhost_in_debug_mode() {
+        assert!(validate_base_url("http://127.0.0.1:8080").is_ok());
+        assert!(validate_base_url("http://localhost:3000").is_ok());
+    }
 
     #[test]
     fn maps_rate_limit_responses_to_provider_rate_limited() {
@@ -466,11 +558,7 @@ mod tests {
 
     #[test]
     fn falls_back_to_provider_connection_failed_for_other_statuses() {
-        let error = map_provider_http_error(
-            StatusCode::BAD_GATEWAY,
-            "",
-            "Provider 测试失败",
-        );
+        let error = map_provider_http_error(StatusCode::BAD_GATEWAY, "", "Provider 测试失败");
 
         assert_eq!(error.code, AppErrorCode::ProviderConnectionFailed);
         assert!(error.retryable);
@@ -535,7 +623,10 @@ mod tests {
             "https://sub2api.chiikawa.org/v1"
         );
         assert_eq!(
-            normalize_base_url(ProviderId::Gemini, "https://generativelanguage.googleapis.com"),
+            normalize_base_url(
+                ProviderId::Gemini,
+                "https://generativelanguage.googleapis.com"
+            ),
             "https://generativelanguage.googleapis.com/v1beta"
         );
     }

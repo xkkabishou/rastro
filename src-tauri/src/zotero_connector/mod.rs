@@ -115,12 +115,29 @@ impl ZoteroConnector {
         let connection = self.open_connection()?;
         let total = query_total(&connection, &query_value, &like_query)?;
         let rows = query_page(&connection, &query_value, &like_query, offset, limit)?;
-        let mut items = Vec::with_capacity(rows.len());
 
+        if rows.is_empty() {
+            return Ok(ZoteroItemsPage {
+                items: Vec::new(),
+                total,
+                offset,
+                limit,
+            });
+        }
+
+        let item_ids: Vec<i64> = rows.iter().map(|r| r.item_id).collect();
+        let authors_map = batch_fetch_authors(&connection, &item_ids)?;
+        let attachments_map = batch_fetch_first_attachments(&connection, &item_ids)?;
+
+        let mut items = Vec::with_capacity(rows.len());
         for row in rows {
-            let authors = fetch_authors(&connection, row.item_id)?;
-            let pdf_path = lookup_first_attachment(&connection, row.item_id)?
-                .and_then(|attachment| self.resolve_attachment_reference(&attachment).ok())
+            let authors = authors_map
+                .get(&row.item_id)
+                .cloned()
+                .unwrap_or_default();
+            let pdf_path = attachments_map
+                .get(&row.item_id)
+                .and_then(|attachment| self.resolve_attachment_reference(attachment).ok())
                 .map(|path| path.to_string_lossy().into_owned());
 
             items.push(ZoteroItemRecord {
@@ -162,22 +179,30 @@ impl ZoteroConnector {
     }
 
     fn verify_connection(&self) -> Result<(), AppError> {
-        let connection = self.open_connection()?;
-        connection
-            .query_row("SELECT 1", [], |row| row.get::<_, i64>(0))
-            .map(|_| ())
-            .map_err(map_sqlite_error)
+        self.open_connection().map(|_| ())
     }
 
     fn open_connection(&self) -> Result<Connection, AppError> {
-        let connection = Connection::open_with_flags(
-            &self.library.database_path,
-            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )
-        .map_err(map_sqlite_error)?;
-        connection
-            .busy_timeout(Duration::from_millis(250))
-            .map_err(map_sqlite_error)?;
+        match self.open_connection_with_flags(false) {
+            Ok(connection) => Ok(connection),
+            Err(error) if is_locked_sqlite_error(&error) => self
+                .open_connection_with_flags(true)
+                .map_err(map_sqlite_error),
+            Err(error) => Err(map_sqlite_error(error)),
+        }
+    }
+
+    fn open_connection_with_flags(&self, immutable: bool) -> Result<Connection, rusqlite::Error> {
+        let mut flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        let target = if immutable {
+            flags |= OpenFlags::SQLITE_OPEN_URI;
+            sqlite_immutable_uri(&self.library.database_path)
+        } else {
+            self.library.database_path.to_string_lossy().into_owned()
+        };
+        let connection = Connection::open_with_flags(&target, flags)?;
+        connection.busy_timeout(Duration::from_millis(250))?;
+        connection.query_row("SELECT 1", [], |row| row.get::<_, i64>(0))?;
         Ok(connection)
     }
 
@@ -361,6 +386,104 @@ fn fetch_authors(connection: &Connection, item_id: i64) -> Result<Vec<String>, A
                 .filter(|author| !author.is_empty())
                 .collect()
         })
+}
+
+fn batch_fetch_authors(
+    connection: &Connection,
+    item_ids: &[i64],
+) -> Result<std::collections::HashMap<i64, Vec<String>>, AppError> {
+    use std::collections::HashMap;
+
+    if item_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let placeholders: Vec<String> = (1..=item_ids.len()).map(|i| format!("?{i}")).collect();
+    let sql = format!(
+        "SELECT ic.itemID, c.firstName, c.lastName
+         FROM itemCreators ic
+         JOIN creators c ON c.creatorID = ic.creatorID
+         WHERE ic.itemID IN ({})
+         ORDER BY ic.itemID, ic.orderIndex ASC",
+        placeholders.join(", ")
+    );
+
+    let mut statement = connection.prepare(&sql).map_err(map_sqlite_error)?;
+    let params: Vec<&dyn rusqlite::types::ToSql> =
+        item_ids.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
+    let rows = statement
+        .query_map(params.as_slice(), |row| {
+            let item_id: i64 = row.get(0)?;
+            let first_name = row.get::<_, Option<String>>(1)?.unwrap_or_default();
+            let last_name = row.get::<_, Option<String>>(2)?.unwrap_or_default();
+            let display_name = format!("{first_name} {last_name}").trim().to_string();
+            Ok((item_id, display_name))
+        })
+        .map_err(map_sqlite_error)?;
+
+    let mut map: HashMap<i64, Vec<String>> = HashMap::new();
+    for row in rows {
+        let (item_id, name) = row.map_err(map_sqlite_error)?;
+        if !name.is_empty() {
+            map.entry(item_id).or_default().push(name);
+        }
+    }
+
+    Ok(map)
+}
+
+fn batch_fetch_first_attachments(
+    connection: &Connection,
+    parent_item_ids: &[i64],
+) -> Result<std::collections::HashMap<i64, AttachmentReference>, AppError> {
+    use std::collections::HashMap;
+
+    if parent_item_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let placeholders: Vec<String> = (1..=parent_item_ids.len()).map(|i| format!("?{}", i + 1)).collect();
+    let sql = format!(
+        "SELECT ia.parentItemID, parent.key, attachment.key, ia.path
+         FROM itemAttachments ia
+         JOIN items attachment ON attachment.itemID = ia.itemID
+         JOIN items parent ON parent.itemID = ia.parentItemID
+         WHERE ia.parentItemID IN ({})
+           AND LOWER(COALESCE(ia.contentType, '')) = ?1
+         ORDER BY ia.parentItemID, ia.itemID ASC",
+        placeholders.join(", ")
+    );
+
+    let mut all_params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    all_params.push(Box::new(PDF_CONTENT_TYPE.to_string()));
+    for id in parent_item_ids {
+        all_params.push(Box::new(*id));
+    }
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = all_params.iter().map(|p| p.as_ref()).collect();
+
+    let mut statement = connection.prepare(&sql).map_err(map_sqlite_error)?;
+    let rows = statement
+        .query_map(param_refs.as_slice(), |row| {
+            let parent_id: i64 = row.get(0)?;
+            Ok((
+                parent_id,
+                AttachmentReference {
+                    parent_item_key: row.get(1)?,
+                    attachment_key: row.get(2)?,
+                    attachment_path: row.get(3)?,
+                },
+            ))
+        })
+        .map_err(map_sqlite_error)?;
+
+    let mut map: HashMap<i64, AttachmentReference> = HashMap::new();
+    for row in rows {
+        let (parent_id, attachment) = row.map_err(map_sqlite_error)?;
+        // 只取每个 parent 的第一个附件
+        map.entry(parent_id).or_insert(attachment);
+    }
+
+    Ok(map)
 }
 
 fn lookup_first_attachment(
@@ -582,6 +705,39 @@ fn map_sqlite_error(error: rusqlite::Error) -> AppError {
     AppError::from(error)
 }
 
+fn is_locked_sqlite_error(error: &rusqlite::Error) -> bool {
+    matches!(
+        error,
+        rusqlite::Error::SqliteFailure(inner, _)
+            if matches!(
+                inner.code,
+                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+            )
+    )
+}
+
+fn sqlite_immutable_uri(database_path: &Path) -> String {
+    format!(
+        "file:{}?mode=ro&immutable=1",
+        percent_encode_uri_path(&database_path.to_string_lossy())
+    )
+}
+
+fn percent_encode_uri_path(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'.' | b'-' | b'_' | b'~' | b':' => {
+                encoded.push(char::from(byte))
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+
+    encoded
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -591,12 +747,13 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use rusqlite::Connection;
+    use rusqlite::{Connection, OpenFlags};
 
     use crate::errors::AppErrorCode;
 
     use super::{
-        extract_year, map_sqlite_error, resolve_attachment_path, ZoteroConnector, ZoteroLibrary,
+        extract_year, is_locked_sqlite_error, map_sqlite_error, resolve_attachment_path,
+        sqlite_immutable_uri, ZoteroConnector, ZoteroLibrary,
     };
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -621,7 +778,117 @@ mod tests {
 
     #[test]
     fn fetch_items_and_resolve_attachment_from_test_database() {
-        let profile_dir = temp_profile_dir("zotero-connector-test");
+        let (profile_dir, database_path, pdf_path) =
+            create_test_library_fixture("zotero-connector-test");
+
+        let connector = ZoteroConnector {
+            library: ZoteroLibrary {
+                database_path,
+                profile_dir,
+            },
+        };
+        let page = connector
+            .fetch_items(Some("lovelace"), 0, 10)
+            .expect("items should query");
+        let expected_pdf_path = pdf_path.to_string_lossy().to_string();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].item_key, "ITEM001");
+        assert_eq!(page.items[0].authors, vec!["Ada Lovelace".to_string()]);
+        assert_eq!(page.items[0].year, Some(2024));
+        assert_eq!(
+            page.items[0].pdf_path.as_deref(),
+            Some(expected_pdf_path.as_str())
+        );
+
+        let attachment = connector
+            .resolve_attachment("ITEM001")
+            .expect("attachment should resolve");
+        assert_eq!(attachment.parent_item_key, "ITEM001");
+        assert_eq!(attachment.file_path, pdf_path);
+    }
+
+    #[test]
+    fn fetch_items_falls_back_to_immutable_mode_when_database_is_locked() {
+        let (profile_dir, database_path, _) =
+            create_test_library_fixture("zotero-connector-locked");
+        let lock_holder = Connection::open(&database_path).expect("lock holder should open db");
+        lock_holder
+            .execute_batch("BEGIN EXCLUSIVE;")
+            .expect("exclusive lock should start");
+
+        let raw_error = Connection::open_with_flags(
+            &database_path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .and_then(|connection| connection.query_row("SELECT 1", [], |row| row.get::<_, i64>(0)));
+        let raw_error = raw_error.expect_err("plain readonly query should be blocked by lock");
+        assert!(is_locked_sqlite_error(&raw_error));
+
+        let connector = ZoteroConnector {
+            library: ZoteroLibrary {
+                database_path,
+                profile_dir,
+            },
+        };
+        let page = connector
+            .fetch_items(None, 0, 10)
+            .expect("immutable fallback should keep reads available");
+
+        lock_holder
+            .execute_batch("ROLLBACK;")
+            .expect("exclusive lock should release");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].item_key, "ITEM001");
+    }
+
+    #[test]
+    fn detect_returns_zotero_not_found_when_configured_path_is_missing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let previous_db = std::env::var_os("RASTRO_ZOTERO_DB_PATH");
+        let previous_profile = std::env::var_os("RASTRO_ZOTERO_PROFILE_DIR");
+        let previous_home = std::env::var_os("HOME");
+        let isolated_home = temp_profile_dir("zotero-empty-home");
+        std::env::set_var(
+            "RASTRO_ZOTERO_DB_PATH",
+            temp_profile_dir("missing-zotero-db").join("missing.sqlite"),
+        );
+        std::env::remove_var("RASTRO_ZOTERO_PROFILE_DIR");
+        std::env::set_var("HOME", &isolated_home);
+
+        let error = ZoteroConnector::detect().expect_err("missing db should not be detected");
+
+        restore_env("RASTRO_ZOTERO_DB_PATH", previous_db);
+        restore_env("RASTRO_ZOTERO_PROFILE_DIR", previous_profile);
+        restore_env("HOME", previous_home);
+        assert_eq!(error.code, AppErrorCode::ZoteroNotFound);
+    }
+
+    #[test]
+    fn map_sqlite_error_maps_locked_database_to_retryable_app_error() {
+        let error = map_sqlite_error(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::DatabaseLocked,
+                extended_code: rusqlite::ErrorCode::DatabaseLocked as i32,
+            },
+            Some("database is locked".to_string()),
+        ));
+
+        assert_eq!(error.code, AppErrorCode::ZoteroDbLocked);
+        assert!(error.retryable);
+    }
+
+    #[test]
+    fn sqlite_immutable_uri_encodes_spaces_in_paths() {
+        let uri = sqlite_immutable_uri(Path::new("/tmp/work space/zotero.sqlite"));
+        assert_eq!(
+            uri,
+            "file:/tmp/work%20space/zotero.sqlite?mode=ro&immutable=1"
+        );
+    }
+
+    fn create_test_library_fixture(prefix: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let profile_dir = temp_profile_dir(prefix);
         let database_path = profile_dir.join("zotero.sqlite");
         let storage_dir = profile_dir.join("storage").join("ATTACH001");
         fs::create_dir_all(&storage_dir).expect("storage dir should exist");
@@ -719,66 +986,7 @@ mod tests {
             .expect("fixture rows should insert");
         drop(connection);
 
-        let connector = ZoteroConnector {
-            library: ZoteroLibrary {
-                database_path,
-                profile_dir,
-            },
-        };
-        let page = connector
-            .fetch_items(Some("lovelace"), 0, 10)
-            .expect("items should query");
-        let expected_pdf_path = pdf_path.to_string_lossy().to_string();
-        assert_eq!(page.total, 1);
-        assert_eq!(page.items[0].item_key, "ITEM001");
-        assert_eq!(page.items[0].authors, vec!["Ada Lovelace".to_string()]);
-        assert_eq!(page.items[0].year, Some(2024));
-        assert_eq!(
-            page.items[0].pdf_path.as_deref(),
-            Some(expected_pdf_path.as_str())
-        );
-
-        let attachment = connector
-            .resolve_attachment("ITEM001")
-            .expect("attachment should resolve");
-        assert_eq!(attachment.parent_item_key, "ITEM001");
-        assert_eq!(attachment.file_path, pdf_path);
-    }
-
-    #[test]
-    fn detect_returns_zotero_not_found_when_configured_path_is_missing() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        let previous_db = std::env::var_os("RASTRO_ZOTERO_DB_PATH");
-        let previous_profile = std::env::var_os("RASTRO_ZOTERO_PROFILE_DIR");
-        let previous_home = std::env::var_os("HOME");
-        let isolated_home = temp_profile_dir("zotero-empty-home");
-        std::env::set_var(
-            "RASTRO_ZOTERO_DB_PATH",
-            temp_profile_dir("missing-zotero-db").join("missing.sqlite"),
-        );
-        std::env::remove_var("RASTRO_ZOTERO_PROFILE_DIR");
-        std::env::set_var("HOME", &isolated_home);
-
-        let error = ZoteroConnector::detect().expect_err("missing db should not be detected");
-
-        restore_env("RASTRO_ZOTERO_DB_PATH", previous_db);
-        restore_env("RASTRO_ZOTERO_PROFILE_DIR", previous_profile);
-        restore_env("HOME", previous_home);
-        assert_eq!(error.code, AppErrorCode::ZoteroNotFound);
-    }
-
-    #[test]
-    fn map_sqlite_error_maps_locked_database_to_retryable_app_error() {
-        let error = map_sqlite_error(rusqlite::Error::SqliteFailure(
-            rusqlite::ffi::Error {
-                code: rusqlite::ErrorCode::DatabaseLocked,
-                extended_code: rusqlite::ErrorCode::DatabaseLocked as i32,
-            },
-            Some("database is locked".to_string()),
-        ));
-
-        assert_eq!(error.code, AppErrorCode::ZoteroDbLocked);
-        assert!(error.retryable);
+        (profile_dir, database_path, pdf_path)
     }
 
     fn temp_profile_dir(prefix: &str) -> PathBuf {
