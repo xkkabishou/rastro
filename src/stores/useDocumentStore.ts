@@ -1,5 +1,8 @@
 import { create } from 'zustand';
-import type { DocumentSnapshot, TranslationJobDto, TranslationJobStatus } from '../shared/types';
+import type { DocumentSnapshot, TranslationJobDto } from '../shared/types';
+import { ipcClient } from '../lib/ipc-client';
+import { useChatStore } from './useChatStore';
+import { useSummaryStore } from './useSummaryStore';
 
 interface DocumentState {
   /** 当前打开的文档 */
@@ -41,7 +44,35 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   pdfUrl: null,
   translatedPdfUrl: null,
 
-  setCurrentDocument: (doc) => set({ currentDocument: doc }),
+  setCurrentDocument: (doc) => {
+    const prev = useDocumentStore.getState().currentDocument;
+    const prevId = prev?.documentId ?? null;
+    const nextId = doc?.documentId ?? null;
+
+    set({
+      currentDocument: doc,
+      bilingualMode: false,
+      translationJob: null,
+      translationProgress: 0,
+      translatedPdfUrl: null,
+    });
+
+    // 文档切换时：取消活跃流 + 清空聊天/总结
+    if (prevId && prevId !== nextId) {
+      const chatStreamId = useChatStore.getState().activeStreamId;
+      const summaryStreamId = useSummaryStore.getState().activeStreamId;
+      const activeIds = [chatStreamId, summaryStreamId].filter(Boolean) as string[];
+
+      activeIds.forEach((streamId) => {
+        ipcClient.cancelAiStream(streamId).catch((err: unknown) => {
+          console.error('取消旧的 AI 流失败:', err);
+        });
+      });
+
+      useChatStore.getState().clearChat();
+      useSummaryStore.getState().resetSummary();
+    }
+  },
   setZoomLevel: (level) => set({ zoomLevel: Math.max(25, Math.min(400, level)) }),
   setBilingualMode: (mode) => set({ bilingualMode: mode }),
   setTranslationJob: (job) => set({ translationJob: job }),

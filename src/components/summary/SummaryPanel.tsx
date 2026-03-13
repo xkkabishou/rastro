@@ -1,91 +1,82 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ipcClient, ipcEvents } from '../../lib/ipc-client';
+import { ipcClient } from '../../lib/ipc-client';
 import { BookOpen, Loader2, RefreshCw, FileText } from 'lucide-react';
-import { motion } from 'framer-motion';
-import type { AiStreamChunkPayload } from '../../shared/types';
+import {
+  DEFAULT_SUMMARY_SOURCE_CHARS,
+  DEFAULT_SUMMARY_SOURCE_PAGES,
+  extractPdfText,
+} from '../../lib/pdf-text-extractor';
+import { useDocumentStore } from '../../stores/useDocumentStore';
+import { useSummaryStore } from '../../stores/useSummaryStore';
 
 /** AI 文献总结面板 */
-export const SummaryPanel: React.FC<{ documentId?: string; filePath?: string }> = ({
-  documentId,
-  filePath,
-}) => {
-  const [summaryContent, setSummaryContent] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [activeStreamId, setActiveStreamId] = useState<string | null>(null);
-  const [hasGenerated, setHasGenerated] = useState(false);
+export const SummaryPanel: React.FC = () => {
+  const currentDocument = useDocumentStore((state) => state.currentDocument);
+  const {
+    summaryContent,
+    isGenerating,
+    hasGenerated,
+    startGeneration,
+    setActiveStreamId,
+    failStream,
+  } = useSummaryStore();
   const contentRef = useRef<HTMLDivElement>(null);
+  const documentId = currentDocument?.documentId;
 
   // 生成总结
   const handleGenerate = useCallback(async () => {
-    if (!documentId || !filePath || isGenerating) return;
+    if (!currentDocument || isGenerating) return;
 
-    setSummaryContent('');
-    setIsGenerating(true);
-    setHasGenerated(true);
+    startGeneration();
 
     try {
-      const handle = await ipcClient.generateSummary({
-        documentId,
-        filePath,
-        promptProfile: 'default',
+      const { text: sourceText } = await extractPdfText(currentDocument.filePath, {
+        maxPages: DEFAULT_SUMMARY_SOURCE_PAGES,
+        maxChars: DEFAULT_SUMMARY_SOURCE_CHARS,
       });
-      setActiveStreamId(handle.streamId);
-    } catch (err) {
-      console.error('生成总结失败:', err);
-      setSummaryContent('⚠️ 生成总结失败，请检查 API 配置后重试。');
-      setIsGenerating(false);
-    }
-  }, [documentId, filePath, isGenerating]);
 
-  // 避免 StrictMode 下异步注册监听后泄漏，导致同一 delta 被重复消费。
-  useEffect(() => {
-    if (!activeStreamId) return;
-
-    let disposed = false;
-    let cleanup: (() => void) | null = null;
-
-    const setup = async () => {
-      const unlisteners = await Promise.all([
-        ipcEvents.onAiStreamChunk((payload: AiStreamChunkPayload) => {
-          if (payload.streamId === activeStreamId && payload.kind !== 'thinking') {
-            setSummaryContent((prev) => prev + payload.delta);
-          }
-        }),
-        ipcEvents.onAiStreamFinished((payload) => {
-          if (payload.streamId === activeStreamId) {
-            setIsGenerating(false);
-            setActiveStreamId(null);
-          }
-        }),
-        ipcEvents.onAiStreamFailed((payload) => {
-          if (payload.streamId === activeStreamId) {
-            setSummaryContent((prev) => prev + `\n\n⚠️ ${payload.error.message}`);
-            setIsGenerating(false);
-            setActiveStreamId(null);
-          }
-        }),
-      ]);
-
-      if (disposed) {
-        unlisteners.forEach((unlisten) => unlisten());
+      if (!sourceText.trim()) {
+        failStream(
+          null,
+          `未能从当前 PDF 前 ${DEFAULT_SUMMARY_SOURCE_PAGES} 页提取到可用于总结的正文，请确认文档是可复制文本后再试。`,
+        );
         return;
       }
 
-      cleanup = () => {
-        unlisteners.forEach((unlisten) => unlisten());
-      };
-    };
+      if (useDocumentStore.getState().currentDocument?.documentId !== currentDocument.documentId) {
+        failStream(null, '当前文档已切换，请在新文档上重新生成总结。');
+        return;
+      }
 
-    setup().catch(console.error);
+      const handle = await ipcClient.generateSummary({
+        documentId: currentDocument.documentId,
+        filePath: currentDocument.filePath,
+        sourceText,
+        promptProfile: 'default',
+      });
 
-    return () => {
-      disposed = true;
-      cleanup?.();
-      cleanup = null;
-    };
-  }, [activeStreamId]);
+      if (useDocumentStore.getState().currentDocument?.documentId !== currentDocument.documentId) {
+        try {
+          await ipcClient.cancelAiStream(handle.streamId);
+        } catch (error) {
+          console.error('切文档后取消总结流失败:', error);
+        }
+        failStream(null, '当前文档已切换，请在新文档上重新生成总结。');
+        return;
+      }
+
+      setActiveStreamId(handle.streamId);
+    } catch (err) {
+      console.error('生成总结失败:', err);
+      const errorMsg =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: string }).message)
+          : '生成总结失败，请检查网络或 API 配置后重试。';
+      failStream(null, errorMsg);
+    }
+  }, [currentDocument, failStream, isGenerating, setActiveStreamId, startGeneration]);
 
   // 自动滚动到底部
   useEffect(() => {

@@ -38,7 +38,7 @@ impl AppState {
 
         let storage = Storage::new_file(data_dir.join("app.db"))?;
         let keychain = KeychainService::new();
-        let ai_integration = AiIntegration::new(storage.clone(), keychain.clone());
+        let ai_integration = AiIntegration::new(storage.clone(), keychain.clone())?;
         let translation_status = Arc::new(Mutex::new(TranslationEngineStatus {
             running: false,
             pid: None,

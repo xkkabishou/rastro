@@ -123,7 +123,11 @@ pub fn open_zotero_attachment(
 
 #[cfg(test)]
 mod tests {
-    use std::{path::PathBuf, sync::Mutex, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        path::PathBuf,
+        sync::Mutex,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     use serde_json::json;
     use tauri::{

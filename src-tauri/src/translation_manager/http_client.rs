@@ -287,12 +287,7 @@ fn map_engine_error(error: EngineErrorPayload) -> AppError {
 mod tests {
     use std::{collections::HashMap, time::Duration};
 
-    use axum::{
-        http::StatusCode,
-        response::IntoResponse,
-        routing::get,
-        Json, Router,
-    };
+    use axum::{http::StatusCode, response::IntoResponse, routing::get, Json, Router};
     use serde_json::json;
     use tokio::net::TcpListener;
 
@@ -343,7 +338,10 @@ mod tests {
         let address = spawn_server(Router::new().route("/healthz", get(timeout_handler))).await;
         let client = TranslationHttpClient::new("127.0.0.1", address.port()).unwrap();
 
-        let error = client.healthz().await.expect_err("408 should map to AppError");
+        let error = client
+            .healthz()
+            .await
+            .expect_err("408 should map to AppError");
         assert_eq!(error.code, AppErrorCode::EngineTimeout);
         assert_eq!(
             error.details.as_ref().unwrap()["responseBody"],
@@ -367,10 +365,14 @@ mod tests {
             )
         }
 
-        let address = spawn_server(Router::new().route("/healthz", get(engine_error_handler))).await;
+        let address =
+            spawn_server(Router::new().route("/healthz", get(engine_error_handler))).await;
         let client = TranslationHttpClient::new("127.0.0.1", address.port()).unwrap();
 
-        let error = client.healthz().await.expect_err("engine envelope should map");
+        let error = client
+            .healthz()
+            .await
+            .expect_err("engine envelope should map");
         assert_eq!(error.code, AppErrorCode::TranslationCancelled);
         assert_eq!(error.details.as_ref().unwrap()["jobId"], json!("job-1"));
     }

@@ -209,7 +209,7 @@ class TranslationWorker:
             return
 
         job.status = JobStatus.RUNNING
-        job.stage = "preprocessing"
+        job.stage = "preflight"
         job.progress = 0.0
         job.started_at = _now_iso()
         job.updated_at = _now_iso()
@@ -233,16 +233,17 @@ class TranslationWorker:
                 """进度回调，更新任务状态。"""
                 job.updated_at = _now_iso()
                 if "[preprocess]" in msg:
-                    job.stage = "preprocessing"
-                    job.progress = 0.1
+                    job.stage = "extracting"
+                    job.progress = 0.15
                 elif "[pdf2zh] Starting" in msg:
                     job.stage = "translating"
-                    job.progress = 0.2
+                    job.progress = 0.35
                 elif "[pdf2zh] Translation complete" in msg:
-                    job.stage = "completing"
+                    job.stage = "postprocessing"
                     job.progress = 0.9
                 elif "[pdf2zh] Model:" in msg:
                     job.stage = "translating"
+                    job.progress = max(job.progress, 0.4)
 
             # 调用翻译核心
             result = ag_translate(
@@ -254,9 +255,19 @@ class TranslationWorker:
                 debug=False,
                 skip_references=job.skip_reference_pages,
                 on_progress=progress_callback,
+                cancel_event=job._cancel_event,
             )
 
-            if result["returncode"] == 0:
+            if result.get("cancelled") or job._cancel_event.is_set():
+                job.status = JobStatus.CANCELLED
+                job.stage = "cancelled"
+                job.progress = 0.0
+                job.error = JobError(
+                    code="JOB_CANCELLED",
+                    message="翻译任务已取消",
+                    retryable=False,
+                )
+            elif result["returncode"] == 0:
                 job.status = JobStatus.COMPLETED
                 job.stage = "completed"
                 job.progress = 1.0

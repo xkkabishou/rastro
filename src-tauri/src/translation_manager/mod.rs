@@ -307,16 +307,7 @@ impl TranslationManager {
         &self,
         input: RequestTranslationInput,
     ) -> Result<PendingTranslationRequest, AppError> {
-        let file_path = Path::new(&input.file_path);
-        if !file_path.is_absolute() || !file_path.exists() {
-            return Err(AppError::new(
-                AppErrorCode::DocumentNotFound,
-                "翻译文件路径不存在或不是绝对路径",
-                false,
-            )
-            .with_detail("filePath", input.file_path));
-        }
-
+        // 1. 先查文档记录
         let document = {
             let connection = self.inner.storage.connection();
             documents::get_by_id(&connection, &input.document_id)?
@@ -329,6 +320,41 @@ impl TranslationManager {
             )
             .with_detail("documentId", input.document_id.clone())
         })?;
+
+        // 2. 校验路径一致性：彻底不信任前端传入的 file_path
+        let canonical_input = std::fs::canonicalize(&input.file_path).map_err(|_| {
+            AppError::new(AppErrorCode::DocumentNotFound, "无法解析文件路径", false)
+                .with_detail("filePath", input.file_path.clone())
+        })?;
+        let canonical_doc = std::fs::canonicalize(&document.file_path).map_err(|_| {
+            AppError::new(
+                AppErrorCode::DocumentNotFound,
+                "文档记录的路径已失效，请重新打开文档",
+                false,
+            )
+            .with_detail("documentFilePath", document.file_path.clone())
+        })?;
+
+        if canonical_input != canonical_doc {
+            return Err(AppError::new(
+                AppErrorCode::ResourceOwnershipMismatch,
+                "file_path 与 document_id 对应的文件路径不一致",
+                false,
+            )
+            .with_detail("inputPath", input.file_path)
+            .with_detail("documentPath", document.file_path.clone()));
+        }
+
+        // 3. 后续一律使用 document.file_path
+        let trusted_file_path = Path::new(&document.file_path);
+        if !trusted_file_path.is_absolute() || !trusted_file_path.exists() {
+            return Err(AppError::new(
+                AppErrorCode::DocumentNotFound,
+                "翻译文件路径不存在或不是绝对路径",
+                false,
+            )
+            .with_detail("filePath", document.file_path.clone()));
+        }
 
         let provider_record = {
             let connection = self.inner.storage.connection();
@@ -358,9 +384,8 @@ impl TranslationManager {
 
         let source_lang = input.source_lang.unwrap_or_else(|| "en".to_string());
         let target_lang = input.target_lang.unwrap_or_else(|| "zh-CN".to_string());
-        let output_mode = normalize_output_mode(
-            input.output_mode.unwrap_or_else(|| "bilingual".to_string()),
-        )?;
+        let output_mode =
+            normalize_output_mode(input.output_mode.unwrap_or_else(|| "bilingual".to_string()))?;
 
         let figure_translation = input.figure_translation.unwrap_or(true);
         let skip_reference_pages = input.skip_reference_pages.unwrap_or(true);
@@ -383,7 +408,7 @@ impl TranslationManager {
 
         Ok(PendingTranslationRequest {
             document_id: document.document_id,
-            pdf_path: file_path.to_string_lossy().to_string(),
+            pdf_path: trusted_file_path.to_string_lossy().to_string(),
             output_dir: output_dir.to_string_lossy().to_string(),
             cache_key,
             source_lang,
@@ -711,7 +736,7 @@ impl TranslationManager {
             job_id,
             "failed",
             "failed",
-            Some(&format!("{:?}", error.code).to_uppercase()),
+            Some(error.code.as_contract_str()),
             Some(&error.message),
             started_at,
             Some(Utc::now().to_rfc3339()),

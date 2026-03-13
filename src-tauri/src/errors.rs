@@ -5,7 +5,7 @@
 use serde::Serialize;
 use std::collections::HashMap;
 
-/// 应用错误码（共 19 个，与 TypeScript AppErrorCode 对齐）
+/// 应用错误码（共 23 个，与 TypeScript AppErrorCode 对齐）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum AppErrorCode {
@@ -34,8 +34,46 @@ pub enum AppErrorCode {
     ZoteroDbLocked,
     // 缓存相关
     CacheCorrupted,
+    // 安全与校验
+    InvalidProviderBaseUrl,
+    ResourceOwnershipMismatch,
+    // 精确语义替代
+    ProviderNotConfigured,
+    ChatSessionNotFound,
     // 通用
     InternalError,
+}
+
+impl AppErrorCode {
+    /// 返回与 serde SCREAMING_SNAKE_CASE 序列化一致的稳定字符串，
+    /// 用于数据库持久化等需要稳定格式的场景。
+    pub fn as_contract_str(&self) -> &'static str {
+        match self {
+            Self::DocumentNotFound => "DOCUMENT_NOT_FOUND",
+            Self::DocumentUnsupported => "DOCUMENT_UNSUPPORTED",
+            Self::EngineUnavailable => "ENGINE_UNAVAILABLE",
+            Self::EnginePortConflict => "ENGINE_PORT_CONFLICT",
+            Self::EngineTimeout => "ENGINE_TIMEOUT",
+            Self::PythonNotFound => "PYTHON_NOT_FOUND",
+            Self::PythonVersionMismatch => "PYTHON_VERSION_MISMATCH",
+            Self::PdfmathtranslateNotInstalled => "PDFMATHTRANSLATE_NOT_INSTALLED",
+            Self::TranslationFailed => "TRANSLATION_FAILED",
+            Self::TranslationCancelled => "TRANSLATION_CANCELLED",
+            Self::ProviderKeyMissing => "PROVIDER_KEY_MISSING",
+            Self::ProviderConnectionFailed => "PROVIDER_CONNECTION_FAILED",
+            Self::ProviderRateLimited => "PROVIDER_RATE_LIMITED",
+            Self::ProviderInsufficientCredit => "PROVIDER_INSUFFICIENT_CREDIT",
+            Self::UnsupportedTranslationProvider => "UNSUPPORTED_TRANSLATION_PROVIDER",
+            Self::ZoteroNotFound => "ZOTERO_NOT_FOUND",
+            Self::ZoteroDbLocked => "ZOTERO_DB_LOCKED",
+            Self::CacheCorrupted => "CACHE_CORRUPTED",
+            Self::InvalidProviderBaseUrl => "INVALID_PROVIDER_BASE_URL",
+            Self::ResourceOwnershipMismatch => "RESOURCE_OWNERSHIP_MISMATCH",
+            Self::ProviderNotConfigured => "PROVIDER_NOT_CONFIGURED",
+            Self::ChatSessionNotFound => "CHAT_SESSION_NOT_FOUND",
+            Self::InternalError => "INTERNAL_ERROR",
+        }
+    }
 }
 
 /// 统一错误对象——所有 Command 失败时返回此类型
@@ -131,10 +169,7 @@ mod tests {
             "PDFMATHTRANSLATE_NOT_INSTALLED",
         ),
         (AppErrorCode::TranslationFailed, "TRANSLATION_FAILED"),
-        (
-            AppErrorCode::TranslationCancelled,
-            "TRANSLATION_CANCELLED",
-        ),
+        (AppErrorCode::TranslationCancelled, "TRANSLATION_CANCELLED"),
         (AppErrorCode::ProviderKeyMissing, "PROVIDER_KEY_MISSING"),
         (
             AppErrorCode::ProviderConnectionFailed,
@@ -152,15 +187,31 @@ mod tests {
         (AppErrorCode::ZoteroNotFound, "ZOTERO_NOT_FOUND"),
         (AppErrorCode::ZoteroDbLocked, "ZOTERO_DB_LOCKED"),
         (AppErrorCode::CacheCorrupted, "CACHE_CORRUPTED"),
+        (
+            AppErrorCode::InvalidProviderBaseUrl,
+            "INVALID_PROVIDER_BASE_URL",
+        ),
+        (
+            AppErrorCode::ResourceOwnershipMismatch,
+            "RESOURCE_OWNERSHIP_MISMATCH",
+        ),
+        (
+            AppErrorCode::ProviderNotConfigured,
+            "PROVIDER_NOT_CONFIGURED",
+        ),
+        (AppErrorCode::ChatSessionNotFound, "CHAT_SESSION_NOT_FOUND"),
         (AppErrorCode::InternalError, "INTERNAL_ERROR"),
     ];
 
     #[test]
     fn app_error_code_serializes_to_expected_contract_literals() {
-        assert_eq!(ALL_ERROR_CODES.len(), 19);
+        assert_eq!(ALL_ERROR_CODES.len(), 23);
 
         for (code, expected) in ALL_ERROR_CODES {
-            assert_eq!(serde_json::to_string(code).unwrap(), format!("\"{expected}\""));
+            assert_eq!(
+                serde_json::to_string(code).unwrap(),
+                format!("\"{expected}\"")
+            );
         }
     }
 
@@ -192,5 +243,17 @@ mod tests {
         assert_eq!(value["message"], "数据库损坏");
         assert_eq!(value["retryable"], false);
         assert!(value.get("details").is_none());
+    }
+
+    #[test]
+    fn as_contract_str_matches_serde_serialization_for_all_codes() {
+        for (code, expected) in ALL_ERROR_CODES {
+            assert_eq!(
+                code.as_contract_str(),
+                *expected,
+                "as_contract_str() mismatch for {:?}",
+                code
+            );
+        }
     }
 }

@@ -309,6 +309,18 @@ const resetPdfViewerDocument = (pdfViewer: PdfJsViewer, linkService: PDFLinkServ
   linkService.setDocument(null);
 };
 
+const resolveTranslatedPdfUrl = (
+  paths: { translatedPdfPath?: string; bilingualPdfPath?: string } | null | undefined,
+) => {
+  const filePath = paths?.translatedPdfPath ?? paths?.bilingualPdfPath ?? null;
+  return filePath ? convertFileSrc(filePath) : null;
+};
+
+const toProgressPercentage = (progress: number) => {
+  const normalized = progress > 1 ? progress / 100 : progress;
+  return Math.round(Math.min(100, Math.max(0, normalized * 100)));
+};
+
 /** PdfViewer 主组件 */
 export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
@@ -332,19 +344,32 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
 
   // 监听全局 store 中的 pdfUrl 变化（来自 Sidebar 文件选择 / Zotero 打开）
   const storePdfUrl = useDocumentStore((s) => s.pdfUrl);
+  const translatedPdfUrl = useDocumentStore((s) => s.translatedPdfUrl);
+  const bilingualMode = useDocumentStore((s) => s.bilingualMode);
   const ownedObjectUrlRef = useRef<string | null>(null);
   const fontsReadyResolvedRef = useRef(false);
   const latestUsedFamiliesRef = useRef<string[]>([]);
+  const sourcePdfUrl = storePdfUrl ?? initialUrl;
+  const activePdfUrl = translatedPdfUrl && !bilingualMode ? translatedPdfUrl : sourcePdfUrl;
 
   useEffect(() => {
-    if (!storePdfUrl || storePdfUrl === url) return;
+    if (!activePdfUrl) {
+      if (ownedObjectUrlRef.current) {
+        URL.revokeObjectURL(ownedObjectUrlRef.current);
+        ownedObjectUrlRef.current = null;
+      }
+      setUrl(undefined);
+      return;
+    }
+
+    if (activePdfUrl === url) return;
 
     if (ownedObjectUrlRef.current) {
       URL.revokeObjectURL(ownedObjectUrlRef.current);
       ownedObjectUrlRef.current = null;
     }
-    setUrl(storePdfUrl);
-  }, [storePdfUrl, url]);
+    setUrl(activePdfUrl);
+  }, [activePdfUrl, url]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
@@ -624,22 +649,105 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   const currentDocument = useDocumentStore((s) => s.currentDocument);
   const translationJob = useDocumentStore((s) => s.translationJob);
   const translationProgress = useDocumentStore((s) => s.translationProgress);
+  const setTranslationJob = useDocumentStore((s) => s.setTranslationJob);
+  const setTranslationProgress = useDocumentStore((s) => s.setTranslationProgress);
+  const setTranslatedPdfUrl = useDocumentStore((s) => s.setTranslatedPdfUrl);
+
+  useEffect(() => {
+    setTranslatedPdfUrl(resolveTranslatedPdfUrl(currentDocument?.cachedTranslation));
+  }, [
+    currentDocument?.documentId,
+    currentDocument?.cachedTranslation?.translatedPdfPath,
+    currentDocument?.cachedTranslation?.bilingualPdfPath,
+    setTranslatedPdfUrl,
+  ]);
 
   const handleTranslate = useCallback(async () => {
     if (!currentDocument) return;
     try {
+      setTranslationProgress(0);
+      setTranslatedPdfUrl(null);
       const job = await ipcClient.requestTranslation({
         documentId: currentDocument.documentId,
         filePath: currentDocument.filePath,
       });
-      useDocumentStore.getState().setTranslationJob(job);
+      setTranslationJob(job);
+      setTranslationProgress(toProgressPercentage(job.progress));
+      setTranslatedPdfUrl(resolveTranslatedPdfUrl(job));
     } catch (err) {
       console.error('提交翻译任务失败:', err);
     }
-  }, [currentDocument]);
+  }, [currentDocument, setTranslatedPdfUrl, setTranslationJob, setTranslationProgress]);
+
+  useEffect(() => {
+    if (!currentDocument || !translationJob) {
+      return;
+    }
+
+    if (translationJob.documentId !== currentDocument.documentId) {
+      return;
+    }
+
+    const isActiveJob = translationJob.status === 'queued' || translationJob.status === 'running';
+    if (!isActiveJob) {
+      setTranslatedPdfUrl(resolveTranslatedPdfUrl(translationJob));
+      return;
+    }
+
+    let disposed = false;
+    let timerId: number | undefined;
+
+    const pollTranslationJob = async () => {
+      try {
+        const latestJob = await ipcClient.getTranslationJob(translationJob.jobId);
+        if (disposed) {
+          return;
+        }
+
+        if (useDocumentStore.getState().currentDocument?.documentId !== currentDocument.documentId) {
+          return;
+        }
+
+        setTranslationJob(latestJob);
+        setTranslationProgress(toProgressPercentage(latestJob.progress));
+        setTranslatedPdfUrl(resolveTranslatedPdfUrl(latestJob));
+
+        if (latestJob.status === 'queued' || latestJob.status === 'running') {
+          timerId = window.setTimeout(() => {
+            void pollTranslationJob();
+          }, 1000);
+        }
+      } catch (err) {
+        if (disposed) {
+          return;
+        }
+        console.error('轮询翻译任务失败:', err);
+        timerId = window.setTimeout(() => {
+          void pollTranslationJob();
+        }, 1000);
+      }
+    };
+
+    timerId = window.setTimeout(() => {
+      void pollTranslationJob();
+    }, 1000);
+
+    return () => {
+      disposed = true;
+      if (timerId) {
+        window.clearTimeout(timerId);
+      }
+    };
+  }, [
+    currentDocument,
+    setTranslatedPdfUrl,
+    setTranslationJob,
+    setTranslationProgress,
+    translationJob,
+  ]);
 
   const isTranslating = translationJob?.status === 'running' || translationJob?.status === 'queued';
-  const hasTranslation = !!currentDocument?.cachedTranslation?.available;
+  const hasTranslation = !!translatedPdfUrl || !!currentDocument?.cachedTranslation?.available;
 
   useEffect(() => {
     const scrollContainer = viewerContainerRef.current;

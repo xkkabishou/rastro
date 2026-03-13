@@ -97,6 +97,51 @@ pub fn list_all(connection: &Connection) -> rusqlite::Result<Vec<UsageEventRecor
     rows.collect()
 }
 
+/// 按条件过滤使用事件（将 WHERE 下推到 SQL）
+pub fn list_filtered(
+    connection: &Connection,
+    from: Option<&str>,
+    to: Option<&str>,
+    provider: Option<&str>,
+) -> rusqlite::Result<Vec<UsageEventRecord>> {
+    let mut conditions = Vec::new();
+    let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    let mut param_index = 1;
+
+    if let Some(from) = from {
+        conditions.push(format!("created_at >= ?{param_index}"));
+        param_values.push(Box::new(from.to_string()));
+        param_index += 1;
+    }
+    if let Some(to) = to {
+        conditions.push(format!("created_at <= ?{param_index}"));
+        param_values.push(Box::new(to.to_string()));
+        param_index += 1;
+    }
+    if let Some(provider) = provider {
+        conditions.push(format!("provider = ?{param_index}"));
+        param_values.push(Box::new(provider.to_string()));
+    }
+
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", conditions.join(" AND "))
+    };
+
+    let sql = format!(
+        "SELECT * FROM usage_events{} ORDER BY created_at DESC",
+        where_clause
+    );
+
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+        param_values.iter().map(|p| p.as_ref()).collect();
+
+    let mut statement = connection.prepare(&sql)?;
+    let rows = statement.query_map(param_refs.as_slice(), map_row)?;
+    rows.collect()
+}
+
 #[cfg(test)]
 mod tests {
     use crate::storage::Storage;

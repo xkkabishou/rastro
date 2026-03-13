@@ -15,10 +15,17 @@ mod zotero_connector;
 use tauri::Manager;
 
 fn main() {
+    if let Err(e) = run_app() {
+        eprintln!("Rastro 启动失败: {}", e);
+        std::process::exit(1);
+    }
+}
+
+fn run_app() -> Result<(), Box<dyn std::error::Error>> {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let state = app_state::AppState::initialize().expect("初始化后端状态失败");
+            let state = app_state::AppState::initialize()?;
             app.manage(state);
             Ok(())
         })
@@ -58,6 +65,6 @@ fn main() {
             ipc::zotero::fetch_zotero_items,
             ipc::zotero::open_zotero_attachment,
         ])
-        .run(tauri::generate_context!())
-        .expect("启动 Rastro 失败");
+        .run(tauri::generate_context!())?;
+    Ok(())
 }

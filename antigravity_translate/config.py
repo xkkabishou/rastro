@@ -18,14 +18,14 @@ from pathlib import Path
 
 # ── pdf2zh 可执行文件路径 ──────────────────────────────────────────
 PDF2ZH_EXE: str | Path = os.environ.get(
-    "AG_PDF2ZH_EXE", r"C:\软件\pdf2zh\pdf2zh\pdf2zh.exe"
+    "AG_PDF2ZH_EXE", ""
 )
 
 # ── LLM API ───────────────────────────────────────────────────────
 CLAUDE_BASE_URL: str = os.environ.get(
-    "AG_CLAUDE_BASE_URL", "https://cpa.wushangzhizunmolongdadijiayuqi.xyz/v1"
+    "AG_CLAUDE_BASE_URL", ""
 )
-CLAUDE_API_KEY: str = os.environ.get("AG_CLAUDE_API_KEY", "200521")
+CLAUDE_API_KEY: str = os.environ.get("AG_CLAUDE_API_KEY", "")
 CLAUDE_MODEL: str = os.environ.get("AG_CLAUDE_MODEL", "Claude Sonnet 4.6")
 
 # ── 翻译参数默认值 ────────────────────────────────────────────────

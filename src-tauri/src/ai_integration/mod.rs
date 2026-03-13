@@ -1,7 +1,6 @@
 // AI Provider 集成入口
 pub mod chat_service;
 pub mod provider_registry;
-pub mod summary_service;
 pub mod usage_meter;
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -11,7 +10,7 @@ use reqwest::Client;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    errors::AppError,
+    errors::{AppError, AppErrorCode},
     keychain::KeychainService,
     models::{ProviderId, SummaryPromptProfile},
     storage::Storage,
@@ -36,6 +35,7 @@ pub struct AskAiRequest {
 pub struct GenerateSummaryRequest {
     pub document_id: String,
     pub file_path: String,
+    pub source_text: String,
     pub provider: Option<ProviderId>,
     pub model: Option<String>,
     pub prompt_profile: SummaryPromptProfile,
@@ -72,19 +72,25 @@ pub struct AiIntegration {
 
 impl AiIntegration {
     /// 构建带默认超时的 HTTP client
-    pub fn new(storage: Storage, keychain: KeychainService) -> Self {
+    pub fn new(storage: Storage, keychain: KeychainService) -> Result<Self, AppError> {
         let client = Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(60))
             .build()
-            .expect("reqwest client should build");
+            .map_err(|e| {
+                AppError::new(
+                    AppErrorCode::InternalError,
+                    format!("无法初始化 HTTP 客户端: {}", e),
+                    false,
+                )
+            })?;
 
-        Self {
+        Ok(Self {
             client,
             storage,
             keychain,
             stream_registry: Arc::new(Mutex::new(HashMap::new())),
-        }
+        })
     }
 
     /// 启动问答流
@@ -102,7 +108,7 @@ impl AiIntegration {
         app: tauri::AppHandle<R>,
         input: GenerateSummaryRequest,
     ) -> Result<StreamHandleResult, AppError> {
-        summary_service::start_summary(app, self.clone(), input).await
+        chat_service::start_summary_flow(app, self.clone(), input).await
     }
 
     /// 取消指定流

@@ -97,8 +97,16 @@ pub fn open_document(
         ));
     }
 
-    let bytes = std::fs::read(path)?;
-    let file_sha256 = format!("{:x}", Sha256::digest(bytes));
+    // 流式计算 SHA256（避免将整个文件读入内存）
+    let file_sha256 = {
+        use sha2::Digest;
+        let file = std::fs::File::open(path)?;
+        let mut reader = std::io::BufReader::with_capacity(64 * 1024, file);
+        let mut hasher = Sha256::new();
+        // Sha256 implements io::Write via the digest crate
+        std::io::copy(&mut reader, &mut hasher)?;
+        format!("{:x}", hasher.finalize())
+    };
     let title = path
         .file_stem()
         .and_then(|value| value.to_str())
@@ -315,7 +323,7 @@ mod tests {
         let data_dir = temp_dir("ipc-document-test");
         let storage = Storage::new_in_memory().unwrap();
         let keychain = KeychainService::new();
-        let ai_integration = AiIntegration::new(storage.clone(), keychain.clone());
+        let ai_integration = AiIntegration::new(storage.clone(), keychain.clone()).unwrap();
         let translation_status = Arc::new(Mutex::new(TranslationEngineStatus {
             running: false,
             pid: None,

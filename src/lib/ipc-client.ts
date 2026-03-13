@@ -62,12 +62,21 @@ import {
 // 通用 IPC 调用封装（统一错误处理）
 // ---------------------------------------------------------------------------
 
+function isAppError(e: unknown): e is AppError {
+  return typeof e === 'object' && e !== null && 'code' in e && 'message' in e;
+}
+
 async function safeInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   try {
     return await invoke<T>(command, args);
   } catch (err) {
     console.error(`IPC 错误 [${command}]:`, err);
-    throw err as AppError;
+    if (isAppError(err)) throw err;
+    throw {
+      code: 'INTERNAL_ERROR',
+      message: typeof err === 'string' ? err : '发生了意外的 IPC 错误',
+      retryable: false,
+    } as AppError;
   }
 }
 

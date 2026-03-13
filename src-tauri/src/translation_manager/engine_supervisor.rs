@@ -413,7 +413,9 @@ impl EngineSupervisor {
                 _ => {
                     return Err(AppError::new(
                         AppErrorCode::PdfmathtranslateNotInstalled,
-                        format!("缺少翻译运行依赖 {module_name}，请检查项目目录下是否存在该 Python 包"),
+                        format!(
+                            "缺少翻译运行依赖 {module_name}，请检查项目目录下是否存在该 Python 包"
+                        ),
                         false,
                     )
                     .with_detail("python", python.clone())
@@ -602,9 +604,7 @@ mod tests {
     use crate::{
         errors::AppErrorCode,
         ipc::translation::TranslationEngineStatus,
-        translation_manager::{
-            http_client::{HealthzResponse, TranslationHttpClient},
-        },
+        translation_manager::http_client::{HealthzResponse, TranslationHttpClient},
     };
 
     use super::{valid_health_signature, version_is_supported, EngineSupervisor};
@@ -764,14 +764,7 @@ exit 0
         }));
         let http_client = TranslationHttpClient::new("127.0.0.1", port).unwrap();
 
-        EngineSupervisor::new(
-            "127.0.0.1".to_string(),
-            port,
-            data_dir,
-            status,
-            http_client,
-        )
-        .unwrap()
+        EngineSupervisor::new("127.0.0.1".to_string(), port, data_dir, status, http_client).unwrap()
     }
 
     fn free_port() -> u16 {

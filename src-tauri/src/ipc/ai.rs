@@ -39,6 +39,7 @@ pub struct AskAiInput {
 pub struct GenerateSummaryInput {
     pub document_id: String,
     pub file_path: String,
+    pub source_text: String,
     pub provider: Option<ProviderId>,
     pub model: Option<String>,
     pub prompt_profile: Option<SummaryPromptProfile>,
@@ -139,6 +140,7 @@ pub async fn generate_summary(
             GenerateSummaryRequest {
                 document_id: input.document_id,
                 file_path: input.file_path,
+                source_text: input.source_text,
                 provider: input.provider,
                 model: input.model,
                 prompt_profile: input.prompt_profile.unwrap_or_default(),

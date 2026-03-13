@@ -87,6 +87,91 @@ fn finalize_stream_outcome(
     })
 }
 
+fn process_sse_data_line<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    prepared: &PreparedStream,
+    line: &str,
+    full_text: &mut String,
+    full_thinking: &mut String,
+    usage: &mut Option<usage_meter::UsageSnapshot>,
+    payload_count: &mut usize,
+    last_payload_preview: &mut Option<String>,
+) -> Result<Option<StreamOutcome>, AppError> {
+    let trimmed_line = line.trim();
+    let Some(data) = trimmed_line.strip_prefix("data:") else {
+        return Ok(None);
+    };
+    let data = data.trim();
+
+    if data.is_empty() {
+        return Ok(None);
+    }
+
+    if data == "[DONE]" {
+        let resolved_usage = usage.take().unwrap_or_else(|| {
+            usage_meter::UsageSnapshot::fallback(
+                prepared.provider,
+                &prepared.model,
+                &prepared.prompt,
+                full_text,
+            )
+        });
+
+        return finalize_stream_outcome(
+            prepared,
+            full_text.clone(),
+            full_thinking.clone(),
+            resolved_usage,
+            *payload_count,
+            last_payload_preview.as_deref(),
+        )
+        .map(Some);
+    }
+
+    *payload_count += 1;
+    *last_payload_preview = Some(data.chars().take(300).collect());
+
+    let payload: serde_json::Value = serde_json::from_str(data).map_err(|error| {
+        AppError::new(
+            AppErrorCode::ProviderConnectionFailed,
+            format!("解析 SSE JSON 失败: {error}"),
+            true,
+        )
+    })?;
+
+    if let Some(thinking_delta) =
+        provider_registry::extract_stream_thinking(prepared.provider, &payload)
+    {
+        full_thinking.push_str(&thinking_delta);
+        let _ = app.emit(
+            "ai://stream-chunk",
+            json!({
+                "streamId": prepared.stream_id,
+                "delta": thinking_delta,
+                "kind": "thinking",
+            }),
+        );
+    }
+
+    if let Some(delta) = provider_registry::extract_stream_delta(prepared.provider, &payload) {
+        full_text.push_str(&delta);
+        let _ = app.emit(
+            "ai://stream-chunk",
+            json!({
+                "streamId": prepared.stream_id,
+                "delta": delta,
+                "kind": "content",
+            }),
+        );
+    }
+
+    if usage.is_none() {
+        *usage = usage_meter::extract_usage(prepared.provider, &payload, &prepared.model);
+    }
+
+    Ok(None)
+}
+
 /// 启动普通聊天流
 pub async fn start_chat<R: tauri::Runtime + 'static>(
     app: tauri::AppHandle<R>,
@@ -102,14 +187,22 @@ pub async fn start_chat<R: tauri::Runtime + 'static>(
     let session_id = {
         let connection = ai.storage.connection();
         if let Some(session_id) = input.session_id.clone() {
-            let existing = chat_sessions::get_by_id(&connection, &session_id)?;
-            if existing.is_none() {
+            let Some(existing) = chat_sessions::get_by_id(&connection, &session_id)? else {
                 return Err(AppError::new(
-                    AppErrorCode::DocumentNotFound,
+                    AppErrorCode::ChatSessionNotFound,
                     "聊天会话不存在",
                     false,
                 ));
+            };
+
+            if existing.document_id != input.document_id {
+                return Err(AppError::new(
+                    AppErrorCode::ChatSessionNotFound,
+                    "聊天会话不属于当前文档",
+                    false,
+                ));
             }
+
             session_id
         } else {
             let session = chat_sessions::create(
@@ -199,7 +292,7 @@ pub async fn start_summary_flow<R: tauri::Runtime + 'static>(
         input.document_id,
         session_id,
         started_at,
-        build_summary_prompt(&input.file_path, input.prompt_profile),
+        build_summary_prompt(&input.file_path, &input.source_text, input.prompt_profile),
         UsageFeature::Summary,
     )
     .await
@@ -386,76 +479,38 @@ async fn run_stream_request<R: tauri::Runtime>(
                         buffer.push_str(&String::from_utf8_lossy(&chunk));
 
                         while let Some(position) = buffer.find('\n') {
-                            let line = buffer[..position].trim().to_string();
+                            let line = buffer[..position].to_string();
                             buffer = buffer[position + 1..].to_string();
 
-                            if let Some(data) = line.strip_prefix("data:") {
-                                let data = data.trim();
-                                if data == "[DONE]" {
-                                    let usage = usage.unwrap_or_else(|| {
-                                        usage_meter::UsageSnapshot::fallback(
-                                            prepared.provider,
-                                            &prepared.model,
-                                            &prepared.prompt,
-                                            &full_text,
-                                        )
-                                    });
-
-                                    return finalize_stream_outcome(
-                                        prepared,
-                                        full_text,
-                                        full_thinking,
-                                        usage,
-                                        payload_count,
-                                        last_payload_preview.as_deref(),
-                                    );
-                                }
-
-                                payload_count += 1;
-                                last_payload_preview = Some(data.chars().take(300).collect());
-
-                                let payload: serde_json::Value = serde_json::from_str(data).map_err(|error| {
-                                    AppError::new(
-                                        AppErrorCode::ProviderConnectionFailed,
-                                        format!("解析 SSE JSON 失败: {error}"),
-                                        true,
-                                    )
-                                })?;
-
-                                if let Some(thinking_delta) =
-                                    provider_registry::extract_stream_thinking(prepared.provider, &payload)
-                                {
-                                    full_thinking.push_str(&thinking_delta);
-                                    let _ = app.emit(
-                                        "ai://stream-chunk",
-                                        json!({
-                                            "streamId": prepared.stream_id,
-                                            "delta": thinking_delta,
-                                            "kind": "thinking",
-                                        }),
-                                    );
-                                }
-
-                                if let Some(delta) = provider_registry::extract_stream_delta(prepared.provider, &payload) {
-                                    full_text.push_str(&delta);
-                                    let _ = app.emit(
-                                        "ai://stream-chunk",
-                                        json!({
-                                            "streamId": prepared.stream_id,
-                                            "delta": delta,
-                                            "kind": "content",
-                                        }),
-                                    );
-                                }
-
-                                if usage.is_none() {
-                                    usage = usage_meter::extract_usage(prepared.provider, &payload, &prepared.model);
-                                }
+                            if let Some(outcome) = process_sse_data_line(
+                                app,
+                                prepared,
+                                &line,
+                                &mut full_text,
+                                &mut full_thinking,
+                                &mut usage,
+                                &mut payload_count,
+                                &mut last_payload_preview,
+                            )? {
+                                return Ok(outcome);
                             }
                         }
                     }
                     Some(Err(error)) => return Err(AppError::from(error)),
                     None => {
+                        if let Some(outcome) = process_sse_data_line(
+                            app,
+                            prepared,
+                            &buffer,
+                            &mut full_text,
+                            &mut full_thinking,
+                            &mut usage,
+                            &mut payload_count,
+                            &mut last_payload_preview,
+                        )? {
+                            return Ok(outcome);
+                        }
+
                         let usage = usage.unwrap_or_else(|| {
                             usage_meter::UsageSnapshot::fallback(
                                 prepared.provider,
@@ -491,11 +546,16 @@ fn build_chat_prompt(input: &AskAiRequest) -> String {
     }
 }
 
-fn build_summary_prompt(file_path: &str, profile: SummaryPromptProfile) -> String {
+fn build_summary_prompt(
+    file_path: &str,
+    source_text: &str,
+    profile: SummaryPromptProfile,
+) -> String {
     format!(
-        "请为文档生成结构化摘要。\n文档路径：{}\nPrompt Profile：{}\n如果暂时无法直接读取正文，请明确说明并基于文件名给出可执行的阅读提纲。",
+        "请基于下面的 PDF 正文摘录生成结构化摘要。\n文档路径：{}\nPrompt Profile：{}\n说明：正文摘录来自前端对 PDF 的文本提取，可能包含少量版式噪声；请只基于摘录内容作答，不要声称你直接访问了原始 PDF。\n\n正文摘录开始：\n{}\n\n正文摘录结束。",
         file_path,
-        profile.as_str()
+        profile.as_str(),
+        source_text.trim(),
     )
 }
 
@@ -513,7 +573,9 @@ mod tests {
     use std::{net::SocketAddr, time::Duration};
 
     use axum::{
+        body::Body,
         extract::State,
+        http::header,
         response::sse::{Event, KeepAlive, Sse},
         routing::post,
         Json, Router,
@@ -525,12 +587,13 @@ mod tests {
 
     use crate::{
         ai_integration::{AiIntegration, AskAiRequest},
+        errors::AppErrorCode,
         keychain::KeychainService,
-        models::ProviderId,
-        storage::{documents, migration, provider_settings, Storage},
+        models::{DocumentSourceType, ProviderId},
+        storage::{chat_messages, chat_sessions, documents, migration, provider_settings, Storage},
     };
 
-    use super::{run_stream_request, PreparedStream};
+    use super::{run_stream_request, PreparedStream, StreamOutcome};
 
     #[derive(Clone)]
     struct MockState;
@@ -566,9 +629,20 @@ mod tests {
         Sse::new(stream::iter(events)).keep_alive(KeepAlive::new().interval(Duration::from_secs(1)))
     }
 
+    async fn stream_without_trailing_newline(
+        State(_state): State<MockState>,
+        Json(_body): Json<Value>,
+    ) -> impl axum::response::IntoResponse {
+        (
+            [(header::CONTENT_TYPE, "text/event-stream")],
+            Body::from(r#"data: {"choices":[{"delta":{"content":"Tail"}}]}"#),
+        )
+    }
+
     async fn boot_mock_server() -> SocketAddr {
         let router = Router::new()
             .route("/chat/completions", post(openai_stream))
+            .route("/v1/chat/completions", post(openai_stream))
             .with_state(MockState);
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -581,6 +655,23 @@ mod tests {
     async fn boot_empty_stream_server() -> SocketAddr {
         let router = Router::new()
             .route("/chat/completions", post(empty_stream))
+            .route("/v1/chat/completions", post(empty_stream))
+            .with_state(MockState);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        address
+    }
+
+    async fn boot_stream_without_trailing_newline_server() -> SocketAddr {
+        let router = Router::new()
+            .route("/chat/completions", post(stream_without_trailing_newline))
+            .route(
+                "/v1/chat/completions",
+                post(stream_without_trailing_newline),
+            )
             .with_state(MockState);
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -595,7 +686,7 @@ mod tests {
         let address = boot_mock_server().await;
         let storage = Storage::new_in_memory().unwrap();
         let keychain = KeychainService::new();
-        let ai = AiIntegration::new(storage.clone(), keychain.clone());
+        let ai = AiIntegration::new(storage.clone(), keychain.clone()).unwrap();
 
         {
             let connection = storage.connection();
@@ -654,7 +745,7 @@ mod tests {
         let address = boot_empty_stream_server().await;
         let storage = Storage::new_in_memory().unwrap();
         let keychain = KeychainService::new();
-        let ai = AiIntegration::new(storage.clone(), keychain.clone());
+        let ai = AiIntegration::new(storage.clone(), keychain.clone()).unwrap();
 
         {
             let connection = storage.connection();
@@ -683,11 +774,156 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert_eq!(error.code, crate::errors::AppErrorCode::ProviderConnectionFailed);
+        assert_eq!(
+            error.code,
+            crate::errors::AppErrorCode::ProviderConnectionFailed
+        );
         assert!(error.message.contains("空响应"));
         assert_eq!(
             error.details.as_ref().unwrap()["payloadCount"],
             serde_json::json!(1)
         );
+    }
+
+    #[tokio::test]
+    async fn run_stream_request_consumes_last_sse_payload_without_trailing_newline() {
+        let address = boot_stream_without_trailing_newline_server().await;
+        let storage = Storage::new_in_memory().unwrap();
+        let keychain = KeychainService::new();
+        let ai = AiIntegration::new(storage.clone(), keychain.clone()).unwrap();
+
+        {
+            let connection = storage.connection();
+            migration::run(&connection).unwrap();
+            connection
+                .execute(
+                    "UPDATE provider_settings SET base_url = ?1, is_active = 1, model = 'gpt-4o-mini' WHERE provider = 'openai'",
+                    rusqlite::params![format!("http://{}", address)],
+                )
+                .unwrap();
+        }
+
+        let app = tauri::test::mock_app();
+        let cancellation = CancellationToken::new();
+        let prepared = PreparedStream {
+            stream_id: "stream-tail".to_string(),
+            session_id: "session-tail".to_string(),
+            provider: ProviderId::Openai,
+            model: "gpt-4o-mini".to_string(),
+            started_at: chrono::Utc::now().to_rfc3339(),
+            prompt: "hello".to_string(),
+            document_id: "document-tail".to_string(),
+        };
+
+        let outcome = run_stream_request(&app.handle().clone(), &ai, &prepared, &cancellation)
+            .await
+            .unwrap();
+
+        match outcome {
+            StreamOutcome::Completed { text, thinking, .. } => {
+                assert_eq!(text, "Tail");
+                assert!(thinking.is_none());
+            }
+            StreamOutcome::Cancelled => panic!("EOF without trailing newline should not cancel"),
+        }
+    }
+
+    #[tokio::test]
+    async fn start_chat_rejects_session_from_another_document() {
+        let storage = Storage::new_in_memory().unwrap();
+        let keychain = KeychainService::new();
+        let ai = AiIntegration::new(storage.clone(), keychain.clone()).unwrap();
+        let timestamp = chrono::Utc::now().to_rfc3339();
+
+        let (document_id, other_document_id, session_id) = {
+            let connection = storage.connection();
+            migration::run(&connection).unwrap();
+
+            let document = documents::upsert(
+                &connection,
+                &documents::UpsertDocumentParams {
+                    file_path: "/tmp/one.pdf".to_string(),
+                    file_sha256: "sha-one".to_string(),
+                    title: "One".to_string(),
+                    page_count: 1,
+                    source_type: DocumentSourceType::Local,
+                    zotero_item_key: None,
+                    timestamp: timestamp.clone(),
+                },
+            )
+            .unwrap();
+            let other_document = documents::upsert(
+                &connection,
+                &documents::UpsertDocumentParams {
+                    file_path: "/tmp/two.pdf".to_string(),
+                    file_sha256: "sha-two".to_string(),
+                    title: "Two".to_string(),
+                    page_count: 1,
+                    source_type: DocumentSourceType::Local,
+                    zotero_item_key: None,
+                    timestamp: timestamp.clone(),
+                },
+            )
+            .unwrap();
+
+            connection
+                .execute(
+                    "UPDATE provider_settings SET base_url = 'http://127.0.0.1:9', is_active = 1, model = 'gpt-4o-mini' WHERE provider = 'openai'",
+                    [],
+                )
+                .unwrap();
+
+            let session = chat_sessions::create(
+                &connection,
+                &chat_sessions::CreateChatSessionParams {
+                    document_id: document.document_id.clone(),
+                    provider: "openai".to_string(),
+                    model: "gpt-4o-mini".to_string(),
+                    title: Some("Existing session".to_string()),
+                    timestamp: timestamp.clone(),
+                },
+            )
+            .unwrap();
+
+            (
+                document.document_id,
+                other_document.document_id,
+                session.session_id,
+            )
+        };
+
+        let app = tauri::test::mock_app();
+        let error = ai
+            .ask(
+                app.handle().clone(),
+                AskAiRequest {
+                    document_id: other_document_id,
+                    session_id: Some(session_id.clone()),
+                    provider: Some(ProviderId::Openai),
+                    model: Some("gpt-4o-mini".to_string()),
+                    user_message: "hello".to_string(),
+                    context_quote: None,
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::ChatSessionNotFound);
+        assert_eq!(error.message, "聊天会话不属于当前文档");
+
+        let messages = {
+            let connection = storage.connection();
+            chat_messages::list_by_session(&connection, &session_id).unwrap()
+        };
+        assert!(messages.is_empty());
+
+        let session_document_id = {
+            let connection = storage.connection();
+            chat_sessions::get_by_id(&connection, &session_id)
+                .unwrap()
+                .unwrap()
+                .document_id
+        };
+        assert_eq!(session_document_id, document_id);
     }
 }

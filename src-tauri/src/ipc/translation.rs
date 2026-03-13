@@ -162,11 +162,8 @@ mod tests {
     };
 
     use crate::{
-        ai_integration::AiIntegration,
-        app_state::AppState,
-        keychain::KeychainService,
-        storage::Storage,
-        translation_manager::TranslationManager,
+        ai_integration::AiIntegration, app_state::AppState, keychain::KeychainService,
+        storage::Storage, translation_manager::TranslationManager,
     };
 
     use super::{request_translation, TranslationEngineStatus};
@@ -204,17 +201,14 @@ mod tests {
 
         assert_eq!(error["code"], "DOCUMENT_NOT_FOUND");
         assert_eq!(error["retryable"], false);
-        assert_eq!(
-            error["details"]["filePath"],
-            json!("/tmp/missing.pdf")
-        );
+        assert_eq!(error["details"]["documentId"], json!("doc-1"));
     }
 
     fn build_test_state() -> AppState {
         let data_dir = temp_dir("ipc-translation-test");
         let storage = Storage::new_in_memory().unwrap();
         let keychain = KeychainService::new();
-        let ai_integration = AiIntegration::new(storage.clone(), keychain.clone());
+        let ai_integration = AiIntegration::new(storage.clone(), keychain.clone()).unwrap();
         let translation_status = Arc::new(ParkingMutex::new(TranslationEngineStatus {
             running: false,
             pid: None,

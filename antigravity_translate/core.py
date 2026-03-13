@@ -11,6 +11,8 @@ from __future__ import annotations
 import csv
 import subprocess
 import tempfile
+import threading
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -174,6 +176,18 @@ def build_glossary_csv(
     return output_path
 
 
+def _cleanup_translation_outputs(output_dir: Path, stem: str) -> None:
+    """清理当前任务可能产生的中间或最终 PDF 产物。"""
+    patterns = (
+        f"{stem}*mono*.*pdf",
+        f"{stem}*translated*.*pdf",
+        f"{stem}*dual*.*pdf",
+    )
+    for pattern in patterns:
+        for candidate in output_dir.glob(pattern):
+            candidate.unlink(missing_ok=True)
+
+
 # ---------------------------------------------------------------------------
 # 核心翻译入口
 # ---------------------------------------------------------------------------
@@ -191,6 +205,7 @@ def translate(
     custom_prompt: str | None = None,
     extra_args: list[str] | None = None,
     on_progress: Callable[[str], None] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> dict[str, Any]:
     """一键翻译 PDF。
 
@@ -209,6 +224,7 @@ def translate(
         custom_prompt:  自定义翻译 prompt，默认用考古学 prompt。
         extra_args:     传给 pdf2zh.exe 的额外参数。
         on_progress:    进度回调（日志字符串）。
+        cancel_event:   外部取消信号，触发后会终止底层翻译子进程并清理产物。
 
     Returns:
         {
@@ -217,6 +233,7 @@ def translate(
             "returncode": int,
             "stdout": str,
             "stderr": str,
+            "cancelled": bool,
         }
     """
     input_pdf = Path(input_pdf)
@@ -225,7 +242,26 @@ def translate(
     if on_progress:
         set_logger(on_progress)
 
-    pdf2zh_exe = Path(config.PDF2ZH_EXE)
+    pdf2zh_exe_raw = str(config.PDF2ZH_EXE).strip()
+    if not pdf2zh_exe_raw:
+        raise FileNotFoundError(
+            "pdf2zh.exe path is not configured. Please set AG_PDF2ZH_EXE or config.PDF2ZH_EXE."
+        )
+
+    if not config.CLAUDE_BASE_URL.strip():
+        raise ValueError(
+            "CLAUDE_BASE_URL is not configured. Please set AG_CLAUDE_BASE_URL or config.CLAUDE_BASE_URL."
+        )
+    if not config.CLAUDE_API_KEY.strip():
+        raise ValueError(
+            "CLAUDE_API_KEY is not configured. Please set AG_CLAUDE_API_KEY or config.CLAUDE_API_KEY."
+        )
+    if not config.CLAUDE_MODEL.strip():
+        raise ValueError(
+            "CLAUDE_MODEL is not configured. Please set AG_CLAUDE_MODEL or config.CLAUDE_MODEL."
+        )
+
+    pdf2zh_exe = Path(pdf2zh_exe_raw)
     if not pdf2zh_exe.exists():
         raise FileNotFoundError(f"pdf2zh.exe not found: {pdf2zh_exe}")
     if not input_pdf.exists():
@@ -316,14 +352,59 @@ def translate(
         _log(f"[pdf2zh] Model: {config.CLAUDE_MODEL}")
         _log(f"[pdf2zh] Output directory: {output_dir}")
 
-        result = subprocess.run(
+        if cancel_event and cancel_event.is_set():
+            _cleanup_translation_outputs(output_dir, working_pdf.stem)
+            if baked_pdf and baked_pdf.exists():
+                baked_pdf.unlink(missing_ok=True)
+            return {
+                "mono_pdf": None,
+                "dual_pdf": None,
+                "returncode": -1,
+                "stdout": "",
+                "stderr": "",
+                "cancelled": True,
+            }
+
+        process = subprocess.Popen(
             command,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=1800,
         )
+        stdout_text = ""
+        stderr_text = ""
+
+        while True:
+            if cancel_event and cancel_event.is_set():
+                process.terminate()
+                try:
+                    stdout_text, stderr_text = process.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    stdout_text, stderr_text = process.communicate()
+
+                _log("[pdf2zh] Translation cancelled")
+                _cleanup_translation_outputs(output_dir, working_pdf.stem)
+                if baked_pdf and baked_pdf.exists():
+                    baked_pdf.unlink(missing_ok=True)
+                return {
+                    "mono_pdf": None,
+                    "dual_pdf": None,
+                    "returncode": -1,
+                    "stdout": stdout_text,
+                    "stderr": stderr_text,
+                    "cancelled": True,
+                }
+
+            try:
+                stdout_text, stderr_text = process.communicate(timeout=0.2)
+                break
+            except subprocess.TimeoutExpired:
+                time.sleep(0.1)
+
+        returncode = process.returncode if process.returncode is not None else -1
 
         stem = working_pdf.stem
         mono_candidates = (
@@ -335,16 +416,16 @@ def translate(
         mono_pdf = mono_candidates[0] if mono_candidates else None
         dual_pdf = dual_candidates[0] if dual_candidates else None
 
-        if result.returncode == 0:
+        if returncode == 0:
             _log("[pdf2zh] Translation complete!")
             if mono_pdf:
                 _log(f"  Chinese PDF: {mono_pdf}")
             if dual_pdf:
                 _log(f"  Dual PDF:    {dual_pdf}")
         else:
-            _log(f"[pdf2zh] Translation failed (code={result.returncode})")
-            if result.stderr:
-                for line in result.stderr.strip().splitlines()[-30:]:
+            _log(f"[pdf2zh] Translation failed (code={returncode})")
+            if stderr_text:
+                for line in stderr_text.strip().splitlines()[-30:]:
                     _log(f"  {line}")
 
         # 清理临时文件
@@ -354,9 +435,10 @@ def translate(
         return {
             "mono_pdf": mono_pdf,
             "dual_pdf": dual_pdf,
-            "returncode": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
+            "returncode": returncode,
+            "stdout": stdout_text,
+            "stderr": stderr_text,
+            "cancelled": False,
         }
     finally:
         prompt_path.unlink(missing_ok=True)

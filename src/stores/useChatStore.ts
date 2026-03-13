@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ChatSessionDto, ChatMessageDto, ProviderId } from '../shared/types';
+import { ipcEvents } from '../lib/ipc-client';
 
 /** 前端聊天消息（包含流式状态） */
 export interface ChatMessage {
@@ -43,21 +44,13 @@ const updateOrInsertStreamMessage = (
 };
 
 interface ChatState {
-  /** 当前活跃的会话 ID */
   activeSessionId: string | null;
-  /** 当前文档的会话列表 */
   sessions: ChatSessionDto[];
-  /** 当前会话的消息 */
   messages: ChatMessage[];
-  /** 输入框内容 */
   inputText: string;
-  /** 当前拖拽的引用文本 */
   contextQuote: string | null;
-  /** 是否正在发送中（流式响应未结束） */
-  isStreaming: boolean;
-  /** 当前流式 stream ID */
+  /** 当前流式 stream ID（非 null 即表示正在流式响应中） */
   activeStreamId: string | null;
-  /** 是否正在加载历史 */
   isLoadingHistory: boolean;
 
   // Actions
@@ -66,26 +59,17 @@ interface ChatState {
   setMessages: (messages: ChatMessage[]) => void;
   setInputText: (text: string) => void;
   setContextQuote: (quote: string | null) => void;
-
-  /** 添加用户消息 */
   addUserMessage: (content: string, contextQuote?: string) => void;
-  /** 开始流式助手消息 */
   startAssistantStream: (streamId: string) => void;
-  /** 追加流式 chunk */
   appendStreamChunk: (
     streamId: string,
     delta: string,
     kind?: 'content' | 'thinking',
   ) => void;
-  /** 结束流式助手消息 */
   finishStream: (streamId: string, messageId: string) => void;
-  /** 流式失败 */
   failStream: (streamId: string, errorMessage: string) => void;
-  /** 取消流 */
   cancelStream: () => void;
-  /** 设置加载状态 */
   setLoadingHistory: (loading: boolean) => void;
-  /** 清空当前会话 */
   clearChat: () => void;
 }
 
@@ -95,7 +79,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   inputText: '',
   contextQuote: null,
-  isStreaming: false,
   activeStreamId: null,
   isLoadingHistory: false,
 
@@ -123,11 +106,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         : {
             messages: [...state.messages, buildAssistantStreamMessage(streamId)],
           }),
-      isStreaming: state.messages.some((message) => (
-        message.id === `stream-${streamId}` && message.isStreaming === false
-      ))
-        ? state.isStreaming
-        : true,
       activeStreamId: state.messages.some((message) => (
         message.id === `stream-${streamId}` && message.isStreaming === false
       ))
@@ -148,7 +126,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
           : (message?.thinkingContent ?? ''),
         isStreaming: true,
       })),
-      isStreaming: true,
       activeStreamId: streamId,
     }));
   },
@@ -159,7 +136,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ...(message ?? buildAssistantStreamMessage(streamId)),
         isStreaming: false,
       })),
-      isStreaming: state.activeStreamId === streamId ? false : state.isStreaming,
       activeStreamId: state.activeStreamId === streamId ? null : state.activeStreamId,
     }));
   },
@@ -171,7 +147,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         content: message?.content || `⚠️ ${errorMessage}`,
         isStreaming: false,
       })),
-      isStreaming: state.activeStreamId === streamId ? false : state.isStreaming,
       activeStreamId: state.activeStreamId === streamId ? null : state.activeStreamId,
     }));
   },
@@ -185,7 +160,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
             ? { ...msg, isStreaming: false }
             : msg
         ),
-        isStreaming: false,
         activeStreamId: null,
       }));
     }
@@ -196,7 +170,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
     messages: [],
     activeSessionId: null,
     contextQuote: null,
-    isStreaming: false,
     activeStreamId: null,
   }),
 }));
+
+// ---------------------------------------------------------------------------
+// 模块级事件监听：替代 AiStreamBridge 组件
+// 应用启动时执行一次，无需清理（与应用同生命周期）
+// ---------------------------------------------------------------------------
+
+void ipcEvents.onAiStreamChunk((payload) => {
+  const state = useChatStore.getState();
+  if (state.activeStreamId === payload.streamId) {
+    state.appendStreamChunk(payload.streamId, payload.delta, payload.kind);
+  }
+});
+
+void ipcEvents.onAiStreamFinished((payload) => {
+  const state = useChatStore.getState();
+  if (state.activeStreamId === payload.streamId) {
+    state.finishStream(payload.streamId, payload.messageId);
+  }
+});
+
+void ipcEvents.onAiStreamFailed((payload) => {
+  const state = useChatStore.getState();
+  if (state.activeStreamId === payload.streamId) {
+    state.failStream(payload.streamId, payload.error.message);
+  }
+});

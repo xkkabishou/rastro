@@ -11,7 +11,8 @@ interface ChatInputProps {
 /** 聊天输入区域组件 */
 export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onCancel, disabled }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { inputText, setInputText, contextQuote, setContextQuote, isStreaming } = useChatStore();
+  const { inputText, setInputText, contextQuote, setContextQuote, activeStreamId } = useChatStore();
+  const isStreaming = activeStreamId !== null;
 
   // 自动调整文本框高度
   const adjustHeight = useCallback(() => {

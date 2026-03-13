@@ -19,6 +19,7 @@ export const TranslationSwitch: React.FC = () => {
     translationProgress,
     translatedPdfUrl,
   } = useDocumentStore();
+  const isTranslationActive = translationJob?.status === 'queued' || translationJob?.status === 'running';
 
   // 监听 Option/Alt 键
   useEffect(() => {
@@ -44,7 +45,7 @@ export const TranslationSwitch: React.FC = () => {
   }, [bilingualMode, setBilingualMode]);
 
   // 翻译进行中 — 进度骨架屏
-  if (translationJob && translationJob.status === 'running') {
+  if (translationJob && isTranslationActive) {
     return (
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
         <div className="glass-panel rounded-xl px-4 py-2.5 flex items-center gap-3 shadow-lg">

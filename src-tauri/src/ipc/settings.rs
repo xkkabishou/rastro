@@ -113,7 +113,13 @@ pub fn save_provider_key(
         let connection = state.storage.connection();
         provider_settings::get_by_provider(&connection, provider.as_str())?
     }
-    .expect("default provider rows should exist after migration");
+    .ok_or_else(|| {
+        crate::errors::AppError::new(
+            crate::errors::AppErrorCode::ProviderNotConfigured,
+            "Provider 配置不存在",
+            false,
+        )
+    })?;
 
     build_provider_config_dto(&state, record)
 }
@@ -193,6 +199,11 @@ pub fn update_provider_config(
         .as_deref()
         .map(|value| crate::ai_integration::provider_registry::normalize_base_url(provider, value));
 
+    // 写入前校验 base_url 安全性
+    if let Some(ref url) = normalized_base_url {
+        crate::ai_integration::provider_registry::validate_base_url(url)?;
+    }
+
     let record = {
         let connection = state.storage.connection();
         provider_settings::update_config(
@@ -202,11 +213,13 @@ pub fn update_provider_config(
             model.as_deref(),
         )?
     }
-    .ok_or_else(|| crate::errors::AppError::new(
-        crate::errors::AppErrorCode::InternalError,
-        "未找到对应 Provider 配置",
-        false,
-    ))?;
+    .ok_or_else(|| {
+        crate::errors::AppError::new(
+            crate::errors::AppErrorCode::InternalError,
+            "未找到对应 Provider 配置",
+            false,
+        )
+    })?;
 
     build_provider_config_dto(&state, record)
 }
@@ -238,22 +251,35 @@ pub async fn fetch_available_models(
         let connection = state.storage.connection();
         provider_settings::get_by_provider(&connection, provider.as_str())?
     }
-    .ok_or_else(|| crate::errors::AppError::new(
-        crate::errors::AppErrorCode::InternalError,
-        "未找到对应 Provider 配置",
-        false,
-    ))?;
+    .ok_or_else(|| {
+        crate::errors::AppError::new(
+            crate::errors::AppErrorCode::InternalError,
+            "未找到对应 Provider 配置",
+            false,
+        )
+    })?;
 
-    let api_key = state.keychain.get_key(provider.as_str())?
-        .ok_or_else(|| crate::errors::AppError::new(
+    let api_key = state.keychain.get_key(provider.as_str())?.ok_or_else(|| {
+        crate::errors::AppError::new(
             crate::errors::AppErrorCode::ProviderKeyMissing,
             "请先配置 API Key",
             false,
-        ))?;
+        )
+    })?;
 
-    let base_url = record.base_url
+    let has_custom_base_url = record.base_url.is_some();
+    let base_url = record
+        .base_url
         .map(|value| crate::ai_integration::provider_registry::normalize_base_url(provider, &value))
-        .unwrap_or_else(|| crate::ai_integration::provider_registry::default_base_url(provider).to_string());
+        .unwrap_or_else(|| {
+            crate::ai_integration::provider_registry::default_base_url(provider).to_string()
+        });
+
+    // 读取后校验（防止历史脏数据泄露 Key）
+    if has_custom_base_url {
+        crate::ai_integration::provider_registry::validate_base_url(&base_url)?;
+    }
+
     let base_url = base_url.trim_end_matches('/');
 
     // 构建 models 请求（base_url 已包含版本前缀如 /v1 或 /v1beta）
@@ -265,7 +291,8 @@ pub async fn fetch_available_models(
     // 设置认证头
     match provider {
         ProviderId::Openai | ProviderId::Claude => {
-            request_builder = request_builder.header("Authorization", format!("Bearer {}", api_key));
+            request_builder =
+                request_builder.header("Authorization", format!("Bearer {}", api_key));
             if provider == ProviderId::Claude {
                 request_builder = request_builder.header("x-api-key", &api_key);
                 request_builder = request_builder.header("anthropic-version", "2023-06-01");
@@ -281,24 +308,41 @@ pub async fn fetch_available_models(
         .timeout(std::time::Duration::from_secs(15))
         .send()
         .await
-        .map_err(|err| crate::errors::AppError::new(
-            crate::errors::AppErrorCode::ProviderConnectionFailed,
-            format!("拉取模型列表失败: {}", err),
-            true,
-        ))?;
+        .map_err(|err| {
+            crate::errors::AppError::new(
+                crate::errors::AppErrorCode::ProviderConnectionFailed,
+                format!("拉取模型列表失败: {}", err),
+                true,
+            )
+        })?;
 
-    let body: serde_json::Value = response.json().await
-        .map_err(|err| crate::errors::AppError::new(
+    // W3: HTTP 状态码检查
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_body = response.text().await.unwrap_or_default();
+        return Err(
+            crate::ai_integration::provider_registry::map_provider_http_error(
+                status,
+                &error_body,
+                "拉取模型列表失败",
+            ),
+        );
+    }
+
+    let body: serde_json::Value = response.json().await.map_err(|err| {
+        crate::errors::AppError::new(
             crate::errors::AppErrorCode::ProviderConnectionFailed,
             format!("解析模型列表响应失败: {}", err),
             true,
-        ))?;
+        )
+    })?;
 
     // 解析不同 Provider 的响应格式
     let models = match provider {
         ProviderId::Openai => {
             // OpenAI 格式: { "data": [{ "id": "gpt-4o", ... }] }
-            body["data"].as_array()
+            body["data"]
+                .as_array()
                 .unwrap_or(&vec![])
                 .iter()
                 .filter_map(|m| {
@@ -311,7 +355,8 @@ pub async fn fetch_available_models(
         }
         ProviderId::Claude => {
             // Claude 格式: { "data": [{ "id": "claude-sonnet-4-20250514", "display_name": "..." }] }
-            body["data"].as_array()
+            body["data"]
+                .as_array()
                 .unwrap_or(&vec![])
                 .iter()
                 .filter_map(|m| {
@@ -324,7 +369,8 @@ pub async fn fetch_available_models(
         }
         ProviderId::Gemini => {
             // Gemini 格式: { "models": [{ "name": "models/gemini-2.5-pro", "displayName": "..." }] }
-            body["models"].as_array()
+            body["models"]
+                .as_array()
                 .unwrap_or(&vec![])
                 .iter()
                 .filter_map(|m| {
@@ -355,7 +401,12 @@ pub fn get_usage_stats(
 ) -> Result<UsageStatsDto, crate::errors::AppError> {
     let events = {
         let connection = state.storage.connection();
-        usage_events::list_all(&connection)?
+        usage_events::list_filtered(
+            &connection,
+            from.as_deref(),
+            to.as_deref(),
+            provider.as_ref().map(|p| p.as_str()),
+        )?
     };
 
     let mut by_provider: Vec<ProviderUsageDto> = Vec::new();
@@ -363,22 +414,7 @@ pub fn get_usage_stats(
     let mut total_output = 0;
     let mut total_cost = 0.0;
 
-    for event in events.into_iter().filter(|event| {
-        let provider_matches = provider
-            .as_ref()
-            .map(|value| value.as_str() == event.provider)
-            .unwrap_or(true);
-        let from_matches = from
-            .as_ref()
-            .map(|value| event.created_at >= *value)
-            .unwrap_or(true);
-        let to_matches = to
-            .as_ref()
-            .map(|value| event.created_at <= *value)
-            .unwrap_or(true);
-
-        provider_matches && from_matches && to_matches
-    }) {
+    for event in events {
         total_input += event.input_tokens;
         total_output += event.output_tokens;
         total_cost += event.estimated_cost;
@@ -401,7 +437,7 @@ pub fn get_usage_stats(
             });
             by_provider
                 .last_mut()
-                .expect("just inserted provider bucket")
+                .unwrap_or_else(|| unreachable!())
         };
 
         entry.input_tokens += event.input_tokens;
@@ -425,7 +461,7 @@ pub fn get_usage_stats(
             entry
                 .by_feature
                 .last_mut()
-                .expect("just inserted feature bucket")
+                .unwrap_or_else(|| unreachable!())
         };
 
         feature.count += 1;

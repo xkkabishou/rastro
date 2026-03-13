@@ -3,7 +3,7 @@ import { useChatStore } from '../../stores/useChatStore';
 import { useDocumentStore } from '../../stores/useDocumentStore';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
-import { ipcClient, ipcEvents } from '../../lib/ipc-client';
+import { ipcClient } from '../../lib/ipc-client';
 import { Sparkles, MessageSquare, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -12,61 +12,18 @@ export const ChatPanel: React.FC = () => {
   const {
     activeSessionId,
     messages,
-    isStreaming,
     activeStreamId,
-    isLoadingHistory,
     setActiveSession,
     addUserMessage,
     startAssistantStream,
-    appendStreamChunk,
-    finishStream,
     failStream,
     cancelStream,
     clearChat,
-    setLoadingHistory,
-    setMessages,
   } = useChatStore();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const dragLeaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  // 避免 StrictMode 下异步注册监听后泄漏，导致同一 delta 被重复消费。
-  useEffect(() => {
-    let disposed = false;
-    let cleanup: (() => void) | null = null;
-
-    const setupListeners = async () => {
-      const unlisteners = await Promise.all([
-        ipcEvents.onAiStreamChunk((payload) => {
-          appendStreamChunk(payload.streamId, payload.delta, payload.kind);
-        }),
-        ipcEvents.onAiStreamFinished((payload) => {
-          finishStream(payload.streamId, payload.messageId);
-        }),
-        ipcEvents.onAiStreamFailed((payload) => {
-          failStream(payload.streamId, payload.error.message);
-        }),
-      ]);
-
-      if (disposed) {
-        unlisteners.forEach((unlisten) => unlisten());
-        return;
-      }
-
-      cleanup = () => {
-        unlisteners.forEach((unlisten) => unlisten());
-      };
-    };
-
-    setupListeners().catch(console.error);
-
-    return () => {
-      disposed = true;
-      cleanup?.();
-      cleanup = null;
-    };
-  }, [appendStreamChunk, finishStream, failStream]);
 
   // 自动滚动到底部
   useEffect(() => {
@@ -74,12 +31,6 @@ export const ChatPanel: React.FC = () => {
   }, [messages]);
 
   const currentDocument = useDocumentStore((s) => s.currentDocument);
-  const currentDocumentId = currentDocument?.documentId ?? null;
-
-  useEffect(() => {
-    if (!currentDocumentId) return;
-    clearChat();
-  }, [currentDocumentId, clearChat]);
 
   // 发送消息
   const handleSend = useCallback(async (content: string, contextQuote?: string) => {

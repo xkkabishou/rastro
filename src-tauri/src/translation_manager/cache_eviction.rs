@@ -239,8 +239,13 @@ mod tests {
     fn protected_job_is_skipped_during_eviction() {
         let storage = Storage::new_in_memory().expect("in-memory storage should initialize");
         let base_dir = temp_dir("cache-eviction-protected");
-        let protected_pdf =
-            write_cache_artifact(&base_dir, "sha-protected", "cache-protected", "translated.pdf", 6);
+        let protected_pdf = write_cache_artifact(
+            &base_dir,
+            "sha-protected",
+            "cache-protected",
+            "translated.pdf",
+            6,
+        );
         let other_pdf =
             write_cache_artifact(&base_dir, "sha-other", "cache-other", "translated.pdf", 5);
 
@@ -263,19 +268,18 @@ mod tests {
             .expect("eviction should succeed");
 
         assert!(protected_pdf.exists(), "protected artifact should remain");
-        assert!(!other_pdf.exists(), "non-protected artifact should be evicted");
+        assert!(
+            !other_pdf.exists(),
+            "non-protected artifact should be evicted"
+        );
 
         let connection = storage.connection();
-        assert!(
-            translation_jobs::get_by_id(&connection, &protected_job_id)
-                .unwrap()
-                .is_some()
-        );
-        assert!(
-            translation_jobs::get_by_id(&connection, &other_job_id)
-                .unwrap()
-                .is_none()
-        );
+        assert!(translation_jobs::get_by_id(&connection, &protected_job_id)
+            .unwrap()
+            .is_some());
+        assert!(translation_jobs::get_by_id(&connection, &other_job_id)
+            .unwrap()
+            .is_none());
     }
 
     fn seed_completed_job(

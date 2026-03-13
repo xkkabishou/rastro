@@ -169,13 +169,17 @@ mod tests {
 
     fn provider_setting_count(connection: &Connection) -> i64 {
         connection
-            .query_row("SELECT COUNT(*) FROM provider_settings", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM provider_settings", [], |row| {
+                row.get(0)
+            })
             .unwrap()
     }
 
     fn migration_row_count(connection: &Connection) -> i64 {
         connection
-            .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+                row.get(0)
+            })
             .unwrap()
     }
 }

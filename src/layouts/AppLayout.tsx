@@ -41,9 +41,18 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
       {/* 小屏幕下的灰色蒙层 (当 Sidebar 打开时) */}
       {isMobile && isSidebarOpen && (
-        <div 
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="关闭侧边栏"
           className="absolute inset-0 z-20 bg-black/20 backdrop-blur-sm"
           onClick={() => setSidebarOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setSidebarOpen(false);
+            }
+          }}
         />
       )}
 
@@ -55,7 +64,7 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <button
               onClick={() => setSidebarOpen(true)}
               className="p-2 rounded-lg bg-[var(--color-bg-overlay)] backdrop-blur-lg shadow-sm border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] transition-colors"
-              title="打开侧边栏"
+              aria-label="打开侧边栏"
             >
               <PanelLeftOpen size={18} />
             </button>
@@ -66,7 +75,7 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <button
               onClick={() => setRightPanelOpen(true)}
               className="p-2 rounded-lg bg-[var(--color-bg-overlay)] backdrop-blur-lg shadow-sm border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] transition-colors"
-              title="打开 AI 助手"
+              aria-label="打开 AI 助手"
             >
               <PanelRightOpen size={18} />
             </button>

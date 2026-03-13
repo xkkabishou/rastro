@@ -26,7 +26,6 @@ export type TranslationStage =
   | "extracting"
   | "translating"
   | "postprocessing"
-  | "packaging"
   | "completed"
   | "failed"
   | "cancelled";
@@ -54,7 +53,7 @@ export type ChatRole = "user" | "assistant" | "system";
 // 统一错误模型
 // ---------------------------------------------------------------------------
 
-/** 应用错误码（共 19 个） */
+/** 应用错误码（共 23 个） */
 export type AppErrorCode =
   // 文档相关
   | "DOCUMENT_NOT_FOUND"
@@ -81,6 +80,12 @@ export type AppErrorCode =
   | "ZOTERO_DB_LOCKED"
   // 缓存相关
   | "CACHE_CORRUPTED"
+  // 安全与校验
+  | "INVALID_PROVIDER_BASE_URL"
+  | "RESOURCE_OWNERSHIP_MISMATCH"
+  // 精确语义替代
+  | "PROVIDER_NOT_CONFIGURED"
+  | "CHAT_SESSION_NOT_FOUND"
   // 通用
   | "INTERNAL_ERROR";
 
@@ -281,6 +286,7 @@ export interface CancelAiStreamResult {
 export interface GenerateSummaryInput {
   documentId: string;
   filePath: string;
+  sourceText: string;
   provider?: ProviderId;
   model?: string;
   promptProfile?: SummaryPromptProfile;
