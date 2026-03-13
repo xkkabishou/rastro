@@ -27,12 +27,64 @@ struct PreparedStream {
     document_id: String,
 }
 
+#[derive(Debug)]
 enum StreamOutcome {
     Completed {
         text: String,
+        thinking: Option<String>,
         usage: usage_meter::UsageSnapshot,
     },
     Cancelled,
+}
+
+fn build_empty_stream_error(
+    prepared: &PreparedStream,
+    payload_count: usize,
+    last_payload_preview: Option<&str>,
+) -> AppError {
+    let mut error = AppError::new(
+        AppErrorCode::ProviderConnectionFailed,
+        format!(
+            "AI 服务返回了空响应。当前配置为 provider={} / model={}，该模型或网关可能与现有流式协议不兼容，请检查设置中的 Provider、Base URL 与 Model。",
+            prepared.provider.as_str(),
+            prepared.model,
+        ),
+        false,
+    )
+    .with_detail("payloadCount", payload_count as u64);
+
+    if let Some(preview) = last_payload_preview.filter(|value| !value.is_empty()) {
+        error = error.with_detail("lastPayloadPreview", preview.to_string());
+    }
+
+    error
+}
+
+fn finalize_stream_outcome(
+    prepared: &PreparedStream,
+    full_text: String,
+    full_thinking: String,
+    usage: usage_meter::UsageSnapshot,
+    payload_count: usize,
+    last_payload_preview: Option<&str>,
+) -> Result<StreamOutcome, AppError> {
+    if full_text.trim().is_empty() {
+        return Err(build_empty_stream_error(
+            prepared,
+            payload_count,
+            last_payload_preview,
+        ));
+    }
+
+    Ok(StreamOutcome::Completed {
+        text: full_text,
+        thinking: if full_thinking.trim().is_empty() {
+            None
+        } else {
+            Some(full_thinking)
+        },
+        usage,
+    })
 }
 
 /// 启动普通聊天流
@@ -82,6 +134,7 @@ pub async fn start_chat<R: tauri::Runtime + 'static>(
                 session_id: session_id.clone(),
                 role: ChatRole::User.as_str().to_string(),
                 content_md: input.user_message.clone(),
+                thinking_md: None,
                 context_quote: input.context_quote.clone(),
                 input_tokens: 0,
                 output_tokens: 0,
@@ -203,7 +256,11 @@ async fn run_stream_task<R: tauri::Runtime + 'static>(
     ai.stream_registry.lock().remove(&prepared.stream_id);
 
     match outcome {
-        Ok(StreamOutcome::Completed { text, usage }) => {
+        Ok(StreamOutcome::Completed {
+            text,
+            thinking,
+            usage,
+        }) => {
             let finished_at = Utc::now().to_rfc3339();
             let message_result = {
                 let connection = ai.storage.connection();
@@ -213,6 +270,7 @@ async fn run_stream_task<R: tauri::Runtime + 'static>(
                         session_id: prepared.session_id.clone(),
                         role: ChatRole::Assistant.as_str().to_string(),
                         content_md: text.clone(),
+                        thinking_md: thinking.clone(),
                         context_quote: None,
                         input_tokens: usage.input_tokens as u32,
                         output_tokens: usage.output_tokens as u32,
@@ -310,8 +368,11 @@ async fn run_stream_request<R: tauri::Runtime>(
     }
 
     let mut full_text = String::new();
+    let mut full_thinking = String::new();
     let mut buffer = String::new();
     let mut usage = None;
+    let mut payload_count = 0usize;
+    let mut last_payload_preview: Option<String> = None;
     let mut bytes_stream = response.bytes_stream();
 
     loop {
@@ -340,11 +401,18 @@ async fn run_stream_request<R: tauri::Runtime>(
                                         )
                                     });
 
-                                    return Ok(StreamOutcome::Completed {
-                                        text: full_text,
+                                    return finalize_stream_outcome(
+                                        prepared,
+                                        full_text,
+                                        full_thinking,
                                         usage,
-                                    });
+                                        payload_count,
+                                        last_payload_preview.as_deref(),
+                                    );
                                 }
+
+                                payload_count += 1;
+                                last_payload_preview = Some(data.chars().take(300).collect());
 
                                 let payload: serde_json::Value = serde_json::from_str(data).map_err(|error| {
                                     AppError::new(
@@ -354,6 +422,20 @@ async fn run_stream_request<R: tauri::Runtime>(
                                     )
                                 })?;
 
+                                if let Some(thinking_delta) =
+                                    provider_registry::extract_stream_thinking(prepared.provider, &payload)
+                                {
+                                    full_thinking.push_str(&thinking_delta);
+                                    let _ = app.emit(
+                                        "ai://stream-chunk",
+                                        json!({
+                                            "streamId": prepared.stream_id,
+                                            "delta": thinking_delta,
+                                            "kind": "thinking",
+                                        }),
+                                    );
+                                }
+
                                 if let Some(delta) = provider_registry::extract_stream_delta(prepared.provider, &payload) {
                                     full_text.push_str(&delta);
                                     let _ = app.emit(
@@ -361,6 +443,7 @@ async fn run_stream_request<R: tauri::Runtime>(
                                         json!({
                                             "streamId": prepared.stream_id,
                                             "delta": delta,
+                                            "kind": "content",
                                         }),
                                     );
                                 }
@@ -382,10 +465,14 @@ async fn run_stream_request<R: tauri::Runtime>(
                             )
                         });
 
-                        return Ok(StreamOutcome::Completed {
-                            text: full_text,
+                        return finalize_stream_outcome(
+                            prepared,
+                            full_text,
+                            full_thinking,
                             usage,
-                        });
+                            payload_count,
+                            last_payload_preview.as_deref(),
+                        );
                     }
                 }
             }
@@ -434,6 +521,7 @@ mod tests {
     use futures_util::{stream, Stream};
     use serde_json::Value;
     use tokio::net::TcpListener;
+    use tokio_util::sync::CancellationToken;
 
     use crate::{
         ai_integration::{AiIntegration, AskAiRequest},
@@ -441,6 +529,8 @@ mod tests {
         models::ProviderId,
         storage::{documents, migration, provider_settings, Storage},
     };
+
+    use super::{run_stream_request, PreparedStream};
 
     #[derive(Clone)]
     struct MockState;
@@ -462,9 +552,35 @@ mod tests {
         Sse::new(stream::iter(events)).keep_alive(KeepAlive::new().interval(Duration::from_secs(1)))
     }
 
+    async fn empty_stream(
+        State(_state): State<MockState>,
+        Json(_body): Json<Value>,
+    ) -> Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>> {
+        let events = vec![
+            Ok(Event::default().data(
+                r#"{"choices":[{"delta":{}}],"usage":{"prompt_tokens":5,"completion_tokens":1}}"#,
+            )),
+            Ok(Event::default().data("[DONE]")),
+        ];
+
+        Sse::new(stream::iter(events)).keep_alive(KeepAlive::new().interval(Duration::from_secs(1)))
+    }
+
     async fn boot_mock_server() -> SocketAddr {
         let router = Router::new()
             .route("/chat/completions", post(openai_stream))
+            .with_state(MockState);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        address
+    }
+
+    async fn boot_empty_stream_server() -> SocketAddr {
+        let router = Router::new()
+            .route("/chat/completions", post(empty_stream))
             .with_state(MockState);
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -531,5 +647,47 @@ mod tests {
             )
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn run_stream_request_returns_error_when_provider_finishes_without_text() {
+        let address = boot_empty_stream_server().await;
+        let storage = Storage::new_in_memory().unwrap();
+        let keychain = KeychainService::new();
+        let ai = AiIntegration::new(storage.clone(), keychain.clone());
+
+        {
+            let connection = storage.connection();
+            migration::run(&connection).unwrap();
+            connection
+                .execute(
+                    "UPDATE provider_settings SET base_url = ?1, is_active = 1, model = 'claude-sonnet-4-6' WHERE provider = 'openai'",
+                    rusqlite::params![format!("http://{}", address)],
+                )
+                .unwrap();
+        }
+
+        let app = tauri::test::mock_app();
+        let cancellation = CancellationToken::new();
+        let prepared = PreparedStream {
+            stream_id: "stream-empty".to_string(),
+            session_id: "session-empty".to_string(),
+            provider: ProviderId::Openai,
+            model: "claude-sonnet-4-6".to_string(),
+            started_at: chrono::Utc::now().to_rfc3339(),
+            prompt: "hello".to_string(),
+            document_id: "document-empty".to_string(),
+        };
+
+        let error = run_stream_request(&app.handle().clone(), &ai, &prepared, &cancellation)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.code, crate::errors::AppErrorCode::ProviderConnectionFailed);
+        assert!(error.message.contains("空响应"));
+        assert_eq!(
+            error.details.as_ref().unwrap()["payloadCount"],
+            serde_json::json!(1)
+        );
     }
 }

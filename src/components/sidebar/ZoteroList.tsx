@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Search, FileText, BookOpen, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { ipcClient } from '../../lib/ipc-client';
 import { useDocumentStore } from '../../stores/useDocumentStore';
 import type { ZoteroItemDto, ZoteroStatusDto, PagedZoteroItemsDto } from '../../shared/types';
@@ -131,7 +132,10 @@ export const ZoteroList: React.FC = () => {
     try {
       const doc = await ipcClient.openZoteroAttachment(item.itemKey);
       setCurrentDocument(doc);
-      setPdfUrl(doc.filePath);
+      // 使用 convertFileSrc 将本地路径转为 asset:// 协议 URL
+      // Tauri WebView 安全策略不允许直接通过 file:// 加载本地文件
+      const assetUrl = convertFileSrc(doc.filePath);
+      setPdfUrl(assetUrl);
     } catch (err) {
       console.error('打开 Zotero 附件失败:', err);
     }

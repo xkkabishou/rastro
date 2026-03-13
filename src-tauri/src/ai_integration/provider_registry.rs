@@ -1,7 +1,7 @@
 // Provider 配置解析与请求适配
 use std::{str::FromStr, time::Instant};
 
-use reqwest::{Client, RequestBuilder, StatusCode};
+use reqwest::{Client, RequestBuilder, StatusCode, Url};
 use serde_json::{json, Value};
 
 use crate::{
@@ -70,9 +70,31 @@ pub fn resolve_runtime_config(
         model,
         base_url: setting
             .base_url
+            .map(|value| normalize_base_url(provider, &value))
             .unwrap_or_else(|| default_base_url(provider).to_string()),
         api_key,
     })
+}
+
+pub fn normalize_base_url(provider: ProviderId, base_url: &str) -> String {
+    let trimmed = base_url.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return trimmed.to_string();
+    }
+
+    let Ok(mut url) = Url::parse(trimmed) else {
+        return trimmed.to_string();
+    };
+
+    let normalized_path = url.path().trim_end_matches('/');
+    if normalized_path.is_empty() {
+        match provider {
+            ProviderId::Openai | ProviderId::Claude => url.set_path("/v1"),
+            ProviderId::Gemini => url.set_path("/v1beta"),
+        }
+    }
+
+    url.to_string().trim_end_matches('/').to_string()
 }
 
 /// 构建流式请求
@@ -96,21 +118,32 @@ pub fn build_stream_request(
                     { "role": "user", "content": prompt }
                 ]
             })),
-        ProviderId::Claude => client
-            .post(format!(
-                "{}/messages",
-                config.base_url.trim_end_matches('/')
-            ))
-            .header("x-api-key", &config.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .json(&json!({
+        ProviderId::Claude => {
+            let mut payload = json!({
                 "model": config.model,
                 "stream": true,
                 "max_tokens": 2048,
                 "messages": [
                     { "role": "user", "content": prompt }
                 ]
-            })),
+            });
+
+            if supports_claude_extended_thinking(&config.model) {
+                payload["thinking"] = json!({
+                    "type": "enabled",
+                    "budget_tokens": 1024
+                });
+            }
+
+            client
+                .post(format!(
+                    "{}/messages",
+                    config.base_url.trim_end_matches('/')
+                ))
+                .header("x-api-key", &config.api_key)
+                .header("anthropic-version", "2023-06-01")
+                .json(&payload)
+        }
         ProviderId::Gemini => client
             .post(format!(
                 "{}/models/{}:streamGenerateContent?alt=sse&key={}",
@@ -182,37 +215,123 @@ pub fn build_test_request(client: &Client, config: &ProviderRuntimeConfig) -> Re
     }
 }
 
+fn extract_text_content(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(text.to_string())
+            }
+        }
+        Value::Array(parts) => {
+            let fragments: Vec<String> = parts
+                .iter()
+                .filter_map(extract_text_content)
+                .filter(|fragment| !fragment.is_empty())
+                .collect();
+
+            if fragments.is_empty() {
+                None
+            } else {
+                Some(fragments.join(""))
+            }
+        }
+        Value::Object(map) => map
+            .get("text")
+            .and_then(extract_text_content)
+            .or_else(|| map.get("value").and_then(extract_text_content))
+            .or_else(|| map.get("parts").and_then(extract_text_content))
+            .or_else(|| map.get("content").and_then(extract_text_content)),
+        _ => None,
+    }
+}
+
+fn extract_openai_compatible_delta(payload: &Value) -> Option<String> {
+    let choice = payload.get("choices").and_then(|choices| choices.get(0))?;
+
+    choice
+        .get("delta")
+        .and_then(|delta| delta.get("content"))
+        .and_then(extract_text_content)
+        .or_else(|| {
+            choice
+                .get("delta")
+                .and_then(|delta| delta.get("text"))
+                .and_then(extract_text_content)
+        })
+        .or_else(|| {
+            choice
+                .get("message")
+                .and_then(|message| message.get("content"))
+                .and_then(extract_text_content)
+        })
+        .or_else(|| choice.get("text").and_then(extract_text_content))
+}
+
+fn extract_claude_delta(payload: &Value) -> Option<String> {
+    if payload.get("type").and_then(Value::as_str) == Some("content_block_delta") {
+        return payload
+            .get("delta")
+            .and_then(|delta| delta.get("text"))
+            .and_then(extract_text_content);
+    }
+
+    None
+}
+
+fn extract_claude_thinking(payload: &Value) -> Option<String> {
+    if payload.get("type").and_then(Value::as_str) == Some("content_block_delta") {
+        return payload
+            .get("delta")
+            .and_then(|delta| delta.get("thinking"))
+            .and_then(extract_text_content);
+    }
+
+    None
+}
+
+fn extract_gemini_delta(payload: &Value) -> Option<String> {
+    payload
+        .get("candidates")
+        .and_then(|candidates| candidates.get(0))
+        .and_then(|candidate| candidate.get("content"))
+        .and_then(|content| content.get("parts"))
+        .and_then(extract_text_content)
+}
+
 /// 从 SSE JSON 里提取增量文本
 pub fn extract_stream_delta(provider: ProviderId, payload: &Value) -> Option<String> {
     match provider {
-        ProviderId::Openai => payload
-            .get("choices")
-            .and_then(|choices| choices.get(0))
-            .and_then(|choice| choice.get("delta"))
-            .and_then(|delta| delta.get("content"))
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned),
-        ProviderId::Claude => {
-            if payload.get("type").and_then(Value::as_str) == Some("content_block_delta") {
-                return payload
-                    .get("delta")
-                    .and_then(|delta| delta.get("text"))
-                    .and_then(Value::as_str)
-                    .map(ToOwned::to_owned);
-            }
-
-            None
-        }
-        ProviderId::Gemini => payload
-            .get("candidates")
-            .and_then(|candidates| candidates.get(0))
-            .and_then(|candidate| candidate.get("content"))
-            .and_then(|content| content.get("parts"))
-            .and_then(|parts| parts.get(0))
-            .and_then(|part| part.get("text"))
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned),
+        ProviderId::Openai => extract_openai_compatible_delta(payload)
+            .or_else(|| extract_claude_delta(payload))
+            .or_else(|| extract_gemini_delta(payload)),
+        ProviderId::Claude => extract_claude_delta(payload)
+            .or_else(|| extract_openai_compatible_delta(payload))
+            .or_else(|| extract_gemini_delta(payload)),
+        ProviderId::Gemini => extract_gemini_delta(payload)
+            .or_else(|| extract_openai_compatible_delta(payload))
+            .or_else(|| extract_claude_delta(payload)),
     }
+}
+
+/// 从 SSE JSON 里提取思考增量文本
+pub fn extract_stream_thinking(provider: ProviderId, payload: &Value) -> Option<String> {
+    match provider {
+        ProviderId::Claude => extract_claude_thinking(payload),
+        ProviderId::Openai | ProviderId::Gemini => None,
+    }
+}
+
+fn supports_claude_extended_thinking(model: &str) -> bool {
+    let normalized = model.to_ascii_lowercase();
+
+    normalized.contains("claude-3-7")
+        || normalized.contains("claude-3.7")
+        || normalized.contains("sonnet-4")
+        || normalized.contains("opus-4")
+        || normalized.contains("haiku-4")
 }
 
 /// 执行连通性测试
@@ -304,11 +423,16 @@ pub(crate) fn map_provider_http_error(
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
     use reqwest::StatusCode;
 
     use crate::{
-        ai_integration::provider_registry::map_provider_http_error,
+        ai_integration::provider_registry::{
+            extract_stream_delta, extract_stream_thinking, map_provider_http_error,
+            normalize_base_url,
+        },
         errors::AppErrorCode,
+        models::ProviderId,
     };
 
     #[test]
@@ -351,5 +475,68 @@ mod tests {
         assert_eq!(error.code, AppErrorCode::ProviderConnectionFailed);
         assert!(error.retryable);
         assert_eq!(error.details.as_ref().unwrap()["status"], 502);
+    }
+
+    #[test]
+    fn extract_stream_delta_supports_openai_content_arrays() {
+        let payload = json!({
+            "choices": [
+                {
+                    "delta": {
+                        "content": [
+                            { "type": "text", "text": "你好" },
+                            { "type": "text", "text": "，世界" }
+                        ]
+                    }
+                }
+            ]
+        });
+
+        assert_eq!(
+            extract_stream_delta(ProviderId::Openai, &payload).as_deref(),
+            Some("你好，世界")
+        );
+    }
+
+    #[test]
+    fn extract_stream_delta_uses_cross_provider_fallbacks_for_compatible_gateways() {
+        let payload = json!({
+            "type": "content_block_delta",
+            "delta": {
+                "text": "兼容返回"
+            }
+        });
+
+        assert_eq!(
+            extract_stream_delta(ProviderId::Openai, &payload).as_deref(),
+            Some("兼容返回")
+        );
+    }
+
+    #[test]
+    fn extract_stream_thinking_reads_claude_thinking_delta() {
+        let payload = json!({
+            "type": "content_block_delta",
+            "delta": {
+                "thinking": "先确认上下文"
+            }
+        });
+
+        assert_eq!(
+            extract_stream_thinking(ProviderId::Claude, &payload).as_deref(),
+            Some("先确认上下文")
+        );
+    }
+
+    #[test]
+    fn normalize_base_url_appends_default_version_prefix_for_root_urls() {
+        assert_eq!(
+            normalize_base_url(ProviderId::Claude, "https://sub2api.chiikawa.org"),
+            "https://sub2api.chiikawa.org/v1"
+        );
+        assert_eq!(
+            normalize_base_url(ProviderId::Gemini, "https://generativelanguage.googleapis.com"),
+            "https://generativelanguage.googleapis.com/v1beta"
+        );
     }
 }

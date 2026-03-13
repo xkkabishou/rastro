@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from '../components/sidebar/Sidebar';
 import { RightPanel } from '../components/panel/RightPanel';
 import { TranslationSwitch } from '../components/pdf-viewer/TranslationSwitch';
-import { motion } from 'framer-motion';
 import { PanelRightOpen, PanelLeftOpen } from 'lucide-react';
 
 export const AppLayout = ({ children }: { children: React.ReactNode }) => {
@@ -49,10 +48,7 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => {
       )}
 
       {/* 主内容区域（PDF Viewer） */}
-      <motion.main
-        layout
-        className="flex-1 relative h-full flex flex-col bg-[var(--color-bg-secondary)] min-w-0"
-      >
+      <main className="flex-1 relative h-full flex flex-col bg-[var(--color-bg-secondary)] min-w-0">
         {/* 控制按钮 */}
         <div className="absolute top-3 left-3 z-10">
           {!isSidebarOpen && (
@@ -84,7 +80,7 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
         {/* 翻译状态悬浮层 */}
         <TranslationSwitch />
-      </motion.main>
+      </main>
 
       {/* 右侧面板（Chat/Settings/Summary） */}
       <RightPanel

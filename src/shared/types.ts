@@ -308,6 +308,7 @@ export interface ChatMessageDto {
   sessionId: string;
   role: ChatRole;
   contentMd: string;
+  thinkingMd?: string;
   contextQuote?: string;
   inputTokens: number;
   outputTokens: number;
@@ -340,6 +341,25 @@ export interface ProviderConfigDto {
 export interface SaveProviderKeyInput {
   provider: ProviderId;
   apiKey: string;
+}
+
+/** update_provider_config 请求 */
+export interface UpdateProviderConfigInput {
+  provider: ProviderId;
+  baseUrl?: string;
+  model?: string;
+}
+
+/** 可用模型信息 */
+export interface ModelInfo {
+  id: string;
+  name?: string;
+}
+
+/** fetch_available_models 响应 */
+export interface FetchModelsResult {
+  provider: ProviderId;
+  models: ModelInfo[];
 }
 
 /** remove_provider_key 请求 */
@@ -486,6 +506,7 @@ export interface TranslationJobFailedPayload {
 export interface AiStreamChunkPayload {
   streamId: string;
   delta: string;
+  kind?: "content" | "thinking";
 }
 
 /** ai://stream-finished 事件 payload */
@@ -533,6 +554,8 @@ export const IPC_COMMANDS = {
   REMOVE_PROVIDER_KEY: "remove_provider_key",
   SET_ACTIVE_PROVIDER: "set_active_provider",
   TEST_PROVIDER_CONNECTION: "test_provider_connection",
+  UPDATE_PROVIDER_CONFIG: "update_provider_config",
+  FETCH_AVAILABLE_MODELS: "fetch_available_models",
   // F. 使用统计
   GET_USAGE_STATS: "get_usage_stats",
   // G. Zotero 集成

@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { useChatStore } from '../../stores/useChatStore';
+import { useDocumentStore } from '../../stores/useDocumentStore';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { ipcClient, ipcEvents } from '../../lib/ipc-client';
@@ -9,10 +10,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 /** 聊天面板主组件 */
 export const ChatPanel: React.FC = () => {
   const {
+    activeSessionId,
     messages,
     isStreaming,
     activeStreamId,
     isLoadingHistory,
+    setActiveSession,
     addUserMessage,
     startAssistantStream,
     appendStreamChunk,
@@ -25,28 +28,43 @@ export const ChatPanel: React.FC = () => {
   } = useChatStore();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const unlistenRefs = useRef<Array<() => void>>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragLeaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // 注册事件监听
+  // 避免 StrictMode 下异步注册监听后泄漏，导致同一 delta 被重复消费。
   useEffect(() => {
+    let disposed = false;
+    let cleanup: (() => void) | null = null;
+
     const setupListeners = async () => {
-      const unlisten1 = await ipcEvents.onAiStreamChunk((payload) => {
-        appendStreamChunk(payload.streamId, payload.delta);
-      });
-      const unlisten2 = await ipcEvents.onAiStreamFinished((payload) => {
-        finishStream(payload.streamId, payload.messageId);
-      });
-      const unlisten3 = await ipcEvents.onAiStreamFailed((payload) => {
-        failStream(payload.streamId, payload.error.message);
-      });
-      unlistenRefs.current = [unlisten1, unlisten2, unlisten3];
+      const unlisteners = await Promise.all([
+        ipcEvents.onAiStreamChunk((payload) => {
+          appendStreamChunk(payload.streamId, payload.delta, payload.kind);
+        }),
+        ipcEvents.onAiStreamFinished((payload) => {
+          finishStream(payload.streamId, payload.messageId);
+        }),
+        ipcEvents.onAiStreamFailed((payload) => {
+          failStream(payload.streamId, payload.error.message);
+        }),
+      ]);
+
+      if (disposed) {
+        unlisteners.forEach((unlisten) => unlisten());
+        return;
+      }
+
+      cleanup = () => {
+        unlisteners.forEach((unlisten) => unlisten());
+      };
     };
 
     setupListeners().catch(console.error);
 
     return () => {
-      unlistenRefs.current.forEach((fn) => fn());
-      unlistenRefs.current = [];
+      disposed = true;
+      cleanup?.();
+      cleanup = null;
     };
   }, [appendStreamChunk, finishStream, failStream]);
 
@@ -55,27 +73,49 @@ export const ChatPanel: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const currentDocument = useDocumentStore((s) => s.currentDocument);
+  const currentDocumentId = currentDocument?.documentId ?? null;
+
+  useEffect(() => {
+    if (!currentDocumentId) return;
+    clearChat();
+  }, [currentDocumentId, clearChat]);
+
   // 发送消息
   const handleSend = useCallback(async (content: string, contextQuote?: string) => {
+    if (!currentDocument) {
+      const syntheticStreamId = `error-${Date.now()}`;
+      startAssistantStream(syntheticStreamId);
+      failStream(syntheticStreamId, '请先打开一篇文档后再提问');
+      return;
+    }
+
     // 先添加用户消息到 UI
     addUserMessage(content, contextQuote);
 
     try {
       // 调用后端 ask_ai
       const handle = await ipcClient.askAi({
-        documentId: 'current', // 由后续集成时动态替换
+        documentId: currentDocument.documentId,
+        sessionId: activeSessionId ?? undefined,
         userMessage: content,
         contextQuote,
       });
+      setActiveSession(handle.sessionId);
       // 开始流式消息
       startAssistantStream(handle.streamId);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('AI 问答失败:', err);
-      // 添加错误消息
-      startAssistantStream('error');
-      failStream('error', '发送失败，请检查网络或 API 配置');
+      // 从后端 AppError 中提取具体错误信息
+      const errorMsg =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: string }).message)
+          : '发送失败，请检查网络或 API 配置';
+      const syntheticStreamId = `error-${Date.now()}`;
+      startAssistantStream(syntheticStreamId);
+      failStream(syntheticStreamId, errorMsg);
     }
-  }, [addUserMessage, startAssistantStream, failStream]);
+  }, [currentDocument, activeSessionId, addUserMessage, setActiveSession, startAssistantStream, failStream]);
 
   // 取消流
   const handleCancel = useCallback(async () => {
@@ -89,8 +129,49 @@ export const ChatPanel: React.FC = () => {
     }
   }, [activeStreamId, cancelStream]);
 
+  // 整个面板的 drop 处理
+  const handlePanelDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const text = e.dataTransfer.getData('text/plain');
+    if (text?.trim()) {
+      useChatStore.getState().setContextQuote(text.trim());
+    }
+  }, []);
+
+  const handlePanelDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+    // 清除之前的 leave 计时器
+    if (dragLeaveTimer.current) clearTimeout(dragLeaveTimer.current);
+    setIsDragOver(true);
+  }, []);
+
+  const handlePanelDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    // 延迟隐藏以避免子元素切换时闪烁
+    dragLeaveTimer.current = setTimeout(() => setIsDragOver(false), 100);
+  }, []);
+
   return (
-    <div className="flex flex-col h-full">
+    <div
+      className="flex flex-col h-full relative"
+      onDrop={handlePanelDrop}
+      onDragOver={handlePanelDragOver}
+      onDragLeave={handlePanelDragLeave}
+    >
+      {/* 拖拽悬停反馈覆盖层 */}
+      {isDragOver && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-[var(--color-primary)]/5 border-2 border-dashed border-[var(--color-primary)]/40 rounded-lg backdrop-blur-sm pointer-events-none">
+          <div className="text-center">
+            <MessageSquare size={32} className="text-[var(--color-primary)] mx-auto mb-2 opacity-60" />
+            <p className="text-sm font-medium text-[var(--color-primary)]">释放以引用 PDF 段落</p>
+          </div>
+        </div>
+      )}
+
       {/* 顶部标题 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)] shrink-0">
         <div className="flex items-center gap-2">

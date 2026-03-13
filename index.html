@@ -4,6 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Rastro</title>
+    <!-- 覆盖 Tauri WKWebView 默认的 -webkit-user-select: none -->
+    <style>
+      .pdfViewer .page,
+      .pdfViewer .canvasWrapper,
+      .pdfViewer canvas,
+      .pdfViewer .textLayer {
+        -webkit-user-select: none !important;
+        user-select: none !important;
+      }
+
+      .pdfViewer .textLayer span,
+      .pdfViewer .textLayer br {
+        -webkit-user-select: text !important;
+        user-select: text !important;
+        -webkit-touch-callout: default !important;
+      }
+
+      .pdfViewer .textLayer,
+      .pdfViewer .textLayer * {
+        pointer-events: auto !important;
+      }
+
+      canvas {
+        -webkit-user-drag: none;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

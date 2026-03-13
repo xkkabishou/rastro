@@ -16,6 +16,7 @@ use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let state = app_state::AppState::initialize().expect("初始化后端状态失败");
             app.manage(state);
@@ -42,12 +43,14 @@ fn main() {
             ipc::ai::generate_summary,
             ipc::ai::list_chat_sessions,
             ipc::ai::get_chat_messages,
-            // E. Provider 配置与凭据 (5 个)
+            // E. Provider 配置与凭据 (7 个)
             ipc::settings::list_provider_configs,
             ipc::settings::save_provider_key,
             ipc::settings::remove_provider_key,
             ipc::settings::set_active_provider,
             ipc::settings::test_provider_connection,
+            ipc::settings::update_provider_config,
+            ipc::settings::fetch_available_models,
             // F. 使用统计 (1 个)
             ipc::settings::get_usage_stats,
             // G. Zotero 集成 (3 个)

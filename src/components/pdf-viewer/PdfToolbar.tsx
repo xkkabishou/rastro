@@ -1,5 +1,5 @@
 import React from 'react';
-import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Languages, Loader2 } from 'lucide-react';
 
 interface PdfToolbarProps {
   currentPage: number;
@@ -8,6 +8,14 @@ interface PdfToolbarProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomReset: () => void;
+  /** 翻译全文回调 */
+  onTranslate?: () => void;
+  /** 是否正在翻译 */
+  isTranslating?: boolean;
+  /** 翻译进度 (0-100) */
+  translationProgress?: number;
+  /** 是否已有翻译缓存 */
+  hasTranslation?: boolean;
 }
 
 export const PdfToolbar: React.FC<PdfToolbarProps> = ({
@@ -17,6 +25,10 @@ export const PdfToolbar: React.FC<PdfToolbarProps> = ({
   onZoomIn,
   onZoomOut,
   onZoomReset,
+  onTranslate,
+  isTranslating = false,
+  translationProgress = 0,
+  hasTranslation = false,
 }) => {
   return (
     <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-bg-overlay)] backdrop-blur-xl shrink-0">
@@ -66,8 +78,35 @@ export const PdfToolbar: React.FC<PdfToolbarProps> = ({
         </button>
       </div>
 
-      {/* 右侧留空，后续放总结按钮等 */}
-      <div className="w-20" />
+      {/* 右侧：翻译全文按钮 */}
+      <div className="w-auto flex items-center gap-2">
+        {onTranslate && (
+          <button
+            onClick={onTranslate}
+            disabled={isTranslating}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
+              isTranslating
+                ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] cursor-wait'
+                : hasTranslation
+                  ? 'bg-[var(--color-success)]/10 text-[var(--color-success)] hover:bg-[var(--color-success)]/20'
+                  : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20'
+            }`}
+            title={isTranslating ? `翻译中 ${translationProgress}%` : hasTranslation ? '查看译文' : '翻译全文'}
+          >
+            {isTranslating ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                {translationProgress > 0 ? `${translationProgress}%` : '翻译中...'}
+              </>
+            ) : (
+              <>
+                <Languages size={14} />
+                {hasTranslation ? '已翻译' : '翻译全文'}
+              </>
+            )}
+          </button>
+        )}
+      </div>
     </div>
   );
 };

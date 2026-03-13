@@ -1,34 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { ipcClient } from '../../lib/ipc-client';
-import { ProviderCard } from './ProviderCard';
+import React, { useState, useCallback, useEffect } from 'react';
+import { ModelSettings } from './ModelSettings';
 import { Settings, Zap, BarChart3, RefreshCw } from 'lucide-react';
-import type { ProviderConfigDto, UsageStatsDto, ProviderId } from '../../shared/types';
+import { ipcClient } from '../../lib/ipc-client';
+import type { UsageStatsDto } from '../../shared/types';
 
 /** 设置面板主组件 */
 export const SettingsPanel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'providers' | 'usage'>('providers');
-  const [providers, setProviders] = useState<ProviderConfigDto[]>([]);
+  const [activeTab, setActiveTab] = useState<'model' | 'usage'>('model');
   const [usageStats, setUsageStats] = useState<UsageStatsDto | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
-  // 加载 Provider 配置
-  const loadProviders = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const configs = await ipcClient.listProviderConfigs();
-      setProviders(configs);
-    } catch (err) {
-      console.error('加载 Provider 配置失败:', err);
-      // 使用默认空状态
-      setProviders([
-        { provider: 'openai', model: 'gpt-4o', isActive: true },
-        { provider: 'claude', model: 'claude-sonnet-4-20250514', isActive: false },
-        { provider: 'gemini', model: 'gemini-2.5-pro', isActive: false },
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
 
   // 加载使用统计
   const loadUsageStats = useCallback(async () => {
@@ -41,56 +20,10 @@ export const SettingsPanel: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadProviders();
-  }, [loadProviders]);
-
-  useEffect(() => {
     if (activeTab === 'usage') {
       loadUsageStats();
     }
   }, [activeTab, loadUsageStats]);
-
-  // 保存 API Key
-  const handleSaveKey = useCallback(async (provider: ProviderId, apiKey: string) => {
-    try {
-      await ipcClient.saveProviderKey({ provider, apiKey });
-      await loadProviders();
-    } catch (err) {
-      console.error('保存 API Key 失败:', err);
-      throw err;
-    }
-  }, [loadProviders]);
-
-  // 移除 API Key
-  const handleRemoveKey = useCallback(async (provider: ProviderId) => {
-    try {
-      await ipcClient.removeProviderKey(provider);
-      await loadProviders();
-    } catch (err) {
-      console.error('移除 API Key 失败:', err);
-    }
-  }, [loadProviders]);
-
-  // 设置活跃 Provider
-  const handleSetActive = useCallback(async (provider: ProviderId, model: string) => {
-    try {
-      await ipcClient.setActiveProvider({ provider, model });
-      await loadProviders();
-    } catch (err) {
-      console.error('切换 Provider 失败:', err);
-    }
-  }, [loadProviders]);
-
-  // 测试连接
-  const handleTestConnection = useCallback(async (provider: ProviderId) => {
-    try {
-      const result = await ipcClient.testProviderConnection({ provider });
-      return result;
-    } catch (err) {
-      console.error('测试连接失败:', err);
-      return { provider, model: '', success: false, error: String(err) };
-    }
-  }, []);
 
   return (
     <div className="flex flex-col h-full">
@@ -104,9 +37,9 @@ export const SettingsPanel: React.FC = () => {
       <div className="flex gap-1 px-3 py-2 border-b border-[var(--color-border)] shrink-0">
         <TabButton
           icon={<Zap size={14} />}
-          label="AI Provider"
-          active={activeTab === 'providers'}
-          onClick={() => setActiveTab('providers')}
+          label="模型配置"
+          active={activeTab === 'model'}
+          onClick={() => setActiveTab('model')}
         />
         <TabButton
           icon={<BarChart3 size={14} />}
@@ -117,22 +50,8 @@ export const SettingsPanel: React.FC = () => {
       </div>
 
       {/* 内容区域 */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {activeTab === 'providers' && (
-          <>
-            {providers.map((config) => (
-              <ProviderCard
-                key={config.provider}
-                config={config}
-                onSaveKey={handleSaveKey}
-                onRemoveKey={handleRemoveKey}
-                onSetActive={handleSetActive}
-                onTestConnection={handleTestConnection}
-              />
-            ))}
-          </>
-        )}
-
+      <div className="flex-1 overflow-y-auto p-3">
+        {activeTab === 'model' && <ModelSettings />}
         {activeTab === 'usage' && (
           <UsageView stats={usageStats} onRefresh={loadUsageStats} />
         )}

@@ -97,6 +97,43 @@ pub fn update_test_status(
     Ok(())
 }
 
+/// 更新 Provider 的 base_url 和 model 配置
+pub fn update_config(
+    connection: &Connection,
+    provider: &str,
+    base_url: Option<&str>,
+    model: Option<&str>,
+) -> rusqlite::Result<Option<ProviderSettingRecord>> {
+    let mut updates = Vec::new();
+    let mut args: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+    if let Some(url) = base_url {
+        updates.push("base_url = ?");
+        args.push(Box::new(url.to_string()));
+    }
+    if let Some(m) = model {
+        updates.push("model = ?");
+        args.push(Box::new(m.to_string()));
+    }
+
+    if updates.is_empty() {
+        return get_by_provider(connection, provider);
+    }
+
+    // 构建动态 SQL
+    let set_clause = updates.join(", ");
+    let sql = format!(
+        "UPDATE provider_settings SET {} WHERE provider = ?",
+        set_clause
+    );
+    args.push(Box::new(provider.to_string()));
+
+    let params: Vec<&dyn rusqlite::types::ToSql> = args.iter().map(|a| a.as_ref()).collect();
+    connection.execute(&sql, params.as_slice())?;
+
+    get_by_provider(connection, provider)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::storage::Storage;

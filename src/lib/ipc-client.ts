@@ -39,6 +39,8 @@ import {
   SetActiveProviderInput,
   TestProviderConnectionInput,
   ProviderConnectivityDto,
+  UpdateProviderConfigInput,
+  FetchModelsResult,
   // F. 使用统计
   GetUsageStatsInput,
   UsageStatsDto,
@@ -177,6 +179,14 @@ export const ipcClient = {
   /** 测试 Provider 连接 */
   testProviderConnection: (input: TestProviderConnectionInput) =>
     safeInvoke<ProviderConnectivityDto>(IPC_COMMANDS.TEST_PROVIDER_CONNECTION, { ...input }),
+
+  /** 更新 Provider 配置（base_url、model） */
+  updateProviderConfig: (input: UpdateProviderConfigInput) =>
+    safeInvoke<ProviderConfigDto>(IPC_COMMANDS.UPDATE_PROVIDER_CONFIG, { ...input }),
+
+  /** 拉取可用模型列表 */
+  fetchAvailableModels: (provider: string) =>
+    safeInvoke<FetchModelsResult>(IPC_COMMANDS.FETCH_AVAILABLE_MODELS, { provider }),
 
   // =========================================================================
   // F. 使用统计

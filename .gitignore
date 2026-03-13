@@ -41,6 +41,14 @@ src-tauri/runtime/
 # Serena 缓存
 .serena/cache/
 
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# Python 虚拟环境
+.venv/
+
 # 临时文件
 *.tmp
 *.bak

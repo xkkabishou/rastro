@@ -234,6 +234,21 @@
     transition: background-color var(--transition-slow), color var(--transition-slow), border-color var(--transition-slow);
   }
 
+  /* pdf.js 的 textLayer 依赖精确字宽，避免继承全局排版特性导致选区错位 */
+  .pdfViewer,
+  .pdfViewer .page,
+  .pdfViewer .textLayer,
+  .pdfViewer .textLayer * {
+    letter-spacing: normal;
+    text-rendering: auto;
+    font-feature-settings: normal;
+  }
+
+  /* pdf.js 的 .page 以 content-box 计算页面尺寸；Tailwind preflight 的 border-box 会让 canvas 比 textLayer 小 18px */
+  .pdfViewer .page {
+    box-sizing: content-box;
+  }
+
   /* 选中文本样式 */
   ::selection {
     background-color: rgba(0, 122, 255, 0.2);

@@ -39,38 +39,51 @@ export const SummaryPanel: React.FC<{ documentId?: string; filePath?: string }> 
     }
   }, [documentId, filePath, isGenerating]);
 
-  // 监听流式事件
+  // 避免 StrictMode 下异步注册监听后泄漏，导致同一 delta 被重复消费。
   useEffect(() => {
-    const unlisteners: Array<() => void> = [];
+    if (!activeStreamId) return;
+
+    let disposed = false;
+    let cleanup: (() => void) | null = null;
 
     const setup = async () => {
-      const u1 = await ipcEvents.onAiStreamChunk((payload: AiStreamChunkPayload) => {
-        if (payload.streamId === activeStreamId) {
-          setSummaryContent((prev) => prev + payload.delta);
-        }
-      });
-      const u2 = await ipcEvents.onAiStreamFinished((payload) => {
-        if (payload.streamId === activeStreamId) {
-          setIsGenerating(false);
-          setActiveStreamId(null);
-        }
-      });
-      const u3 = await ipcEvents.onAiStreamFailed((payload) => {
-        if (payload.streamId === activeStreamId) {
-          setSummaryContent((prev) => prev + `\n\n⚠️ ${payload.error.message}`);
-          setIsGenerating(false);
-          setActiveStreamId(null);
-        }
-      });
-      unlisteners.push(u1, u2, u3);
+      const unlisteners = await Promise.all([
+        ipcEvents.onAiStreamChunk((payload: AiStreamChunkPayload) => {
+          if (payload.streamId === activeStreamId && payload.kind !== 'thinking') {
+            setSummaryContent((prev) => prev + payload.delta);
+          }
+        }),
+        ipcEvents.onAiStreamFinished((payload) => {
+          if (payload.streamId === activeStreamId) {
+            setIsGenerating(false);
+            setActiveStreamId(null);
+          }
+        }),
+        ipcEvents.onAiStreamFailed((payload) => {
+          if (payload.streamId === activeStreamId) {
+            setSummaryContent((prev) => prev + `\n\n⚠️ ${payload.error.message}`);
+            setIsGenerating(false);
+            setActiveStreamId(null);
+          }
+        }),
+      ]);
+
+      if (disposed) {
+        unlisteners.forEach((unlisten) => unlisten());
+        return;
+      }
+
+      cleanup = () => {
+        unlisteners.forEach((unlisten) => unlisten());
+      };
     };
 
-    if (activeStreamId) {
-      setup().catch(console.error);
-    }
+    setup().catch(console.error);
 
     return () => {
-      unlisteners.forEach((fn) => fn());
+      disposed = true;
+      cleanup?.();
+      cleanup = null;
     };
   }, [activeStreamId]);
 

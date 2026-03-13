@@ -135,6 +135,7 @@ mod storage_tests {
                     session_id: session.session_id.clone(),
                     role: "user".to_string(),
                     content_md: "hello".to_string(),
+                    thinking_md: None,
                     context_quote: None,
                     input_tokens: 1,
                     output_tokens: 0,

@@ -181,6 +181,168 @@ pub async fn test_provider_connection(
     })
 }
 
+/// 更新 Provider 配置（base_url、model）
+#[tauri::command]
+pub fn update_provider_config(
+    state: State<'_, AppState>,
+    provider: ProviderId,
+    base_url: Option<String>,
+    model: Option<String>,
+) -> Result<ProviderConfigDto, crate::errors::AppError> {
+    let normalized_base_url = base_url
+        .as_deref()
+        .map(|value| crate::ai_integration::provider_registry::normalize_base_url(provider, value));
+
+    let record = {
+        let connection = state.storage.connection();
+        provider_settings::update_config(
+            &connection,
+            provider.as_str(),
+            normalized_base_url.as_deref(),
+            model.as_deref(),
+        )?
+    }
+    .ok_or_else(|| crate::errors::AppError::new(
+        crate::errors::AppErrorCode::InternalError,
+        "未找到对应 Provider 配置",
+        false,
+    ))?;
+
+    build_provider_config_dto(&state, record)
+}
+
+/// 可用模型列表项
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: Option<String>,
+}
+
+/// 拉取模型列表结果
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchModelsResult {
+    pub provider: ProviderId,
+    pub models: Vec<ModelInfo>,
+}
+
+/// 通过 /v1/models 拉取可用模型列表
+#[tauri::command]
+pub async fn fetch_available_models(
+    state: State<'_, AppState>,
+    provider: ProviderId,
+) -> Result<FetchModelsResult, crate::errors::AppError> {
+    // 读取 provider 配置获取 base_url 和 key
+    let record = {
+        let connection = state.storage.connection();
+        provider_settings::get_by_provider(&connection, provider.as_str())?
+    }
+    .ok_or_else(|| crate::errors::AppError::new(
+        crate::errors::AppErrorCode::InternalError,
+        "未找到对应 Provider 配置",
+        false,
+    ))?;
+
+    let api_key = state.keychain.get_key(provider.as_str())?
+        .ok_or_else(|| crate::errors::AppError::new(
+            crate::errors::AppErrorCode::ProviderKeyMissing,
+            "请先配置 API Key",
+            false,
+        ))?;
+
+    let base_url = record.base_url
+        .map(|value| crate::ai_integration::provider_registry::normalize_base_url(provider, &value))
+        .unwrap_or_else(|| crate::ai_integration::provider_registry::default_base_url(provider).to_string());
+    let base_url = base_url.trim_end_matches('/');
+
+    // 构建 models 请求（base_url 已包含版本前缀如 /v1 或 /v1beta）
+    let url = format!("{}/models", base_url);
+
+    let client = reqwest::Client::new();
+    let mut request_builder = client.get(&url);
+
+    // 设置认证头
+    match provider {
+        ProviderId::Openai | ProviderId::Claude => {
+            request_builder = request_builder.header("Authorization", format!("Bearer {}", api_key));
+            if provider == ProviderId::Claude {
+                request_builder = request_builder.header("x-api-key", &api_key);
+                request_builder = request_builder.header("anthropic-version", "2023-06-01");
+            }
+        }
+        ProviderId::Gemini => {
+            // Gemini 使用 query param
+            request_builder = request_builder.query(&[("key", &api_key)]);
+        }
+    }
+
+    let response = request_builder
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|err| crate::errors::AppError::new(
+            crate::errors::AppErrorCode::ProviderConnectionFailed,
+            format!("拉取模型列表失败: {}", err),
+            true,
+        ))?;
+
+    let body: serde_json::Value = response.json().await
+        .map_err(|err| crate::errors::AppError::new(
+            crate::errors::AppErrorCode::ProviderConnectionFailed,
+            format!("解析模型列表响应失败: {}", err),
+            true,
+        ))?;
+
+    // 解析不同 Provider 的响应格式
+    let models = match provider {
+        ProviderId::Openai => {
+            // OpenAI 格式: { "data": [{ "id": "gpt-4o", ... }] }
+            body["data"].as_array()
+                .unwrap_or(&vec![])
+                .iter()
+                .filter_map(|m| {
+                    m["id"].as_str().map(|id| ModelInfo {
+                        id: id.to_string(),
+                        name: m["id"].as_str().map(String::from),
+                    })
+                })
+                .collect()
+        }
+        ProviderId::Claude => {
+            // Claude 格式: { "data": [{ "id": "claude-sonnet-4-20250514", "display_name": "..." }] }
+            body["data"].as_array()
+                .unwrap_or(&vec![])
+                .iter()
+                .filter_map(|m| {
+                    m["id"].as_str().map(|id| ModelInfo {
+                        id: id.to_string(),
+                        name: m["display_name"].as_str().map(String::from),
+                    })
+                })
+                .collect()
+        }
+        ProviderId::Gemini => {
+            // Gemini 格式: { "models": [{ "name": "models/gemini-2.5-pro", "displayName": "..." }] }
+            body["models"].as_array()
+                .unwrap_or(&vec![])
+                .iter()
+                .filter_map(|m| {
+                    m["name"].as_str().map(|name| {
+                        let id = name.strip_prefix("models/").unwrap_or(name);
+                        ModelInfo {
+                            id: id.to_string(),
+                            name: m["displayName"].as_str().map(String::from),
+                        }
+                    })
+                })
+                .collect()
+        }
+    };
+
+    Ok(FetchModelsResult { provider, models })
+}
+
 // --- F. 使用统计 (1 个) ---
 
 /// 汇总问答、总结、翻译消耗

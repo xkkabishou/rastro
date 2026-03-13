@@ -334,9 +334,31 @@ impl EngineSupervisor {
         Ok(())
     }
 
+    /// 推断项目根目录（engine_supervisor 所在 crate 的上两级目录）。
+    fn project_root(&self) -> PathBuf {
+        // data_dir 通常是 <project>/src-tauri/target/... 的运行时路径，
+        // 但更可靠的方式是通过 CARGO_MANIFEST_DIR 编译时嵌入。
+        // 运行时回退：从 runtime_dir 向上查找包含 antigravity_translate 的目录。
+        if let Ok(root) = std::env::var("RASTRO_PROJECT_ROOT") {
+            return PathBuf::from(root);
+        }
+        // 编译期嵌入的 Cargo.toml 所在目录 (src-tauri/)，取其父级即为项目根
+        let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        cargo_dir.parent().unwrap_or(&cargo_dir).to_path_buf()
+    }
+
     fn preflight_python(&self) -> Result<String, AppError> {
-        let python =
-            std::env::var("RASTRO_ENGINE_PYTHON").unwrap_or_else(|_| "python3".to_string());
+        // 优先使用项目内 .venv 的 Python，自动化零配置
+        let project_root = self.project_root();
+        let venv_python = project_root.join(".venv").join("bin").join("python3");
+
+        let python = if std::env::var("RASTRO_ENGINE_PYTHON").is_ok() {
+            std::env::var("RASTRO_ENGINE_PYTHON").unwrap()
+        } else if venv_python.exists() {
+            venv_python.to_string_lossy().to_string()
+        } else {
+            "python3".to_string()
+        };
 
         let version_output = Command::new(&python)
             .arg("--version")
@@ -378,8 +400,11 @@ impl EngineSupervisor {
             .with_detail("python", python.clone()));
         }
 
-        for module_name in ["pdf2zh", "rastro_translation_engine"] {
+        // 使用 PYTHONPATH 检测模块可用性（模块在项目根目录而非 site-packages）
+        let pythonpath = project_root.to_string_lossy().to_string();
+        for module_name in ["antigravity_translate", "rastro_translation_engine"] {
             let status = Command::new(&python)
+                .env("PYTHONPATH", &pythonpath)
                 .args(["-c", &format!("import {module_name}")])
                 .status();
 
@@ -388,11 +413,12 @@ impl EngineSupervisor {
                 _ => {
                     return Err(AppError::new(
                         AppErrorCode::PdfmathtranslateNotInstalled,
-                        "缺少 PDFMathTranslate 运行依赖，请先安装 pdf2zh / rastro_translation_engine",
+                        format!("缺少翻译运行依赖 {module_name}，请检查项目目录下是否存在该 Python 包"),
                         false,
                     )
                     .with_detail("python", python.clone())
-                    .with_detail("module", module_name.to_string()));
+                    .with_detail("module", module_name.to_string())
+                    .with_detail("pythonpath", pythonpath.clone()));
                 }
             }
         }
@@ -410,6 +436,11 @@ impl EngineSupervisor {
             .append(true)
             .open(self.inner.runtime_dir.join("translation-engine.log"))?;
 
+        // 设置 PYTHONPATH 指向项目根目录，让子进程能找到
+        // antigravity_translate 和 rastro_translation_engine
+        let project_root = self.project_root();
+        let pythonpath = project_root.to_string_lossy().to_string();
+
         let mut command = Command::new(python);
         command
             .args([
@@ -420,6 +451,7 @@ impl EngineSupervisor {
                 "--port",
                 &self.inner.port.to_string(),
             ])
+            .env("PYTHONPATH", &pythonpath)
             .env("RASTRO_ENGINE_HOST", &self.inner.host)
             .env("RASTRO_ENGINE_PORT", self.inner.port.to_string())
             .stdout(Stdio::from(stdout_log))

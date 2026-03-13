@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 "#;
 
 const INIT_SQL: &str = include_str!("../../migrations/001_init.sql");
+const ADD_CHAT_MESSAGE_THINKING_SQL: &str =
+    include_str!("../../migrations/002_add_chat_message_thinking.sql");
 
 struct Migration {
     version: i64,
@@ -18,11 +20,18 @@ struct Migration {
     sql: &'static str,
 }
 
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "init",
-    sql: INIT_SQL,
-}];
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "init",
+        sql: INIT_SQL,
+    },
+    Migration {
+        version: 2,
+        name: "add_chat_message_thinking",
+        sql: ADD_CHAT_MESSAGE_THINKING_SQL,
+    },
+];
 
 /// 执行全部未应用的 schema migration。
 pub fn run(connection: &Connection) -> rusqlite::Result<()> {
@@ -83,7 +92,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 1);
+        assert_eq!(current_version(&connection).unwrap(), 2);
         assert_eq!(
             table_exists(&connection, "documents"),
             true,
@@ -94,6 +103,10 @@ mod tests {
             3,
             "default provider rows should be seeded"
         );
+        assert!(
+            column_exists(&connection, "chat_messages", "thinking_md"),
+            "chat_messages.thinking_md should exist after migration"
+        );
     }
 
     #[test]
@@ -103,11 +116,11 @@ mod tests {
         run(&connection).unwrap();
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 1);
+        assert_eq!(current_version(&connection).unwrap(), 2);
         assert_eq!(
             migration_row_count(&connection),
-            1,
-            "latest migration should only be recorded once"
+            2,
+            "latest migrations should only be recorded once"
         );
     }
 
@@ -118,11 +131,15 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 1);
+        assert_eq!(current_version(&connection).unwrap(), 2);
         assert_eq!(
             provider_setting_count(&connection),
             3,
             "legacy schema should keep a single copy of default providers"
+        );
+        assert!(
+            column_exists(&connection, "chat_messages", "thinking_md"),
+            "legacy schema should be upgraded with thinking column"
         );
     }
 
@@ -138,6 +155,16 @@ mod tests {
             )
             .map(|value| value == 1)
             .unwrap_or(false)
+    }
+
+    fn column_exists(connection: &Connection, table_name: &str, column_name: &str) -> bool {
+        connection
+            .prepare(&format!("PRAGMA table_info({table_name})"))
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|value| value == column_name)
     }
 
     fn provider_setting_count(connection: &Connection) -> i64 {

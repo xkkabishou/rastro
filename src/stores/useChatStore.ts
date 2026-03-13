@@ -6,10 +6,41 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  thinkingContent?: string;
   contextQuote?: string;
   timestamp: string;
   isStreaming?: boolean;
 }
+
+const buildAssistantStreamMessage = (
+  streamId: string,
+  overrides: Partial<ChatMessage> = {},
+): ChatMessage => ({
+  id: `stream-${streamId}`,
+  role: 'assistant',
+  content: '',
+  thinkingContent: '',
+  timestamp: new Date().toISOString(),
+  isStreaming: true,
+  ...overrides,
+});
+
+const updateOrInsertStreamMessage = (
+  messages: ChatMessage[],
+  streamId: string,
+  updater: (message: ChatMessage | null) => ChatMessage,
+) => {
+  const messageId = `stream-${streamId}`;
+  const index = messages.findIndex((message) => message.id === messageId);
+
+  if (index === -1) {
+    return [...messages, updater(null)];
+  }
+
+  return messages.map((message, messageIndex) => (
+    messageIndex === index ? updater(message) : message
+  ));
+};
 
 interface ChatState {
   /** 当前活跃的会话 ID */
@@ -41,7 +72,11 @@ interface ChatState {
   /** 开始流式助手消息 */
   startAssistantStream: (streamId: string) => void;
   /** 追加流式 chunk */
-  appendStreamChunk: (streamId: string, delta: string) => void;
+  appendStreamChunk: (
+    streamId: string,
+    delta: string,
+    kind?: 'content' | 'thinking',
+  ) => void;
   /** 结束流式助手消息 */
   finishStream: (streamId: string, messageId: string) => void;
   /** 流式失败 */
@@ -82,51 +117,62 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   startAssistantStream: (streamId) => {
-    const msg: ChatMessage = {
-      id: `stream-${streamId}`,
-      role: 'assistant',
-      content: '',
-      timestamp: new Date().toISOString(),
-      isStreaming: true,
-    };
     set((state) => ({
-      messages: [...state.messages, msg],
+      ...(state.messages.some((message) => message.id === `stream-${streamId}`)
+        ? {}
+        : {
+            messages: [...state.messages, buildAssistantStreamMessage(streamId)],
+          }),
+      isStreaming: state.messages.some((message) => (
+        message.id === `stream-${streamId}` && message.isStreaming === false
+      ))
+        ? state.isStreaming
+        : true,
+      activeStreamId: state.messages.some((message) => (
+        message.id === `stream-${streamId}` && message.isStreaming === false
+      ))
+        ? state.activeStreamId
+        : streamId,
+    }));
+  },
+
+  appendStreamChunk: (streamId, delta, kind = 'content') => {
+    set((state) => ({
+      messages: updateOrInsertStreamMessage(state.messages, streamId, (message) => ({
+        ...(message ?? buildAssistantStreamMessage(streamId)),
+        content: kind === 'thinking'
+          ? (message?.content ?? '')
+          : `${message?.content ?? ''}${delta}`,
+        thinkingContent: kind === 'thinking'
+          ? `${message?.thinkingContent ?? ''}${delta}`
+          : (message?.thinkingContent ?? ''),
+        isStreaming: true,
+      })),
       isStreaming: true,
       activeStreamId: streamId,
     }));
   },
 
-  appendStreamChunk: (streamId, delta) => {
+  finishStream: (streamId, _messageId) => {
     set((state) => ({
-      messages: state.messages.map((msg) =>
-        msg.id === `stream-${streamId}`
-          ? { ...msg, content: msg.content + delta }
-          : msg
-      ),
-    }));
-  },
-
-  finishStream: (streamId, messageId) => {
-    set((state) => ({
-      messages: state.messages.map((msg) =>
-        msg.id === `stream-${streamId}`
-          ? { ...msg, id: messageId, isStreaming: false }
-          : msg
-      ),
-      isStreaming: false,
-      activeStreamId: null,
+      messages: updateOrInsertStreamMessage(state.messages, streamId, (message) => ({
+        ...(message ?? buildAssistantStreamMessage(streamId)),
+        isStreaming: false,
+      })),
+      isStreaming: state.activeStreamId === streamId ? false : state.isStreaming,
+      activeStreamId: state.activeStreamId === streamId ? null : state.activeStreamId,
     }));
   },
 
   failStream: (streamId, errorMessage) => {
     set((state) => ({
-      messages: state.messages.map((msg) =>
-        msg.id === `stream-${streamId}`
-          ? { ...msg, content: msg.content || `⚠️ ${errorMessage}`, isStreaming: false }
-          : msg
-      ),
-      isStreaming: false,
-      activeStreamId: null,
+      messages: updateOrInsertStreamMessage(state.messages, streamId, (message) => ({
+        ...(message ?? buildAssistantStreamMessage(streamId)),
+        content: message?.content || `⚠️ ${errorMessage}`,
+        isStreaming: false,
+      })),
+      isStreaming: state.activeStreamId === streamId ? false : state.isStreaming,
+      activeStreamId: state.activeStreamId === streamId ? null : state.activeStreamId,
     }));
   },
 
@@ -146,5 +192,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   setLoadingHistory: (loading) => set({ isLoadingHistory: loading }),
-  clearChat: () => set({ messages: [], activeSessionId: null, contextQuote: null }),
+  clearChat: () => set({
+    messages: [],
+    activeSessionId: null,
+    contextQuote: null,
+    isStreaming: false,
+    activeStreamId: null,
+  }),
 }));
