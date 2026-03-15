@@ -11,4 +11,5 @@ PyMuPDF>=1.24.0
 # pip install pdf2zh
 
 # NotebookLM 本地服务依赖
-notebooklm-py==0.1.10
+notebooklm-py==0.3.4
+browser-cookie3==0.20.1

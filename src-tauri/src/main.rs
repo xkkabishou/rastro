@@ -8,6 +8,7 @@ mod errors;
 mod ipc;
 mod keychain;
 mod models;
+mod notebooklm_manager;
 mod storage;
 mod translation_manager;
 mod zotero_connector;
@@ -64,6 +65,18 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             ipc::zotero::detect_zotero_library,
             ipc::zotero::fetch_zotero_items,
             ipc::zotero::open_zotero_attachment,
+            // H. NotebookLM 集成 (10 个)
+            ipc::notebooklm::notebooklm_get_status,
+            ipc::notebooklm::notebooklm_begin_login,
+            ipc::notebooklm::notebooklm_open_external,
+            ipc::notebooklm::notebooklm_logout,
+            ipc::notebooklm::notebooklm_list_notebooks,
+            ipc::notebooklm::notebooklm_create_notebook,
+            ipc::notebooklm::notebooklm_attach_current_pdf,
+            ipc::notebooklm::notebooklm_generate_artifact,
+            ipc::notebooklm::notebooklm_get_task,
+            ipc::notebooklm::notebooklm_list_artifacts,
+            ipc::notebooklm::notebooklm_download_artifact,
         ])
         .run(tauri::generate_context!())?;
     Ok(())
