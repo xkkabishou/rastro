@@ -13,6 +13,7 @@ pub struct TranslationHttpClient {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HealthzResponse {
     pub status: String,
     pub service: Option<String>,
