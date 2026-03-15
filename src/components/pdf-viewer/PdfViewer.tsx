@@ -697,7 +697,13 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
           userMessage = '文档记录不存在，请重新打开 PDF';
           break;
         case 'ENGINE_UNAVAILABLE':
-          userMessage = '翻译引擎未就绪，请检查 Python 环境';
+          userMessage = '翻译引擎未就绪，请稍后重试';
+          break;
+        case 'ENGINE_PORT_CONFLICT':
+          userMessage = '翻译引擎端口被占用，请关闭占用程序后重试';
+          break;
+        case 'ENGINE_TIMEOUT':
+          userMessage = '翻译引擎启动超时，请检查 Python 环境';
           break;
         case 'PYTHON_NOT_FOUND':
           userMessage = '未找到 Python 环境，请先安装 Python 3.10+';

@@ -476,7 +476,18 @@ impl EngineSupervisor {
     }
 
     fn port_in_use(&self) -> bool {
-        TcpListener::bind((self.inner.host.as_str(), self.inner.port)).is_err()
+        // 不使用 TcpListener::bind 检测，因为 macOS 上 TIME_WAIT 状态的端口
+        // 会导致 bind 失败（误判为"被占用"）。
+        // 改用 TcpStream::connect_timeout：只有真正在监听的进程才能接受连接。
+        // TIME_WAIT 端口虽然 bind 会失败，但 connect 不会成功。
+        let addr = std::net::SocketAddr::from((
+            self.inner
+                .host
+                .parse::<std::net::IpAddr>()
+                .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            self.inner.port,
+        ));
+        std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok()
     }
 
     async fn is_circuit_open(&self) -> bool {
