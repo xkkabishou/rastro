@@ -129,15 +129,22 @@ impl EngineSupervisor {
         }
 
         if self.port_in_use() {
-            return Err(AppError::new(
-                AppErrorCode::EnginePortConflict,
-                format!(
-                    "端口 {} 已被未知进程占用，无法启动 translation-engine",
-                    self.inner.port
-                ),
-                false,
-            )
-            .with_detail("port", self.inner.port));
+            // 先尝试优雅关闭可能的孤儿引擎进程（上次 tauri dev 退出时留下的）
+            let _ = self.inner.http_client.shutdown(3).await;
+            sleep(Duration::from_millis(500)).await;
+
+            // 再检查一次，如果端口释放了就继续启动
+            if self.port_in_use() {
+                return Err(AppError::new(
+                    AppErrorCode::EnginePortConflict,
+                    format!(
+                        "端口 {} 已被其他进程占用，请在终端执行: lsof -ti :{} | xargs kill -9",
+                        self.inner.port, self.inner.port
+                    ),
+                    false,
+                )
+                .with_detail("port", self.inner.port));
+            }
         }
 
         {
