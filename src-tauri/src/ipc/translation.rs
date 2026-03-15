@@ -32,6 +32,8 @@ pub struct TranslationJobDto {
     pub translated_pdf_path: Option<String>,
     pub bilingual_pdf_path: Option<String>,
     pub figure_report_path: Option<String>,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
     pub created_at: String,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,

@@ -459,6 +459,25 @@ impl EngineSupervisor {
             .stdout(Stdio::from(stdout_log))
             .stderr(Stdio::from(stderr_log));
 
+        // 传递 PATH 以便 Python 子进程能找到 pdf2zh 等工具
+        if let Ok(path) = std::env::var("PATH") {
+            command.env("PATH", &path);
+        }
+
+        // 尝试自动探测 pdf2zh 路径
+        if std::env::var("AG_PDF2ZH_EXE").is_err() {
+            if let Ok(output) = Command::new("which").arg("pdf2zh").output() {
+                if output.status.success() {
+                    let pdf2zh_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !pdf2zh_path.is_empty() {
+                        command.env("AG_PDF2ZH_EXE", &pdf2zh_path);
+                    }
+                }
+            }
+        } else if let Ok(val) = std::env::var("AG_PDF2ZH_EXE") {
+            command.env("AG_PDF2ZH_EXE", &val);
+        }
+
         let child = command.spawn().map_err(|error| {
             AppError::new(
                 AppErrorCode::EngineUnavailable,

@@ -727,6 +727,9 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     const isActiveJob = translationJob.status === 'queued' || translationJob.status === 'running';
     if (!isActiveJob) {
       setTranslatedPdfUrl(resolveTranslatedPdfUrl(translationJob));
+      if (translationJob.status === 'failed' || translationJob.status === 'cancelled') {
+        setTranslationError(translationJob.errorMessage || `翻译任务${translationJob.status === 'failed' ? '失败' : '已取消'}`);
+      }
       return;
     }
 
@@ -752,6 +755,8 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
           timerId = window.setTimeout(() => {
             void pollTranslationJob();
           }, 1000);
+        } else if (latestJob.status === 'failed' || latestJob.status === 'cancelled') {
+          setTranslationError(latestJob.errorMessage || `翻译任务${latestJob.status === 'failed' ? '失败' : '已取消'}`);
         }
       } catch (err) {
         if (disposed) {

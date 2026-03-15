@@ -100,6 +100,8 @@ impl TranslationArtifactIndex {
             translated_pdf_path,
             bilingual_pdf_path,
             figure_report_path,
+            error_code: record.error_code,
+            error_message: record.error_message,
             created_at: record.created_at,
             started_at: record.started_at,
             finished_at: record.finished_at,

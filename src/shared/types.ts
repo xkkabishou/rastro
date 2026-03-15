@@ -215,6 +215,8 @@ export interface TranslationJobDto {
   translatedPdfPath?: string;
   bilingualPdfPath?: string;
   figureReportPath?: string;
+  errorCode?: string;
+  errorMessage?: string;
   createdAt: string;
   startedAt?: string;
   finishedAt?: string;
