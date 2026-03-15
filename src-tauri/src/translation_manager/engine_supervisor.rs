@@ -459,6 +459,14 @@ impl EngineSupervisor {
             .stdout(Stdio::from(stdout_log))
             .stderr(Stdio::from(stderr_log));
 
+        // babeldoc (pdf2zh 依赖) 在导入时创建 ~/.cache/babeldoc/，
+        // macOS 下可能因权限问题失败，重定向到应用缓存目录
+        let cache_dir = self.inner.runtime_dir.parent()
+            .map(|p| p.join("cache"))
+            .unwrap_or_else(|| self.inner.runtime_dir.join("cache"));
+        let _ = fs::create_dir_all(&cache_dir);
+        command.env("XDG_CACHE_HOME", cache_dir.to_string_lossy().to_string());
+
         // macOS GUI 应用的 PATH 非常有限（不含 ~/.local/bin 等），
         // 需要手动扩展 PATH 并探测 pdf2zh 路径
         let home_dir = std::env::var("HOME").unwrap_or_default();

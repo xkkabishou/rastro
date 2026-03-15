@@ -220,8 +220,14 @@ class TranslationWorker:
             from antigravity_translate import config as ag_config
 
             # 配置 antigravity_translate（使用前端传来的 API 设置）
-            if job.base_url:
-                ag_config.CLAUDE_BASE_URL = job.base_url
+            # 各 provider 的默认 OpenAI 兼容端点
+            _DEFAULT_BASE_URLS: dict[str, str] = {
+                "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+                "openai": "https://api.openai.com/v1",
+            }
+            base_url = job.base_url or _DEFAULT_BASE_URLS.get(job.provider, "")
+            if base_url:
+                ag_config.CLAUDE_BASE_URL = base_url
             ag_config.CLAUDE_API_KEY = job.api_key
             ag_config.CLAUDE_MODEL = job.model
 
