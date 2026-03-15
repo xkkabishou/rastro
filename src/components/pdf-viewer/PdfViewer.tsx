@@ -332,6 +332,7 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   const [url, setUrl] = useState<string | undefined>(initialUrl);
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [translationError, setTranslationError] = useState<string | null>(null);
   const [selectionPopup, setSelectionPopup] = useState<{
     text: string;
     x: number;
@@ -665,7 +666,11 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   ]);
 
   const handleTranslate = useCallback(async () => {
-    if (!currentDocument) return;
+    if (!currentDocument) {
+      setTranslationError('请先打开一个 PDF 文档');
+      return;
+    }
+    setTranslationError(null);
     try {
       setTranslationProgress(0);
       setTranslatedPdfUrl(null);
@@ -676,8 +681,31 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       setTranslationJob(job);
       setTranslationProgress(toProgressPercentage(job.progress));
       setTranslatedPdfUrl(resolveTranslatedPdfUrl(job));
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('提交翻译任务失败:', err);
+      const appErr = err as { code?: string; message?: string } | undefined;
+      const code = appErr?.code ?? '';
+      let userMessage: string;
+      switch (code) {
+        case 'PROVIDER_KEY_MISSING':
+          userMessage = '请先在设置中配置 API Key';
+          break;
+        case 'UNSUPPORTED_TRANSLATION_PROVIDER':
+          userMessage = '未配置翻译 Provider，请到设置中选择';
+          break;
+        case 'DOCUMENT_NOT_FOUND':
+          userMessage = '文档记录不存在，请重新打开 PDF';
+          break;
+        case 'ENGINE_UNAVAILABLE':
+          userMessage = '翻译引擎未就绪，请检查 Python 环境';
+          break;
+        case 'PYTHON_NOT_FOUND':
+          userMessage = '未找到 Python 环境，请先安装 Python 3.10+';
+          break;
+        default:
+          userMessage = appErr?.message ?? '翻译请求失败，请检查控制台日志';
+      }
+      setTranslationError(userMessage);
     }
   }, [currentDocument, setTranslatedPdfUrl, setTranslationJob, setTranslationProgress]);
 
@@ -892,6 +920,27 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
           translationProgress={translationProgress}
           hasTranslation={hasTranslation}
         />
+      )}
+
+      {/* 翻译错误提示 */}
+      {translationError && (
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-[#fef2f2] dark:bg-[#451a1a] border-b border-[#fca5a5] dark:border-[#7f1d1d] text-[#991b1b] dark:text-[#fca5a5] text-xs font-medium shrink-0">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span className="flex-1">{translationError}</span>
+          <button
+            onClick={() => setTranslationError(null)}
+            className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
       )}
 
       {/* PDF 渲染区域 */}
