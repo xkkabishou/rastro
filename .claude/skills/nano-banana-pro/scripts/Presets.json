@@ -1,0 +1,50 @@
+{
+  "photorealistic": {
+    "resolution": "2K",
+    "aspect_ratio": "3:2",
+    "promptPrefix": "Photorealistic, highly detailed photograph. ",
+    "promptSuffix": ". Shot on professional DSLR, natural lighting, sharp focus."
+  },
+  "social-media": {
+    "resolution": "1K",
+    "aspect_ratio": "1:1",
+    "promptPrefix": "Eye-catching social media image. ",
+    "promptSuffix": ". Vibrant colors, clean composition, trending aesthetic."
+  },
+  "social-story": {
+    "resolution": "1K",
+    "aspect_ratio": "9:16",
+    "promptPrefix": "Vertical social media story image. ",
+    "promptSuffix": ". Bold, attention-grabbing, mobile-optimized."
+  },
+  "product": {
+    "resolution": "2K",
+    "aspect_ratio": "1:1",
+    "promptPrefix": "Professional product photography. ",
+    "promptSuffix": ". Clean white background, studio lighting, commercial quality."
+  },
+  "banner": {
+    "resolution": "2K",
+    "aspect_ratio": "21:9",
+    "promptPrefix": "Wide banner image. ",
+    "promptSuffix": ". Cinematic composition, suitable for web header or hero section."
+  },
+  "thumbnail": {
+    "resolution": "1K",
+    "aspect_ratio": "16:9",
+    "promptPrefix": "YouTube thumbnail style. ",
+    "promptSuffix": ". High contrast, bold composition, eye-catching at small sizes."
+  },
+  "illustration": {
+    "resolution": "2K",
+    "aspect_ratio": "1:1",
+    "promptPrefix": "Digital illustration style. ",
+    "promptSuffix": ". Clean lines, vivid colors, modern digital art aesthetic."
+  },
+  "cinematic": {
+    "resolution": "4K",
+    "aspect_ratio": "21:9",
+    "promptPrefix": "Cinematic film still. ",
+    "promptSuffix": ". Anamorphic widescreen, shallow depth of field, dramatic lighting, film grain."
+  }
+}

@@ -1,0 +1,161 @@
+{
+  "timestamp": "2026-03-12T02:05:27+08:00",
+  "project": "Rastro (antigravity-paper)",
+  "identifier": "com.rastro.app",
+  "version": "0.1.0",
+  "modules": [
+    {
+      "path": "src/",
+      "language": "TypeScript/React",
+      "role": "前端 UI：PDF 查看器、侧边栏、聊天面板、设置面板",
+      "entry": "src/main.tsx",
+      "interfaces": ["src/shared/types.ts", "src/lib/ipc-client.ts"],
+      "tests": [],
+      "importantPaths": [
+        "src/App.tsx",
+        "src/layouts/AppLayout.tsx",
+        "src/stores/useDocumentStore.ts",
+        "src/stores/useChatStore.ts",
+        "src/components/pdf-viewer/PdfViewer.tsx",
+        "src/components/chat-panel/ChatPanel.tsx",
+        "src/components/settings/SettingsPanel.tsx",
+        "src/components/sidebar/Sidebar.tsx",
+        "src/components/sidebar/ZoteroList.tsx"
+      ],
+      "claudeMd": "src/CLAUDE.md",
+      "coverage": {
+        "scannedFiles": 29,
+        "totalFiles": 29,
+        "percentage": 100
+      },
+      "gaps": ["无前端测试", "部分组件内部逻辑未深入扫描"]
+    },
+    {
+      "path": "src-tauri/",
+      "language": "Rust",
+      "role": "Tauri 后端：25 个 IPC Command、SQLite、AI 集成、翻译管理、Zotero 集成",
+      "entry": "src-tauri/src/main.rs",
+      "interfaces": [
+        "src-tauri/src/ipc/document.rs",
+        "src-tauri/src/ipc/translation.rs",
+        "src-tauri/src/ipc/ai.rs",
+        "src-tauri/src/ipc/settings.rs",
+        "src-tauri/src/ipc/zotero.rs"
+      ],
+      "tests": [
+        "src-tauri/src/errors.rs",
+        "src-tauri/src/storage/mod.rs",
+        "src-tauri/src/ipc/document.rs",
+        "src-tauri/src/ipc/translation.rs",
+        "src-tauri/src/ipc/zotero.rs",
+        "src-tauri/src/zotero_connector/mod.rs",
+        "src-tauri/src/translation_manager/mod.rs",
+        "src-tauri/src/keychain/mod.rs"
+      ],
+      "importantPaths": [
+        "src-tauri/src/app_state.rs",
+        "src-tauri/src/errors.rs",
+        "src-tauri/src/models.rs",
+        "src-tauri/src/storage/mod.rs",
+        "src-tauri/src/ai_integration/mod.rs",
+        "src-tauri/src/translation_manager/mod.rs",
+        "src-tauri/src/translation_manager/engine_supervisor.rs",
+        "src-tauri/src/translation_manager/http_client.rs",
+        "src-tauri/src/zotero_connector/mod.rs",
+        "src-tauri/src/keychain/mod.rs",
+        "src-tauri/migrations/001_init.sql",
+        "src-tauri/Cargo.toml",
+        "src-tauri/tauri.conf.json"
+      ],
+      "claudeMd": "src-tauri/CLAUDE.md",
+      "coverage": {
+        "scannedFiles": 33,
+        "totalFiles": 33,
+        "percentage": 100
+      },
+      "gaps": [
+        "ai_integration/chat_service.rs 和 summary_service.rs 未深入扫描（流式实现细节）",
+        "ai_integration/provider_registry.rs 未深入扫描（Provider 路由逻辑）",
+        "ai_integration/usage_meter.rs 未深入扫描",
+        "translation_manager/engine_supervisor.rs 未深入扫描（子进程管理/熔断器细节）",
+        "translation_manager/http_client.rs 未深入扫描",
+        "translation_manager/job_registry.rs 未深入扫描",
+        "translation_manager/artifact_index.rs 未深入扫描",
+        "translation_manager/cache_eviction.rs 未深入扫描",
+        "storage/ 各子模块 CRUD 实现未逐一扫描"
+      ]
+    },
+    {
+      "path": "rastro_translation_engine/",
+      "language": "Python",
+      "role": "翻译引擎 HTTP 服务，提供 REST API 供 Rust 端调用",
+      "entry": "rastro_translation_engine/__main__.py",
+      "interfaces": ["rastro_translation_engine/server.py"],
+      "tests": [],
+      "importantPaths": [
+        "rastro_translation_engine/__init__.py",
+        "rastro_translation_engine/server.py",
+        "rastro_translation_engine/worker.py"
+      ],
+      "claudeMd": "rastro_translation_engine/CLAUDE.md",
+      "coverage": {
+        "scannedFiles": 4,
+        "totalFiles": 4,
+        "percentage": 100
+      },
+      "gaps": ["无测试"]
+    },
+    {
+      "path": "antigravity_translate/",
+      "language": "Python",
+      "role": "PDF 翻译核心：旋转页预处理、参考文献检测、调用 pdf2zh",
+      "entry": "antigravity_translate/core.py",
+      "interfaces": ["antigravity_translate/core.py"],
+      "tests": [],
+      "importantPaths": [
+        "antigravity_translate/__init__.py",
+        "antigravity_translate/core.py",
+        "antigravity_translate/config.py",
+        "antigravity_translate/prompts.py"
+      ],
+      "claudeMd": "antigravity_translate/CLAUDE.md",
+      "coverage": {
+        "scannedFiles": 5,
+        "totalFiles": 5,
+        "percentage": 100
+      },
+      "gaps": ["无测试"]
+    }
+  ],
+  "rootClaudeMd": "CLAUDE.md",
+  "scanSummary": {
+    "estimatedTotalSourceFiles": 71,
+    "scannedFiles": 71,
+    "coveragePercentage": 100,
+    "truncated": false,
+    "ignoredDirectories": [
+      "node_modules/ (npm 依赖)",
+      ".venv/ (Python 虚拟环境)",
+      "src-tauri/target/ (Rust 编译产物)",
+      "dist/ (前端构建产物)",
+      "src-tauri/gen/ (Tauri 代码生成)",
+      ".git/",
+      ".agent/ (Serena agent 工具)",
+      ".serena/",
+      "genesis/ (设计文档，非源码)"
+    ],
+    "skippedLargeFiles": [],
+    "missingTestModules": [
+      "src/ (前端无测试)",
+      "rastro_translation_engine/ (无测试)",
+      "antigravity_translate/ (无测试)"
+    ]
+  },
+  "nextSteps": [
+    "补扫 src-tauri/src/ai_integration/ 子模块（chat_service.rs, summary_service.rs, provider_registry.rs, usage_meter.rs）的流式实现细节",
+    "补扫 src-tauri/src/translation_manager/ 子模块（engine_supervisor.rs, http_client.rs, job_registry.rs, artifact_index.rs, cache_eviction.rs）",
+    "补扫 src-tauri/src/storage/ 各表 CRUD 实现",
+    "扫描 src/components/ 各组件的具体交互逻辑",
+    "扫描 genesis/ 目录的设计文档以补充架构决策记录"
+  ]
+}
