@@ -8,22 +8,23 @@
 
 ## 📋 问题总览
 
-### 第一轮（2026-03-11，0/12 已修复）
+### 第一轮（2026-03-11，7/12 已修复 — 2026-03-15 更新）
 
 | ID | 严重度 | 摘要 | 状态 |
 |----|--------|------|------|
-| H1 | 🟠 | 前后端 IPC 命令命名不一致 | ⏳ 待修复 |
-| H2 | 🟠 | NotebookLM 在后端 IPC 契约中完全缺失 | ⏳ 待修复 |
-| H3 | 🟠 | 翻译 Overlay vs 翻译 PDF 交互模型矛盾 | ⏳ 待修复 |
-| H4 | 🟠 | Python 环境缺失场景设计不充分 | ⏳ 待修复 |
-| H5 | 🟠 | 进程熔断机制对桌面场景过于严格 | ⏳ 待修复 |
-| M1 | 🟡 | 聊天消息接口缺少分页参数 | ⏳ 实现时处理 |
-| M2 | 🟡 | 翻译缓存 LRU 淘汰策略缺具体设计 | ⏳ 实现时处理 |
-| M3 | 🟡 | 大 PDF SHA-256 哈希计算性能影响 | ⏳ 实现时处理 |
-| M4 | 🟡 | 孤儿 Python 进程接管行为未完全定义 | ⏳ 实现时处理 |
-| M5 | 🟡 | AI Stream chunk 缺乏 batching 策略 | ⏳ 实现时处理 |
+| H1 | 🟠 | 前后端 IPC 命令命名不一致 | ✅ 已修复 — 代码统一使用后端命名（`open_document`），`ipc-client.ts` 31 个函数全部对齐 |
+| H2 | 🟠 | NotebookLM 在后端 IPC 契约中完全缺失 | ✅ 已修复 — 新增 `notebooklm_manager` Rust 模块 + 11 个 IPC 命令 + Python engine 骨架 |
+| H3 | 🟠 | 翻译 Overlay vs 翻译 PDF 交互模型矛盾 | ✅ 已修复 — 采用翻译 PDF 方案，`TranslationSwitch` 组件实现原文/译文切换 |
+| H4 | 🟠 | Python 环境缺失场景设计不充分 | ✅ 已修复 — `errors.rs` 新增 `PYTHON_NOT_FOUND` 等错误码，`SetupWizard` 组件引导安装 |
+| H5 | 🟠 | 进程熔断机制对桌面场景过于严格 | ✅ 已修复 — `engine_supervisor.rs` 改为指数退避 + 用户手动重启选项 |
+| M1 | 🟡 | 聊天消息接口缺少分页参数 | ⏳ 未处理 — 当前 `get_chat_messages` 仍一次加载全部 |
+| M2 | 🟡 | 翻译缓存 LRU 淘汰策略缺具体设计 | ✅ 已修复 — `cache_eviction.rs` 实现 LRU 淘汰逻辑 |
+| M3 | 🟡 | 大 PDF SHA-256 哈希计算性能影响 | ⏳ 未处理 — 暂无异步哈希或分块计算 |
+| M4 | 🟡 | 孤儿 Python 进程接管行为未完全定义 | ⏳ 未处理 — 进程清理仍依赖 supervisor 简单 kill |
+| M5 | 🟡 | AI Stream chunk 缺乏 batching 策略 | ✅ 已修复 — AG-005 实现了 pending 队列避免事件丢失 |
 | L1 | 🟢 | 进程日志缺少轮转策略 | ⏳ 后续优化 |
 | L2 | 🟢 | AnthropicAdapter 合约测试策略粗略 | ⏳ 后续优化 |
+
 
 ---
 
