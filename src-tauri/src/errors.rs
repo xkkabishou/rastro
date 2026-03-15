@@ -5,7 +5,7 @@
 use serde::Serialize;
 use std::collections::HashMap;
 
-/// 应用错误码（共 23 个，与 TypeScript AppErrorCode 对齐）
+/// 应用错误码（与 TypeScript AppErrorCode 对齐）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum AppErrorCode {
@@ -20,6 +20,15 @@ pub enum AppErrorCode {
     PythonNotFound,
     PythonVersionMismatch,
     PdfmathtranslateNotInstalled,
+    // NotebookLM 相关
+    NotebooklmAuthRequired,
+    NotebooklmAuthExpired,
+    NotebooklmEngineUnavailable,
+    NotebooklmUploadFailed,
+    NotebooklmGenerationFailed,
+    NotebooklmDownloadFailed,
+    NotebooklmRateLimited,
+    NotebooklmUnknown,
     // 翻译任务相关
     TranslationFailed,
     TranslationCancelled,
@@ -57,6 +66,14 @@ impl AppErrorCode {
             Self::PythonNotFound => "PYTHON_NOT_FOUND",
             Self::PythonVersionMismatch => "PYTHON_VERSION_MISMATCH",
             Self::PdfmathtranslateNotInstalled => "PDFMATHTRANSLATE_NOT_INSTALLED",
+            Self::NotebooklmAuthRequired => "NOTEBOOKLM_AUTH_REQUIRED",
+            Self::NotebooklmAuthExpired => "NOTEBOOKLM_AUTH_EXPIRED",
+            Self::NotebooklmEngineUnavailable => "NOTEBOOKLM_ENGINE_UNAVAILABLE",
+            Self::NotebooklmUploadFailed => "NOTEBOOKLM_UPLOAD_FAILED",
+            Self::NotebooklmGenerationFailed => "NOTEBOOKLM_GENERATION_FAILED",
+            Self::NotebooklmDownloadFailed => "NOTEBOOKLM_DOWNLOAD_FAILED",
+            Self::NotebooklmRateLimited => "NOTEBOOKLM_RATE_LIMITED",
+            Self::NotebooklmUnknown => "NOTEBOOKLM_UNKNOWN",
             Self::TranslationFailed => "TRANSLATION_FAILED",
             Self::TranslationCancelled => "TRANSLATION_CANCELLED",
             Self::ProviderKeyMissing => "PROVIDER_KEY_MISSING",
@@ -168,6 +185,35 @@ mod tests {
             AppErrorCode::PdfmathtranslateNotInstalled,
             "PDFMATHTRANSLATE_NOT_INSTALLED",
         ),
+        (
+            AppErrorCode::NotebooklmAuthRequired,
+            "NOTEBOOKLM_AUTH_REQUIRED",
+        ),
+        (
+            AppErrorCode::NotebooklmAuthExpired,
+            "NOTEBOOKLM_AUTH_EXPIRED",
+        ),
+        (
+            AppErrorCode::NotebooklmEngineUnavailable,
+            "NOTEBOOKLM_ENGINE_UNAVAILABLE",
+        ),
+        (
+            AppErrorCode::NotebooklmUploadFailed,
+            "NOTEBOOKLM_UPLOAD_FAILED",
+        ),
+        (
+            AppErrorCode::NotebooklmGenerationFailed,
+            "NOTEBOOKLM_GENERATION_FAILED",
+        ),
+        (
+            AppErrorCode::NotebooklmDownloadFailed,
+            "NOTEBOOKLM_DOWNLOAD_FAILED",
+        ),
+        (
+            AppErrorCode::NotebooklmRateLimited,
+            "NOTEBOOKLM_RATE_LIMITED",
+        ),
+        (AppErrorCode::NotebooklmUnknown, "NOTEBOOKLM_UNKNOWN"),
         (AppErrorCode::TranslationFailed, "TRANSLATION_FAILED"),
         (AppErrorCode::TranslationCancelled, "TRANSLATION_CANCELLED"),
         (AppErrorCode::ProviderKeyMissing, "PROVIDER_KEY_MISSING"),
@@ -205,7 +251,7 @@ mod tests {
 
     #[test]
     fn app_error_code_serializes_to_expected_contract_literals() {
-        assert_eq!(ALL_ERROR_CODES.len(), 23);
+        assert_eq!(ALL_ERROR_CODES.len(), 31);
 
         for (code, expected) in ALL_ERROR_CODES {
             assert_eq!(

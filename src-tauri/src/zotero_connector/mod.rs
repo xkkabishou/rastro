@@ -131,10 +131,7 @@ impl ZoteroConnector {
 
         let mut items = Vec::with_capacity(rows.len());
         for row in rows {
-            let authors = authors_map
-                .get(&row.item_id)
-                .cloned()
-                .unwrap_or_default();
+            let authors = authors_map.get(&row.item_id).cloned().unwrap_or_default();
             let pdf_path = attachments_map
                 .get(&row.item_id)
                 .and_then(|attachment| self.resolve_attachment_reference(attachment).ok())
@@ -409,8 +406,10 @@ fn batch_fetch_authors(
     );
 
     let mut statement = connection.prepare(&sql).map_err(map_sqlite_error)?;
-    let params: Vec<&dyn rusqlite::types::ToSql> =
-        item_ids.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
+    let params: Vec<&dyn rusqlite::types::ToSql> = item_ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::types::ToSql)
+        .collect();
     let rows = statement
         .query_map(params.as_slice(), |row| {
             let item_id: i64 = row.get(0)?;
@@ -442,7 +441,9 @@ fn batch_fetch_first_attachments(
         return Ok(HashMap::new());
     }
 
-    let placeholders: Vec<String> = (1..=parent_item_ids.len()).map(|i| format!("?{}", i + 1)).collect();
+    let placeholders: Vec<String> = (1..=parent_item_ids.len())
+        .map(|i| format!("?{}", i + 1))
+        .collect();
     let sql = format!(
         "SELECT ia.parentItemID, parent.key, attachment.key, ia.path
          FROM itemAttachments ia
@@ -459,7 +460,8 @@ fn batch_fetch_first_attachments(
     for id in parent_item_ids {
         all_params.push(Box::new(*id));
     }
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> = all_params.iter().map(|p| p.as_ref()).collect();
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+        all_params.iter().map(|p| p.as_ref()).collect();
 
     let mut statement = connection.prepare(&sql).map_err(map_sqlite_error)?;
     let rows = statement

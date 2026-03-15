@@ -163,7 +163,8 @@ mod tests {
 
     use crate::{
         ai_integration::AiIntegration, app_state::AppState, keychain::KeychainService,
-        storage::Storage, translation_manager::TranslationManager,
+        notebooklm_manager::NotebookLMManager, storage::Storage,
+        translation_manager::TranslationManager,
     };
 
     use super::{request_translation, TranslationEngineStatus};
@@ -224,6 +225,18 @@ mod tests {
             translation_status.clone(),
         )
         .unwrap();
+        let notebooklm_status = Arc::new(ParkingMutex::new(
+            crate::ipc::notebooklm::NotebookLMEngineStatus {
+                running: false,
+                pid: None,
+                port: 8891,
+                engine_version: None,
+                circuit_breaker_open: false,
+                last_health_check: None,
+            },
+        ));
+        let notebooklm_manager =
+            NotebookLMManager::new(data_dir.clone(), notebooklm_status.clone()).unwrap();
 
         AppState {
             data_dir,
@@ -232,6 +245,8 @@ mod tests {
             ai_integration,
             translation_manager,
             translation_status,
+            notebooklm_manager,
+            notebooklm_status,
             zotero_status: Arc::new(ParkingMutex::new(crate::ipc::zotero::ZoteroStatusDto {
                 detected: false,
                 database_path: None,

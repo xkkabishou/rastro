@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "icons:generate": "python3 scripts/generate_app_icons.py",
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "echo \"Error: no test specified\" && exit 1"

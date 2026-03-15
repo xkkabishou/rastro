@@ -3,7 +3,7 @@
 use std::{path::Path, str::FromStr};
 
 use serde::Serialize;
-use sha2::{Digest, Sha256};
+use sha2::Sha256;
 use tauri::State;
 
 use crate::{
@@ -240,8 +240,12 @@ mod tests {
     use crate::{
         ai_integration::AiIntegration,
         app_state::AppState,
-        ipc::{translation::TranslationEngineStatus, zotero::ZoteroStatusDto},
+        ipc::{
+            notebooklm::NotebookLMEngineStatus, translation::TranslationEngineStatus,
+            zotero::ZoteroStatusDto,
+        },
         keychain::KeychainService,
+        notebooklm_manager::NotebookLMManager,
         storage::Storage,
         translation_manager::TranslationManager,
     };
@@ -339,6 +343,16 @@ mod tests {
             translation_status.clone(),
         )
         .unwrap();
+        let notebooklm_status = Arc::new(Mutex::new(NotebookLMEngineStatus {
+            running: false,
+            pid: None,
+            port: 8891,
+            engine_version: None,
+            circuit_breaker_open: false,
+            last_health_check: None,
+        }));
+        let notebooklm_manager =
+            NotebookLMManager::new(data_dir.clone(), notebooklm_status.clone()).unwrap();
 
         AppState {
             data_dir,
@@ -347,6 +361,8 @@ mod tests {
             ai_integration,
             translation_manager,
             translation_status,
+            notebooklm_manager,
+            notebooklm_status,
             zotero_status: Arc::new(Mutex::new(ZoteroStatusDto {
                 detected: false,
                 database_path: None,

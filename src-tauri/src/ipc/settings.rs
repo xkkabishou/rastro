@@ -435,9 +435,7 @@ pub fn get_usage_stats(
                 output_tokens: 0,
                 estimated_cost: 0.0,
             });
-            by_provider
-                .last_mut()
-                .unwrap_or_else(|| unreachable!())
+            by_provider.last_mut().unwrap_or_else(|| unreachable!())
         };
 
         entry.input_tokens += event.input_tokens;

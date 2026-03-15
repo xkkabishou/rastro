@@ -205,7 +205,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
                 <div className="flex items-start gap-3">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                     setupState === 'resolved'
-                      ? 'bg-[rgba(52,199,89,0.1)]'
+                      ? 'bg-[rgba(90,158,111,0.1)]'
                       : 'bg-[rgba(255,149,0,0.1)]'
                   }`}>
                     {setupState === 'resolved' ? (

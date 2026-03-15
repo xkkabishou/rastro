@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 /* =============================================================================
- * Rastro Design System — Apple HIG 风格
+ * Rastro Design System — Shiba Warm Palette
  * 权威源: frontend-system.md Section 7
- * 设计原则: Apple Human Interface Guidelines (macOS)
+ * 设计原则: 暖金色系，与柴犬图标视觉统一
  * ============================================================================= */
 
 /* ---------------------------------------------------------------------------
@@ -101,55 +101,55 @@
 
 @layer base {
   :root {
-    /* 主色调 — Apple Blue */
-    --color-primary: #007AFF;
-    --color-primary-hover: #0066D6;
-    --color-primary-active: #0055B3;
+    /* 主色调 — 琥珀金 */
+    --color-primary: #D4924A;
+    --color-primary-hover: #C07E3A;
+    --color-primary-active: #A86C2E;
 
     /* 语义色 */
-    --color-secondary: #5856D6;
-    --color-accent: #FF9500;
-    --color-destructive: #FF3B30;
-    --color-success: #34C759;
-    --color-warning: #FF9F0A;
+    --color-secondary: #8B6914;
+    --color-accent: #E8973E;
+    --color-destructive: #D94F3B;
+    --color-success: #5A9E6F;
+    --color-warning: #E8973E;
 
     /* 背景层级 */
-    --color-bg: #FFFFFF;
-    --color-bg-secondary: #F5F5F7;
-    --color-bg-tertiary: #EFEFEF;
+    --color-bg: #FFFBF5;
+    --color-bg-secondary: #F5EDE0;
+    --color-bg-tertiary: #EDE3D4;
     --color-bg-elevated: #FFFFFF;
-    --color-bg-overlay: rgba(255, 255, 255, 0.72);
+    --color-bg-overlay: rgba(255, 251, 245, 0.85);
 
     /* 文本层级 */
-    --color-text: #1D1D1F;
-    --color-text-secondary: #6E6E73;
-    --color-text-tertiary: #86868B;
-    --color-text-quaternary: #AEAEB2;
+    --color-text: #3D2B1F;
+    --color-text-secondary: #7A6555;
+    --color-text-tertiary: #A08E7A;
+    --color-text-quaternary: #C4B5A5;
     --color-text-on-primary: #FFFFFF;
 
     /* 边框 */
-    --color-border: rgba(0, 0, 0, 0.08);
-    --color-border-secondary: rgba(0, 0, 0, 0.04);
-    --color-border-focus: #007AFF;
+    --color-border: rgba(139, 105, 20, 0.12);
+    --color-border-secondary: rgba(139, 105, 20, 0.06);
+    --color-border-focus: #D4924A;
 
     /* 分割线 */
-    --color-separator: rgba(60, 60, 67, 0.12);
-    --color-separator-opaque: #C6C6C8;
+    --color-separator: rgba(139, 105, 20, 0.10);
+    --color-separator-opaque: #D4C4A8;
 
     /* 交互状态 */
-    --color-hover: rgba(0, 0, 0, 0.04);
-    --color-active: rgba(0, 0, 0, 0.06);
-    --color-selected: rgba(0, 122, 255, 0.08);
+    --color-hover: rgba(212, 146, 74, 0.08);
+    --color-active: rgba(212, 146, 74, 0.12);
+    --color-selected: rgba(212, 146, 74, 0.10);
 
     /* 专用 — 聊天面板 */
-    --color-chat-user-bg: #007AFF;
+    --color-chat-user-bg: #D4924A;
     --color-chat-user-text: #FFFFFF;
-    --color-chat-assistant-bg: #F0F0F5;
-    --color-chat-assistant-text: #1D1D1F;
+    --color-chat-assistant-bg: #F5EDE0;
+    --color-chat-assistant-text: #3D2B1F;
 
     /* 专用 — 代码块 */
-    --color-code-bg: #F5F5F7;
-    --color-code-text: #1D1D1F;
+    --color-code-bg: #F5EDE0;
+    --color-code-text: #3D2B1F;
 
     /* 兼容旧变量 */
     --background: var(--color-bg);
@@ -162,55 +162,55 @@
 
   @media (prefers-color-scheme: dark) {
     :root {
-      /* 主色调 — Apple Blue Dark */
-      --color-primary: #0A84FF;
-      --color-primary-hover: #409CFF;
-      --color-primary-active: #64B5FF;
+      /* 主色调 — 亮金 */
+      --color-primary: #E8A850;
+      --color-primary-hover: #F0B866;
+      --color-primary-active: #F5C87A;
 
       /* 语义色 */
-      --color-secondary: #5E5CE6;
-      --color-accent: #FF9F0A;
-      --color-destructive: #FF453A;
-      --color-success: #30D158;
-      --color-warning: #FFD60A;
+      --color-secondary: #C49A32;
+      --color-accent: #F0A848;
+      --color-destructive: #E8614E;
+      --color-success: #6AB87E;
+      --color-warning: #F0A848;
 
       /* 背景层级 */
-      --color-bg: #1C1C1E;
-      --color-bg-secondary: #2C2C2E;
-      --color-bg-tertiary: #3A3A3C;
-      --color-bg-elevated: #2C2C2E;
-      --color-bg-overlay: rgba(44, 44, 46, 0.72);
+      --color-bg: #1E1A15;
+      --color-bg-secondary: #2A2420;
+      --color-bg-tertiary: #362E28;
+      --color-bg-elevated: #2A2420;
+      --color-bg-overlay: rgba(30, 26, 21, 0.85);
 
       /* 文本层级 */
-      --color-text: #F5F5F7;
-      --color-text-secondary: #A1A1A6;
-      --color-text-tertiary: #8E8E93;
-      --color-text-quaternary: #636366;
+      --color-text: #F5EDE0;
+      --color-text-secondary: #BBA990;
+      --color-text-tertiary: #8E7E6C;
+      --color-text-quaternary: #5C5045;
       --color-text-on-primary: #FFFFFF;
 
       /* 边框 */
-      --color-border: rgba(255, 255, 255, 0.10);
-      --color-border-secondary: rgba(255, 255, 255, 0.06);
-      --color-border-focus: #0A84FF;
+      --color-border: rgba(232, 168, 80, 0.15);
+      --color-border-secondary: rgba(232, 168, 80, 0.08);
+      --color-border-focus: #E8A850;
 
       /* 分割线 */
-      --color-separator: rgba(84, 84, 88, 0.65);
-      --color-separator-opaque: #38383A;
+      --color-separator: rgba(142, 126, 108, 0.45);
+      --color-separator-opaque: #3D3530;
 
       /* 交互状态 */
-      --color-hover: rgba(255, 255, 255, 0.06);
-      --color-active: rgba(255, 255, 255, 0.08);
-      --color-selected: rgba(10, 132, 255, 0.15);
+      --color-hover: rgba(232, 168, 80, 0.08);
+      --color-active: rgba(232, 168, 80, 0.12);
+      --color-selected: rgba(232, 168, 80, 0.15);
 
       /* 专用 — 聊天面板 */
-      --color-chat-user-bg: #0A84FF;
+      --color-chat-user-bg: #E8A850;
       --color-chat-user-text: #FFFFFF;
-      --color-chat-assistant-bg: #2C2C2E;
-      --color-chat-assistant-text: #F5F5F7;
+      --color-chat-assistant-bg: #2A2420;
+      --color-chat-assistant-text: #F5EDE0;
 
       /* 专用 — 代码块 */
-      --color-code-bg: #2C2C2E;
-      --color-code-text: #F5F5F7;
+      --color-code-bg: #2A2420;
+      --color-code-text: #F5EDE0;
     }
   }
 
@@ -251,7 +251,7 @@
 
   /* 选中文本样式 */
   ::selection {
-    background-color: rgba(0, 122, 255, 0.2);
+    background-color: rgba(212, 146, 74, 0.25);
     color: inherit;
   }
 
@@ -289,7 +289,7 @@
     }
   }
 
-  /* Focus Ring — Apple 风格 */
+  /* Focus Ring — 暖金色 */
   *:focus-visible {
     outline: 2px solid var(--color-border-focus);
     outline-offset: 2px;
@@ -338,7 +338,7 @@
 
   .input-base:focus {
     border-color: var(--color-border-focus);
-    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+    box-shadow: 0 0 0 3px rgba(212, 146, 74, 0.20);
     outline: none;
   }
 

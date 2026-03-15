@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Settings, FileText, Library, Menu, FolderOpen } from 'lucide-react';
+import shibaLogoUrl from '../../assets/shiba/shiba-logo.png';
 import { open } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { ZoteroList } from './ZoteroList';
@@ -119,7 +120,10 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: 
         >
           {/* 头部 */}
           <div className="flex items-center justify-between px-4 pb-4 border-b border-[var(--color-separator)] shrink-0">
-            <span className="font-semibold px-2 text-[var(--color-text)]">Rastro</span>
+            <span className="font-semibold px-2 text-[var(--color-text)] flex items-center gap-2">
+              <img src={shibaLogoUrl} alt="Rastro" className="w-6 h-6 rounded-md" />
+              Rastro
+            </span>
             <button
               onClick={onToggle}
               className="p-1.5 rounded-md hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)] transition-colors"

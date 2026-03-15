@@ -6,6 +6,7 @@ import { ChatInput } from './ChatInput';
 import { ipcClient } from '../../lib/ipc-client';
 import { Sparkles, MessageSquare, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import shibaChatUrl from '../../assets/shiba/shiba-chat.png';
 
 /** 聊天面板主组件 */
 export const ChatPanel: React.FC = () => {
@@ -175,9 +176,7 @@ export const ChatPanel: React.FC = () => {
 /** 空状态组件 */
 const EmptyState: React.FC = () => (
   <div className="flex-1 flex flex-col items-center justify-center p-6 text-center h-full">
-    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500/10 to-blue-500/10 flex items-center justify-center mb-3">
-      <MessageSquare size={24} className="text-[var(--color-primary)] opacity-60" />
-    </div>
+    <img src={shibaChatUrl} alt="" className="w-16 h-auto mb-3 opacity-80" />
     <h3 className="text-sm font-medium text-[var(--color-text)] mb-1">
       AI 问答助手
     </h3>

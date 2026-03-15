@@ -2,7 +2,9 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage as ChatMessageType } from '../../stores/useChatStore';
-import { User, Sparkles, Quote, Brain } from 'lucide-react';
+import { Quote, Brain } from 'lucide-react';
+import shibaUserUrl from '../../assets/shiba/shiba-user.png';
+import shibaAiUrl from '../../assets/shiba/shiba-ai.png';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -16,13 +18,11 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
   return (
     <div className={`flex gap-3 py-3 px-4 ${isUser ? '' : 'bg-[var(--color-bg-secondary)]/50'}`}>
       {/* 角色头像 */}
-      <div className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
-        isUser
-          ? 'bg-[var(--color-primary)] text-white'
-          : 'bg-gradient-to-br from-purple-500 to-blue-500 text-white'
-      }`}>
-        {isUser ? <User size={14} /> : <Sparkles size={14} />}
-      </div>
+      <img
+        src={isUser ? shibaUserUrl : shibaAiUrl}
+        alt={isUser ? '用户' : 'AI'}
+        className="shrink-0 w-7 h-7 rounded-full object-cover"
+      />
 
       {/* 消息内容 */}
       <div className="flex-1 min-w-0">
