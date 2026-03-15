@@ -1,7 +1,7 @@
 use std::{
     fs::{self, OpenOptions},
     net::TcpListener,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::Arc,
     time::{Duration, Instant},
@@ -459,23 +459,37 @@ impl EngineSupervisor {
             .stdout(Stdio::from(stdout_log))
             .stderr(Stdio::from(stderr_log));
 
-        // 传递 PATH 以便 Python 子进程能找到 pdf2zh 等工具
-        if let Ok(path) = std::env::var("PATH") {
-            command.env("PATH", &path);
-        }
+        // macOS GUI 应用的 PATH 非常有限（不含 ~/.local/bin 等），
+        // 需要手动扩展 PATH 并探测 pdf2zh 路径
+        let home_dir = std::env::var("HOME").unwrap_or_default();
+        let extra_paths = [
+            format!("{home_dir}/.local/bin"),
+            format!("{home_dir}/.local/share/uv/tools/pdf2zh-next/bin"),
+            "/usr/local/bin".to_string(),
+            "/opt/homebrew/bin".to_string(),
+        ];
+        let system_path = std::env::var("PATH").unwrap_or_default();
+        let extended_path = format!("{}:{}", extra_paths.join(":"), system_path);
+        command.env("PATH", &extended_path);
 
-        // 尝试自动探测 pdf2zh 路径
-        if std::env::var("AG_PDF2ZH_EXE").is_err() {
-            if let Ok(output) = Command::new("which").arg("pdf2zh").output() {
-                if output.status.success() {
-                    let pdf2zh_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if !pdf2zh_path.is_empty() {
-                        command.env("AG_PDF2ZH_EXE", &pdf2zh_path);
-                    }
+        // 探测 pdf2zh 可执行文件路径
+        if std::env::var("AG_PDF2ZH_EXE").is_ok() {
+            // 用户显式设置了，直接传递
+            command.env("AG_PDF2ZH_EXE", std::env::var("AG_PDF2ZH_EXE").unwrap());
+        } else {
+            // 在常见路径中搜索
+            let candidates = [
+                format!("{home_dir}/.local/bin/pdf2zh"),
+                format!("{home_dir}/.local/share/uv/tools/pdf2zh-next/bin/pdf2zh"),
+                "/usr/local/bin/pdf2zh".to_string(),
+                "/opt/homebrew/bin/pdf2zh".to_string(),
+            ];
+            for candidate in &candidates {
+                if Path::new(candidate).exists() {
+                    command.env("AG_PDF2ZH_EXE", candidate);
+                    break;
                 }
             }
-        } else if let Ok(val) = std::env::var("AG_PDF2ZH_EXE") {
-            command.env("AG_PDF2ZH_EXE", &val);
         }
 
         let child = command.spawn().map_err(|error| {
