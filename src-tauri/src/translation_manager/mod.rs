@@ -15,6 +15,10 @@ use parking_lot::Mutex as ParkingMutex;
 use tauri::async_runtime;
 use tokio::{sync::Mutex, time::sleep};
 
+/// R3-H1: 翻译 job 完成或失败时触发的事件回调类型
+/// 参数: (event_name, document_id, job_id)
+pub type TranslationEventEmitter = dyn Fn(&str, &str, &str) + Send + Sync;
+
 use crate::{
     errors::{AppError, AppErrorCode},
     ipc::translation::{RequestTranslationInput, TranslationEngineStatus, TranslationJobDto},
@@ -49,6 +53,8 @@ struct TranslationManagerInner {
     http_client: TranslationHttpClient,
     supervisor: EngineSupervisor,
     registry: Mutex<JobRegistry>,
+    /// R3-H1: 事件发射回调，由 Tauri setup 阶段注入
+    event_emitter: ParkingMutex<Option<Arc<TranslationEventEmitter>>>,
 }
 
 impl TranslationManager {
@@ -81,8 +87,24 @@ impl TranslationManager {
                 http_client,
                 supervisor,
                 registry: Mutex::new(JobRegistry::default()),
+                event_emitter: ParkingMutex::new(None),
             }),
         })
+    }
+
+    /// R3-H1: 注入事件发射回调（Tauri setup 后调用一次）
+    pub fn set_event_emitter<F>(&self, emitter: F)
+    where
+        F: Fn(&str, &str, &str) + Send + Sync + 'static,
+    {
+        *self.inner.event_emitter.lock() = Some(Arc::new(emitter));
+    }
+
+    /// 触发事件回调（如果已注入）
+    fn emit_event(&self, event_name: &str, document_id: &str, job_id: &str) {
+        if let Some(emitter) = self.inner.event_emitter.lock().as_ref() {
+            emitter(event_name, document_id, job_id);
+        }
     }
 
     pub async fn ensure_engine(
@@ -630,6 +652,8 @@ impl TranslationManager {
                     Some(finished_at),
                     Some(1.0),
                 )?;
+                // R3-H1: 翻译完成后触发事件通知前端
+                self.emit_event("translation://job-completed", document_id, job_id);
                 if let Err(error) =
                     cache_eviction::evict_if_needed_excluding(&self.inner.storage, Some(job_id))
                 {

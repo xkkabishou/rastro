@@ -173,6 +173,22 @@ fn delete_translation_cache_inner(
     document_id: &str,
 ) -> Result<DeleteCacheResult, AppError> {
     let connection = storage.connection();
+
+    // R2-M1: 检查是否有活跃翻译任务，防止竞态
+    let active_count: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM translation_jobs
+         WHERE document_id = ?1 AND status IN ('pending', 'running')",
+        params![document_id],
+        |row| row.get(0),
+    )?;
+    if active_count > 0 {
+        return Err(AppError::new(
+            crate::errors::AppErrorCode::InternalError,
+            "该文档有正在进行的翻译任务，请先取消翻译后再删除缓存",
+            false,
+        ));
+    }
+
     let transaction = connection.unchecked_transaction()?;
     let artifacts = {
         let mut statement = transaction.prepare(

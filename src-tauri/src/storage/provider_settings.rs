@@ -10,6 +10,8 @@ pub struct ProviderSettingRecord {
     pub is_active: bool,
     pub last_test_status: Option<String>,
     pub last_tested_at: Option<String>,
+    /// 脱敏后的 API Key（如 "sk-...123"），存储在 DB 中避免读 Keychain
+    pub masked_key: Option<String>,
 }
 
 fn map_row(row: &Row<'_>) -> rusqlite::Result<ProviderSettingRecord> {
@@ -20,6 +22,7 @@ fn map_row(row: &Row<'_>) -> rusqlite::Result<ProviderSettingRecord> {
         is_active: row.get::<_, i64>("is_active")? == 1,
         last_test_status: row.get("last_test_status")?,
         last_tested_at: row.get("last_tested_at")?,
+        masked_key: row.get("masked_key")?,
     })
 }
 
@@ -93,6 +96,19 @@ pub fn update_test_status(
              last_tested_at = ?2
          WHERE provider = ?3",
         params![status, tested_at, provider],
+    )?;
+    Ok(())
+}
+
+/// 更新 Provider 的脱敏 Key（存储在 DB，避免显示设置时读 Keychain）
+pub fn update_masked_key(
+    connection: &Connection,
+    provider: &str,
+    masked_key: Option<&str>,
+) -> rusqlite::Result<()> {
+    connection.execute(
+        "UPDATE provider_settings SET masked_key = ?1 WHERE provider = ?2",
+        params![masked_key, provider],
     )?;
     Ok(())
 }

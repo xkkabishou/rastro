@@ -661,6 +661,7 @@ export interface DocumentFilter {
 export interface CacheStatsDto {
   totalBytes: number;
   translationBytes: number;
+  summaryBytes: number;
   summaryCount: number;
   documentCount: number;
 }

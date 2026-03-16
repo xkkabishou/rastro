@@ -41,7 +41,7 @@ pub struct CreateTranslationJobParams {
     pub created_at: String,
 }
 
-fn map_row(row: &Row<'_>) -> rusqlite::Result<TranslationJobRecord> {
+pub fn map_job_row(row: &Row<'_>) -> rusqlite::Result<TranslationJobRecord> {
     Ok(TranslationJobRecord {
         job_id: row.get("job_id")?,
         document_id: row.get("document_id")?,
@@ -113,7 +113,7 @@ pub fn get_by_id(
         .query_row(
             "SELECT * FROM translation_jobs WHERE job_id = ?1",
             params![job_id],
-            map_row,
+            map_job_row,
         )
         .optional()
 }
@@ -184,7 +184,7 @@ pub fn find_latest_completed_for_document(
          ORDER BY finished_at DESC, created_at DESC",
     )?;
 
-    let rows = statement.query_map(params![document_id], map_row)?;
+    let rows = statement.query_map(params![document_id], map_job_row)?;
 
     for row in rows {
         let record = row?;
@@ -213,7 +213,7 @@ pub fn find_latest_by_cache_key(
              ORDER BY created_at DESC
              LIMIT 1",
             params![cache_key],
-            map_row,
+            map_job_row,
         )
         .optional()
 }
@@ -231,7 +231,7 @@ pub fn find_latest_completed_by_cache_key(
              ORDER BY finished_at DESC, created_at DESC
              LIMIT 1",
             params![cache_key],
-            map_row,
+            map_job_row,
         )
         .optional()
 }
@@ -244,7 +244,7 @@ pub fn list_completed(connection: &Connection) -> rusqlite::Result<Vec<Translati
          ORDER BY finished_at ASC, created_at ASC",
     )?;
 
-    let rows = statement.query_map([], map_row)?;
+    let rows = statement.query_map([], map_job_row)?;
     rows.collect()
 }
 

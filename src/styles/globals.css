@@ -162,56 +162,57 @@
 
   @media (prefers-color-scheme: dark) {
     :root {
-      /* 主色调 — 亮金 */
-      --color-primary: #E8A850;
-      --color-primary-hover: #F0B866;
-      --color-primary-active: #F5C87A;
+    /* 主色调 — 亮金 */
+    --color-primary: #E8A850;
+    --color-primary-hover: #F0B866;
+    --color-primary-active: #F5C87A;
 
-      /* 语义色 */
-      --color-secondary: #C49A32;
-      --color-accent: #F0A848;
-      --color-destructive: #E8614E;
-      --color-success: #6AB87E;
-      --color-warning: #F0A848;
+    /* 语义色 */
+    --color-secondary: #C49A32;
+    --color-accent: #F0A848;
+    --color-destructive: #E8614E;
+    --color-success: #6AB87E;
+    --color-warning: #F0A848;
 
-      /* 背景层级 */
-      --color-bg: #1E1A15;
-      --color-bg-secondary: #2A2420;
-      --color-bg-tertiary: #362E28;
-      --color-bg-elevated: #2A2420;
-      --color-bg-overlay: rgba(30, 26, 21, 0.85);
+    /* 背景层级 */
+    --color-bg: #1E1A15;
+    --color-bg-secondary: #2A2420;
+    --color-bg-tertiary: #362E28;
+    --color-bg-elevated: #2A2420;
+    --color-bg-overlay: rgba(30, 26, 21, 0.85);
 
-      /* 文本层级 */
-      --color-text: #F5EDE0;
-      --color-text-secondary: #BBA990;
-      --color-text-tertiary: #8E7E6C;
-      --color-text-quaternary: #5C5045;
-      --color-text-on-primary: #FFFFFF;
+    /* 文本层级 */
+    --color-text: #F5EDE0;
+    --color-text-secondary: #BBA990;
+    --color-text-tertiary: #8E7E6C;
+    --color-text-quaternary: #5C5045;
+    --color-text-on-primary: #FFFFFF;
 
-      /* 边框 */
-      --color-border: rgba(232, 168, 80, 0.15);
-      --color-border-secondary: rgba(232, 168, 80, 0.08);
-      --color-border-focus: #E8A850;
+    /* 边框 */
+    --color-border: rgba(232, 168, 80, 0.15);
+    --color-border-secondary: rgba(232, 168, 80, 0.08);
+    --color-border-focus: #E8A850;
 
-      /* 分割线 */
-      --color-separator: rgba(142, 126, 108, 0.45);
-      --color-separator-opaque: #3D3530;
+    /* 分割线 */
+    --color-separator: rgba(142, 126, 108, 0.45);
+    --color-separator-opaque: #3D3530;
 
-      /* 交互状态 */
-      --color-hover: rgba(232, 168, 80, 0.08);
-      --color-active: rgba(232, 168, 80, 0.12);
-      --color-selected: rgba(232, 168, 80, 0.15);
+    /* 交互状态 */
+    --color-hover: rgba(232, 168, 80, 0.08);
+    --color-active: rgba(232, 168, 80, 0.12);
+    --color-selected: rgba(232, 168, 80, 0.15);
 
-      /* 专用 — 聊天面板 */
-      --color-chat-user-bg: #E8A850;
-      --color-chat-user-text: #FFFFFF;
-      --color-chat-assistant-bg: #2A2420;
-      --color-chat-assistant-text: #F5EDE0;
+    /* 专用 — 聊天面板 */
+    --color-chat-user-bg: #E8A850;
+    --color-chat-user-text: #FFFFFF;
+    --color-chat-assistant-bg: #2A2420;
+    --color-chat-assistant-text: #F5EDE0;
 
-      /* 专用 — 代码块 */
-      --color-code-bg: #2A2420;
-      --color-code-text: #F5EDE0;
+    /* 专用 — 代码块 */
+    --color-code-bg: #2A2420;
+    --color-code-text: #F5EDE0;
     }
+
   }
 
   /* ---------------------------------------------------------------------------

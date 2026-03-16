@@ -1,16 +1,31 @@
-// macOS Keychain 凭据读写
+// macOS Keychain 凭据读写（带内存缓存，避免开发模式重复弹窗）
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use parking_lot::Mutex;
+
 use crate::errors::AppError;
 
 const SERVICE_NAME: &str = "com.rastro.ai";
 
-/// Provider API Key 管理器
+/// Provider API Key 管理器（内存缓存 + Keychain）
+///
+/// 开发模式下每次 `tauri dev` 重编译会改变二进制签名，
+/// 导致 macOS Keychain 反复弹出授权对话框。
+/// 通过内存缓存，每个 key 在一次应用生命周期内只读取 Keychain 一次。
 #[derive(Debug, Clone, Default)]
-pub struct KeychainService;
+pub struct KeychainService {
+    /// 内存缓存：provider → Option<api_key>
+    /// None 表示尚未从 Keychain 读取，Some(None) 表示确认不存在
+    cache: Arc<Mutex<HashMap<String, Option<String>>>>,
+}
 
 impl KeychainService {
     /// 创建 Keychain 服务实例
     pub fn new() -> Self {
-        Self
+        Self {
+            cache: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     fn account(provider: &str) -> String {
@@ -30,6 +45,12 @@ impl KeychainService {
                 AppError::internal(format!("写入 Keychain 失败: {error}"))
                     .with_detail("provider", provider)
             })?;
+
+            // 同步更新缓存
+            self.cache
+                .lock()
+                .insert(provider.to_string(), Some(api_key.to_string()));
+
             Ok(())
         }
 
@@ -37,15 +58,36 @@ impl KeychainService {
         {
             let _ = (provider, api_key);
             Err(AppError::new(
-                AppErrorCode::InternalError,
+                crate::errors::AppErrorCode::InternalError,
                 "当前平台不支持 macOS Keychain",
                 false,
             ))
         }
     }
 
-    /// 读取 Provider API Key
+    /// 读取 Provider API Key（优先从内存缓存读取）
     pub fn get_key(&self, provider: &str) -> Result<Option<String>, AppError> {
+        // 先查缓存
+        {
+            let cache = self.cache.lock();
+            if let Some(cached) = cache.get(provider) {
+                return Ok(cached.clone());
+            }
+        }
+
+        // 缓存未命中，从 Keychain 读取
+        let result = self.read_from_keychain(provider)?;
+
+        // 写入缓存
+        self.cache
+            .lock()
+            .insert(provider.to_string(), result.clone());
+
+        Ok(result)
+    }
+
+    /// 直接从 Keychain 读取（不走缓存）
+    fn read_from_keychain(&self, provider: &str) -> Result<Option<String>, AppError> {
         #[cfg(target_os = "macos")]
         {
             match security_framework::passwords::get_generic_password(
@@ -93,6 +135,9 @@ impl KeychainService {
                     .with_detail("provider", provider)
             })?;
 
+            // 从缓存中移除
+            self.cache.lock().remove(provider);
+
             Ok(true)
         }
 
@@ -129,5 +174,28 @@ mod tests {
         let service = KeychainService::new();
         assert_eq!(service.mask_key("sk-test123"), "sk-...123");
         assert_eq!(service.mask_key("short"), "*****");
+    }
+
+    #[test]
+    fn cache_returns_previously_set_value() {
+        let service = KeychainService::new();
+        // 手动写入缓存模拟
+        service
+            .cache
+            .lock()
+            .insert("test_provider".to_string(), Some("sk-cached".to_string()));
+        let result = service.get_key("test_provider").unwrap();
+        assert_eq!(result, Some("sk-cached".to_string()));
+    }
+
+    #[test]
+    fn cache_returns_none_for_absent_key() {
+        let service = KeychainService::new();
+        service
+            .cache
+            .lock()
+            .insert("empty_provider".to_string(), None);
+        let result = service.get_key("empty_provider").unwrap();
+        assert_eq!(result, None);
     }
 }

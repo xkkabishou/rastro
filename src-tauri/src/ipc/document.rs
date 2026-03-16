@@ -159,25 +159,21 @@ pub fn list_recent_documents(
     query: Option<String>,
     filter: Option<DocumentFilterInput>,
 ) -> Result<Vec<DocumentSnapshot>, crate::errors::AppError> {
-    let records = {
-        let connection = state.storage.connection();
-        let filter = filter.unwrap_or_default();
-        documents::list_with_filters(
-            &connection,
-            documents::DocumentFilter {
-                query,
-                is_favorite: filter.is_favorite,
-                has_translation: filter.has_translation,
-                has_summary: filter.has_summary,
-            },
-            limit.unwrap_or(10).clamp(1, 50),
-        )?
-    };
+    let connection = state.storage.connection();
+    let filter = filter.unwrap_or_default();
+    let records = documents::list_with_filters(
+        &connection,
+        documents::DocumentFilter {
+            query,
+            is_favorite: filter.is_favorite,
+            has_translation: filter.has_translation,
+            has_summary: filter.has_summary,
+        },
+        limit.unwrap_or(10).clamp(1, 50),
+    )?;
 
-    records
-        .into_iter()
-        .map(|record| snapshot_from_record(&state, record))
-        .collect()
+    // R2-H1: 批量富化快照，避免 per-document N+1 查询
+    batch_enrich_snapshots(&connection, records)
 }
 
 /// 从历史记录中移除文档
@@ -226,6 +222,7 @@ pub fn reveal_in_finder(file_path: String) -> Result<(), AppError> {
 
     Ok(())
 }
+
 
 /// 返回单文档快照，包括缓存可用性
 #[tauri::command]
@@ -308,6 +305,170 @@ fn snapshot_from_record(
         artifact_count,
         last_opened_at: record.last_opened_at,
     })
+}
+
+/// R2-H1: 批量查询翻译/总结/产物计数，将 1+3N 次查询优化为 4 次查询。
+fn batch_enrich_snapshots(
+    connection: &rusqlite::Connection,
+    records: Vec<documents::DocumentRecord>,
+) -> Result<Vec<DocumentSnapshot>, AppError> {
+    use std::collections::{HashMap, HashSet};
+
+    if records.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let doc_ids: Vec<&str> = records.iter().map(|r| r.document_id.as_str()).collect();
+
+    // 批量查询最新完成的翻译 job（每个文档取最新一个）
+    let placeholders: String = doc_ids.iter().enumerate().map(|(i, _)| {
+        if i == 0 { "?".to_string() } else { ",?".to_string() }
+    }).collect();
+
+    let mut latest_jobs: HashMap<String, translation_jobs::TranslationJobRecord> = HashMap::new();
+    {
+        let sql = format!(
+            "SELECT * FROM translation_jobs
+             WHERE document_id IN ({}) AND status = 'completed'
+             ORDER BY created_at DESC",
+            placeholders
+        );
+        let mut statement = connection.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::types::ToSql> = doc_ids.iter()
+            .map(|id| id as &dyn rusqlite::types::ToSql)
+            .collect();
+        let rows = statement.query_map(params.as_slice(), |row| {
+            translation_jobs::map_job_row(row)
+        })?;
+        for row_result in rows {
+            let job = row_result?;
+            // 仅保留每个文档的最新 job（已按 created_at DESC 排序）
+            latest_jobs.entry(job.document_id.clone()).or_insert(job);
+        }
+    }
+
+    // 批量查询哪些文档有总结
+    let summary_doc_ids: HashSet<String> = {
+        let sql = format!(
+            "SELECT document_id FROM document_summaries WHERE document_id IN ({})",
+            placeholders
+        );
+        let mut statement = connection.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::types::ToSql> = doc_ids.iter()
+            .map(|id| id as &dyn rusqlite::types::ToSql)
+            .collect();
+        let rows = statement.query_map(params.as_slice(), |row| {
+            row.get::<_, String>(0)
+        })?;
+        rows.filter_map(|r| r.ok()).collect()
+    };
+
+    // R3-M1: 批量查询翻译产物数量（仅统计每个文档最新 completed job 的产物，与单文档路径一致）
+    let mut translation_artifact_counts: HashMap<String, u32> = HashMap::new();
+    {
+        let sql = format!(
+            "SELECT ta.document_id, COUNT(*) as cnt
+             FROM translation_artifacts ta
+             INNER JOIN translation_jobs tj ON ta.job_id = tj.job_id
+             WHERE ta.document_id IN ({}) AND tj.status = 'completed'
+               AND ta.artifact_kind IN ('translated_pdf', 'bilingual_pdf')
+               AND tj.created_at = (
+                   SELECT MAX(tj2.created_at)
+                   FROM translation_jobs tj2
+                   WHERE tj2.document_id = ta.document_id AND tj2.status = 'completed'
+               )
+             GROUP BY ta.document_id",
+            placeholders
+        );
+        let mut statement = connection.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::types::ToSql> = doc_ids.iter()
+            .map(|id| id as &dyn rusqlite::types::ToSql)
+            .collect();
+        let rows = statement.query_map(params.as_slice(), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
+        })?;
+        for row_result in rows {
+            let (doc_id, count) = row_result?;
+            translation_artifact_counts.insert(doc_id, count);
+        }
+    }
+
+    // 批量查询 notebooklm 产物数量
+    let mut notebooklm_counts: HashMap<String, u32> = HashMap::new();
+    {
+        let sql = format!(
+            "SELECT document_id, COUNT(*) as cnt
+             FROM notebooklm_artifacts
+             WHERE document_id IN ({})
+             GROUP BY document_id",
+            placeholders
+        );
+        let mut statement = connection.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::types::ToSql> = doc_ids.iter()
+            .map(|id| id as &dyn rusqlite::types::ToSql)
+            .collect();
+        let rows = statement.query_map(params.as_slice(), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
+        })?;
+        for row_result in rows {
+            let (doc_id, count) = row_result?;
+            notebooklm_counts.insert(doc_id, count);
+        }
+    }
+
+    // 富化快照：加载最新 job 的产物详情
+    let mut job_artifacts: HashMap<String, Vec<translation_artifacts::TranslationArtifactRecord>> = HashMap::new();
+    for (doc_id, job) in &latest_jobs {
+        let artifacts = translation_artifacts::list_by_job(connection, &job.job_id)?;
+        job_artifacts.insert(doc_id.clone(), artifacts);
+    }
+
+    // 组装快照
+    let mut snapshots = Vec::with_capacity(records.len());
+    for record in records {
+        let cached_translation = if let Some(job) = latest_jobs.get(&record.document_id) {
+            let artifacts = job_artifacts.get(&record.document_id);
+            let translated_pdf_path = artifacts
+                .and_then(|a| a.iter().find(|art| art.artifact_kind == "translated_pdf"))
+                .map(|art| art.file_path.clone());
+            let bilingual_pdf_path = artifacts
+                .and_then(|a| a.iter().find(|art| art.artifact_kind == "bilingual_pdf"))
+                .map(|art| art.file_path.clone());
+
+            Some(CachedTranslationInfo {
+                available: true,
+                provider: ProviderId::from_str(&job.provider).ok(),
+                model: Some(job.model.clone()),
+                translated_pdf_path,
+                bilingual_pdf_path,
+                updated_at: job.finished_at.clone().or_else(|| Some(job.created_at.clone())),
+            })
+        } else {
+            None
+        };
+
+        let has_summary = summary_doc_ids.contains(&record.document_id);
+        let translation_count = translation_artifact_counts.get(&record.document_id).copied().unwrap_or(0);
+        let notebooklm_count = notebooklm_counts.get(&record.document_id).copied().unwrap_or(0);
+        let artifact_count = translation_count + u32::from(has_summary) + notebooklm_count;
+
+        snapshots.push(DocumentSnapshot {
+            document_id: record.document_id,
+            file_path: record.file_path,
+            file_sha256: record.file_sha256,
+            title: record.title,
+            page_count: record.page_count,
+            source_type: DocumentSourceType::from_str(&record.source_type)?,
+            zotero_item_key: record.zotero_item_key,
+            cached_translation,
+            has_summary,
+            is_favorite: record.is_favorite,
+            artifact_count,
+            last_opened_at: record.last_opened_at,
+        });
+    }
+
+    Ok(snapshots)
 }
 
 #[cfg(test)]

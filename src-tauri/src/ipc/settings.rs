@@ -100,7 +100,7 @@ pub fn list_provider_configs(
         .collect()
 }
 
-/// Key 写入 Keychain，DB 只存非敏感字段
+/// Key 写入 Keychain，同时将脱敏 Key 存入 DB
 #[tauri::command]
 pub fn save_provider_key(
     state: State<'_, AppState>,
@@ -109,8 +109,11 @@ pub fn save_provider_key(
 ) -> Result<ProviderConfigDto, crate::errors::AppError> {
     state.keychain.save_key(provider.as_str(), &api_key)?;
 
+    // 将脱敏 key 同步写入 DB，后续显示设置页面无需访问 Keychain
+    let masked = state.keychain.mask_key(&api_key);
     let record = {
         let connection = state.storage.connection();
+        provider_settings::update_masked_key(&connection, provider.as_str(), Some(&masked))?;
         provider_settings::get_by_provider(&connection, provider.as_str())?
     }
     .ok_or_else(|| {
@@ -124,13 +127,19 @@ pub fn save_provider_key(
     build_provider_config_dto(&state, record)
 }
 
-/// 删除 Keychain 中的 Key
+/// 删除 Keychain 中的 Key，同时清除 DB 中的脱敏 Key
 #[tauri::command]
 pub fn remove_provider_key(
     state: State<'_, AppState>,
     provider: ProviderId,
 ) -> Result<RemoveProviderKeyResult, crate::errors::AppError> {
     let removed = state.keychain.delete_key(provider.as_str())?;
+
+    if removed {
+        let connection = state.storage.connection();
+        provider_settings::update_masked_key(&connection, provider.as_str(), None)?;
+    }
+
     Ok(RemoveProviderKeyResult { provider, removed })
 }
 
@@ -487,6 +496,7 @@ pub fn get_usage_stats(
 pub struct CacheStatsDto {
     pub total_bytes: u64,
     pub translation_bytes: u64,
+    pub summary_bytes: u64,
     pub summary_count: u32,
     pub document_count: u32,
 }
@@ -498,7 +508,7 @@ pub struct ClearCacheResult {
     pub freed_bytes: u64,
 }
 
-/// 获取缓存统计：翻译产物总字节数、总结数量、文档数量
+/// 获取缓存统计：翻译产物总字节数、总结字节数、文档数量
 #[tauri::command]
 pub fn get_cache_stats(
     state: State<'_, AppState>,
@@ -508,6 +518,13 @@ pub fn get_cache_stats(
     // 翻译产物总字节数
     let translation_bytes: u64 = connection.query_row(
         "SELECT COALESCE(SUM(file_size_bytes), 0) FROM translation_artifacts",
+        [],
+        |row| row.get(0),
+    )?;
+
+    // AI 总结存储字节数（Markdown 文本长度之和）
+    let summary_bytes: u64 = connection.query_row(
+        "SELECT COALESCE(SUM(LENGTH(content_md)), 0) FROM document_summaries",
         [],
         |row| row.get(0),
     )?;
@@ -527,8 +544,9 @@ pub fn get_cache_stats(
     )?;
 
     Ok(CacheStatsDto {
-        total_bytes: translation_bytes,
+        total_bytes: translation_bytes + summary_bytes,
         translation_bytes,
+        summary_bytes,
         summary_count,
         document_count,
     })
@@ -540,6 +558,21 @@ pub fn clear_all_translation_cache(
     state: State<'_, AppState>,
 ) -> Result<ClearCacheResult, crate::errors::AppError> {
     let connection = state.storage.connection();
+
+    // R3-M2: 检查是否有活跃翻译任务，防止竞态
+    let active_count: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM translation_jobs WHERE status IN ('pending', 'running')",
+        [],
+        |row| row.get(0),
+    )?;
+    if active_count > 0 {
+        return Err(crate::errors::AppError::new(
+            crate::errors::AppErrorCode::InternalError,
+            format!("当前有 {} 个翻译任务正在进行，请先取消后再清理缓存", active_count),
+            false,
+        ));
+    }
+
     let transaction = connection.unchecked_transaction()?;
 
     // 查询所有翻译产物文件路径和大小
@@ -558,10 +591,17 @@ pub fn clear_all_translation_cache(
 
     let mut freed_bytes: u64 = 0;
     for (file_path, size) in &artifacts {
-        freed_bytes += size;
         let path = std::path::Path::new(file_path);
-        if path.exists() {
-            let _ = std::fs::remove_file(path);
+        match std::fs::remove_file(path) {
+            Ok(()) => freed_bytes += size,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                // 文件已不存在，仍计入释放量（数据库记录即将删除）
+                freed_bytes += size;
+            }
+            Err(err) => {
+                // 记录日志但不中断整体清理流程
+                eprintln!("清理翻译缓存文件失败 {}: {}", file_path, err);
+            }
         }
     }
 
@@ -574,16 +614,16 @@ pub fn clear_all_translation_cache(
 }
 
 fn build_provider_config_dto(
-    state: &State<'_, AppState>,
+    _state: &State<'_, AppState>,
     record: provider_settings::ProviderSettingRecord,
 ) -> Result<ProviderConfigDto, crate::errors::AppError> {
-    let raw_key = state.keychain.get_key(&record.provider)?;
+    // masked_key 直接从 DB 读取，不触发 Keychain 访问
     Ok(ProviderConfigDto {
         provider: record.provider.parse()?,
         model: record.model,
         base_url: record.base_url,
         is_active: record.is_active,
-        masked_key: raw_key.as_ref().map(|value| state.keychain.mask_key(value)),
+        masked_key: record.masked_key,
         last_test_status: record.last_test_status,
         last_tested_at: record.last_tested_at,
     })

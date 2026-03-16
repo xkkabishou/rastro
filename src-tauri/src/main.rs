@@ -14,7 +14,7 @@ mod storage;
 mod translation_manager;
 mod zotero_connector;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 fn main() {
     if let Err(e) = run_app() {
@@ -28,6 +28,19 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let state = app_state::AppState::initialize()?;
+
+            // R3-H1: 注入翻译事件发射器，将 translation_manager 的回调桥接到 Tauri 前端事件
+            let handle = app.handle().clone();
+            state.translation_manager.set_event_emitter(move |event_name, document_id, job_id| {
+                let _ = handle.emit(
+                    event_name,
+                    serde_json::json!({
+                        "documentId": document_id,
+                        "jobId": job_id,
+                    }),
+                );
+            });
+
             app.manage(state);
             Ok(())
         })

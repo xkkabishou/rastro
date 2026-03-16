@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { listen } from '@tauri-apps/api/event';
 import type {
   DocumentSnapshot,
   TranslationJobDto,
@@ -204,3 +205,39 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 }));
 
+// ---------------------------------------------------------------------------
+// R2-L1: 注册 Tauri 事件监听，实现产物状态实时更新
+// ---------------------------------------------------------------------------
+
+let eventListenersInitialized = false;
+
+/** 初始化 Tauri 后端事件监听（幂等，仅首次生效） */
+export function initDocumentEventListeners(): void {
+  if (eventListenersInitialized) return;
+  eventListenersInitialized = true;
+
+  // 翻译完成事件 → 刷新对应文档的产物 + 快照
+  listen<{ documentId: string }>('translation://job-completed', (event) => {
+    const docId = event.payload?.documentId;
+    if (!docId) return;
+    const store = useDocumentStore.getState();
+    store.invalidateArtifacts(docId);
+    store.refreshDocumentSnapshot(docId);
+    // 如果文档已展开，自动重新加载产物列表
+    if (store.expandedDocIds.has(docId)) {
+      store.loadArtifacts(docId, true);
+    }
+  }).catch((err) => console.error('注册 translation://job-completed 监听失败:', err));
+
+  // AI 总结完成事件 → 刷新对应文档的产物 + 快照
+  listen<{ documentId: string }>('ai://stream-finished', (event) => {
+    const docId = event.payload?.documentId;
+    if (!docId) return;
+    const store = useDocumentStore.getState();
+    store.invalidateArtifacts(docId);
+    store.refreshDocumentSnapshot(docId);
+    if (store.expandedDocIds.has(docId)) {
+      store.loadArtifacts(docId, true);
+    }
+  }).catch((err) => console.error('注册 ai://stream-finished 监听失败:', err));
+}

@@ -251,7 +251,7 @@ const StorageView: React.FC<{
           {/* 分项 */}
           <div className="grid grid-cols-2 gap-3">
             <StatItem label="翻译缓存" value={formatBytes(stats.translationBytes)} />
-            <StatItem label="AI 总结" value={`${stats.summaryCount} 篇`} />
+            <StatItem label="AI 总结" value={`${stats.summaryCount} 篇 (${formatBytes(stats.summaryBytes)})`} />
             <StatItem label="文档数量" value={`${stats.documentCount} 篇`} />
             <StatItem
               label="翻译占比"

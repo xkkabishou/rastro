@@ -407,6 +407,7 @@ async fn run_stream_task<R: tauri::Runtime + 'static>(
                             "streamId": prepared.stream_id,
                             "sessionId": prepared.session_id,
                             "messageId": message.message_id,
+                            "documentId": prepared.document_id,
                         }),
                     );
                 }
