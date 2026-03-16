@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 const INIT_SQL: &str = include_str!("../../migrations/001_init.sql");
 const ADD_CHAT_MESSAGE_THINKING_SQL: &str =
     include_str!("../../migrations/002_add_chat_message_thinking.sql");
+const DOCUMENT_WORKSPACE_SQL: &str = include_str!("../../migrations/v2_document_workspace.sql");
 
 struct Migration {
     version: i64,
@@ -30,6 +31,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 2,
         name: "add_chat_message_thinking",
         sql: ADD_CHAT_MESSAGE_THINKING_SQL,
+    },
+    Migration {
+        version: 3,
+        name: "document_workspace",
+        sql: DOCUMENT_WORKSPACE_SQL,
     },
 ];
 
@@ -87,12 +93,12 @@ mod tests {
     use super::{current_version, run, INIT_SQL};
 
     #[test]
-    fn run_creates_schema_and_marks_current_schema_as_v1() {
+    fn run_creates_schema_and_marks_current_schema_as_latest() {
         let connection = Connection::open_in_memory().unwrap();
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 2);
+        assert_eq!(current_version(&connection).unwrap(), 3);
         assert_eq!(
             table_exists(&connection, "documents"),
             true,
@@ -107,6 +113,22 @@ mod tests {
             column_exists(&connection, "chat_messages", "thinking_md"),
             "chat_messages.thinking_md should exist after migration"
         );
+        assert!(
+            column_exists(&connection, "documents", "is_favorite"),
+            "documents.is_favorite should exist after migration"
+        );
+        assert!(
+            column_exists(&connection, "documents", "is_deleted"),
+            "documents.is_deleted should exist after migration"
+        );
+        assert!(
+            table_exists(&connection, "document_summaries"),
+            "document_summaries should exist after migration"
+        );
+        assert!(
+            table_exists(&connection, "notebooklm_artifacts"),
+            "notebooklm_artifacts should exist after migration"
+        );
     }
 
     #[test]
@@ -116,10 +138,10 @@ mod tests {
         run(&connection).unwrap();
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 2);
+        assert_eq!(current_version(&connection).unwrap(), 3);
         assert_eq!(
             migration_row_count(&connection),
-            2,
+            3,
             "latest migrations should only be recorded once"
         );
     }
@@ -131,7 +153,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 2);
+        assert_eq!(current_version(&connection).unwrap(), 3);
         assert_eq!(
             provider_setting_count(&connection),
             3,
@@ -140,6 +162,14 @@ mod tests {
         assert!(
             column_exists(&connection, "chat_messages", "thinking_md"),
             "legacy schema should be upgraded with thinking column"
+        );
+        assert!(
+            column_exists(&connection, "documents", "is_favorite"),
+            "legacy schema should be upgraded with is_favorite"
+        );
+        assert!(
+            column_exists(&connection, "documents", "is_deleted"),
+            "legacy schema should be upgraded with is_deleted"
         );
     }
 

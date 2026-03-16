@@ -4,6 +4,7 @@
 
 mod ai_integration;
 mod app_state;
+mod artifact_aggregator;
 mod errors;
 mod ipc;
 mod keychain;
@@ -31,11 +32,15 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // A. 文档与应用状态 (4 个)
+            // A. 文档与应用状态 / 文档管理
             ipc::document::get_backend_health,
             ipc::document::open_document,
             ipc::document::list_recent_documents,
             ipc::document::get_document_snapshot,
+            ipc::document::list_document_artifacts,
+            ipc::document::remove_recent_document,
+            ipc::document::toggle_document_favorite,
+            ipc::document::reveal_in_finder,
             // B. Translation Engine 生命周期 (3 个)
             ipc::translation::ensure_translation_engine,
             ipc::translation::shutdown_translation_engine,
@@ -45,10 +50,14 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             ipc::translation::get_translation_job,
             ipc::translation::cancel_translation,
             ipc::translation::load_cached_translation,
-            // D. AI 问答与总结 (5 个)
+            ipc::translation::delete_translation_cache,
+            // D. AI 问答与总结 (8 个)
             ipc::ai::ask_ai,
             ipc::ai::cancel_ai_stream,
             ipc::ai::generate_summary,
+            ipc::ai::get_document_summary,
+            ipc::ai::save_document_summary,
+            ipc::ai::delete_document_summary,
             ipc::ai::list_chat_sessions,
             ipc::ai::get_chat_messages,
             // E. Provider 配置与凭据 (7 个)

@@ -1,6 +1,7 @@
 // SQLite 存储模块入口
 pub mod chat_messages;
 pub mod chat_sessions;
+pub mod document_summaries;
 pub mod documents;
 pub mod migration;
 pub mod migrations;

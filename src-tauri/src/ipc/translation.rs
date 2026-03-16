@@ -1,9 +1,12 @@
 // B+C. Translation Engine 生命周期 + 翻译任务 Command (7 个)
 // 对应 rust-backend-system.md Section 7.3 B + C
+use std::{io::ErrorKind, path::Path};
+
+use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::app_state::AppState;
+use crate::{app_state::AppState, errors::AppError, storage::Storage};
 
 /// 翻译引擎状态
 #[derive(Debug, Serialize, Clone)]
@@ -37,6 +40,13 @@ pub struct TranslationJobDto {
     pub created_at: String,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteCacheResult {
+    pub deleted: bool,
+    pub freed_bytes: u64,
 }
 
 /// 翻译请求输入
@@ -144,6 +154,75 @@ pub fn load_cached_translation(
         .load_cached_translation(document_id, provider, model)
 }
 
+#[tauri::command]
+pub fn delete_translation_cache(
+    state: State<'_, AppState>,
+    document_id: String,
+) -> Result<DeleteCacheResult, AppError> {
+    delete_translation_cache_inner(&state.storage, &document_id)
+}
+
+#[derive(Debug)]
+struct TranslationCacheArtifactRecord {
+    file_path: String,
+    file_size_bytes: u64,
+}
+
+fn delete_translation_cache_inner(
+    storage: &Storage,
+    document_id: &str,
+) -> Result<DeleteCacheResult, AppError> {
+    let connection = storage.connection();
+    let transaction = connection.unchecked_transaction()?;
+    let artifacts = {
+        let mut statement = transaction.prepare(
+            "SELECT file_path, file_size_bytes
+             FROM translation_artifacts
+             WHERE document_id = ?1",
+        )?;
+        let rows = statement.query_map(params![document_id], |row| {
+            Ok(TranslationCacheArtifactRecord {
+                file_path: row.get("file_path")?,
+                file_size_bytes: row.get("file_size_bytes")?,
+            })
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+
+    let freed_bytes = artifacts
+        .iter()
+        .map(|artifact| artifact.file_size_bytes)
+        .sum();
+
+    for artifact in &artifacts {
+        remove_file_if_exists(Path::new(&artifact.file_path))?;
+    }
+
+    let deleted_artifacts = transaction.execute(
+        "DELETE FROM translation_artifacts WHERE document_id = ?1",
+        params![document_id],
+    )?;
+    let deleted_jobs = transaction.execute(
+        "DELETE FROM translation_jobs WHERE document_id = ?1",
+        params![document_id],
+    )?;
+    transaction.commit()?;
+
+    Ok(DeleteCacheResult {
+        deleted: deleted_artifacts > 0 || deleted_jobs > 0,
+        freed_bytes,
+    })
+}
+
+fn remove_file_if_exists(path: &Path) -> Result<(), AppError> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(AppError::from(error)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -164,12 +243,16 @@ mod tests {
     };
 
     use crate::{
-        ai_integration::AiIntegration, app_state::AppState, keychain::KeychainService,
-        notebooklm_manager::NotebookLMManager, storage::Storage,
+        ai_integration::AiIntegration,
+        app_state::AppState,
+        keychain::KeychainService,
+        models::{ArtifactKind, DocumentSourceType},
+        notebooklm_manager::NotebookLMManager,
+        storage::{documents, translation_artifacts, translation_jobs, Storage},
         translation_manager::TranslationManager,
     };
 
-    use super::{request_translation, TranslationEngineStatus};
+    use super::{delete_translation_cache_inner, request_translation, TranslationEngineStatus};
 
     #[test]
     fn request_translation_command_serializes_document_not_found_errors() {
@@ -205,6 +288,98 @@ mod tests {
         assert_eq!(error["code"], "DOCUMENT_NOT_FOUND");
         assert_eq!(error["retryable"], false);
         assert_eq!(error["details"]["documentId"], json!("doc-1"));
+    }
+
+    #[test]
+    fn delete_translation_cache_removes_cached_files_and_rows() {
+        let storage = Storage::new_in_memory().unwrap();
+        let cache_dir = temp_dir("translation-cache");
+        let translated_pdf = cache_dir.join("translated.pdf");
+        fs::write(&translated_pdf, b"cache").unwrap();
+        let timestamp = chrono::Utc::now().to_rfc3339();
+
+        let document = {
+            let connection = storage.connection();
+            documents::upsert(
+                &connection,
+                &documents::UpsertDocumentParams {
+                    file_path: "/tmp/original.pdf".to_string(),
+                    file_sha256: "sha-doc".to_string(),
+                    title: "Demo".to_string(),
+                    page_count: 3,
+                    source_type: DocumentSourceType::Local,
+                    zotero_item_key: None,
+                    timestamp: timestamp.clone(),
+                },
+            )
+            .unwrap()
+        };
+        let job = {
+            let connection = storage.connection();
+            translation_jobs::create(
+                &connection,
+                &translation_jobs::CreateTranslationJobParams {
+                    document_id: document.document_id.clone(),
+                    engine_job_id: Some("engine-1".to_string()),
+                    cache_key: "cache-1".to_string(),
+                    provider: "openai".to_string(),
+                    model: "gpt-4o-mini".to_string(),
+                    source_lang: "en".to_string(),
+                    target_lang: "zh-CN".to_string(),
+                    status: "completed".to_string(),
+                    stage: "completed".to_string(),
+                    progress: 100.0,
+                    created_at: timestamp.clone(),
+                },
+            )
+            .unwrap()
+        };
+
+        {
+            let connection = storage.connection();
+            translation_artifacts::create(
+                &connection,
+                &translation_artifacts::CreateTranslationArtifactParams {
+                    job_id: job.job_id.clone(),
+                    document_id: document.document_id.clone(),
+                    artifact_kind: ArtifactKind::TranslatedPdf.as_str().to_string(),
+                    file_path: translated_pdf.to_string_lossy().into_owned(),
+                    file_sha256: "sha-cache".to_string(),
+                    file_size_bytes: 5,
+                    created_at: timestamp,
+                },
+            )
+            .unwrap();
+        }
+
+        let result = delete_translation_cache_inner(&storage, &document.document_id).unwrap();
+
+        assert!(result.deleted);
+        assert_eq!(result.freed_bytes, 5);
+        assert!(!translated_pdf.exists());
+
+        let connection = storage.connection();
+        assert!(translation_jobs::get_by_id(&connection, &job.job_id)
+            .unwrap()
+            .is_none());
+        let remaining_artifacts = connection
+            .query_row(
+                "SELECT COUNT(*) FROM translation_artifacts WHERE document_id = ?1",
+                [document.document_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap();
+        assert_eq!(remaining_artifacts, 0);
+    }
+
+    #[test]
+    fn delete_translation_cache_returns_false_for_empty_document() {
+        let storage = Storage::new_in_memory().unwrap();
+
+        let result = delete_translation_cache_inner(&storage, "missing").unwrap();
+
+        assert!(!result.deleted);
+        assert_eq!(result.freed_bytes, 0);
     }
 
     fn build_test_state() -> AppState {

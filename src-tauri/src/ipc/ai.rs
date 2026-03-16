@@ -1,4 +1,4 @@
-// D. AI 问答与总结 Command (5 个)
+// D. AI 问答与总结 Command (8 个)
 // 对应 rust-backend-system.md Section 7.3 D
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -6,8 +6,9 @@ use tauri::State;
 use crate::{
     ai_integration::{AskAiRequest, GenerateSummaryRequest},
     app_state::AppState,
+    errors::AppError,
     models::{ChatRole, ProviderId, SummaryPromptProfile},
-    storage::{chat_messages, chat_sessions},
+    storage::{chat_messages, chat_sessions, document_summaries},
 };
 
 /// AI 流式句柄
@@ -74,12 +75,32 @@ pub struct ChatMessageDto {
     pub created_at: String,
 }
 
+/// AI 总结 DTO
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AISummaryDto {
+    pub summary_id: String,
+    pub document_id: String,
+    pub content_md: String,
+    pub provider: String,
+    pub model: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 /// 取消流式响应结果
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CancelAiStreamResult {
     pub stream_id: String,
     pub cancelled: bool,
+}
+
+/// 删除总结结果
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteSummaryResult {
+    pub deleted: bool,
 }
 
 /// 启动流式对话
@@ -157,6 +178,57 @@ pub async fn generate_summary(
     })
 }
 
+/// 返回当前文档的 AI 总结
+#[tauri::command]
+pub fn get_document_summary(
+    state: State<'_, AppState>,
+    document_id: String,
+) -> Result<Option<AISummaryDto>, AppError> {
+    let record = {
+        let connection = state.storage.connection();
+        document_summaries::get_by_document_id(&connection, &document_id)?
+    };
+
+    Ok(record.map(summary_dto_from_record))
+}
+
+/// 保存或覆盖当前文档的 AI 总结
+#[tauri::command]
+pub fn save_document_summary(
+    state: State<'_, AppState>,
+    document_id: String,
+    content_md: String,
+    provider: String,
+    model: String,
+) -> Result<AISummaryDto, AppError> {
+    let record = {
+        let connection = state.storage.connection();
+        document_summaries::upsert_summary(
+            &connection,
+            &document_id,
+            &content_md,
+            &provider,
+            &model,
+        )?
+    };
+
+    Ok(summary_dto_from_record(record))
+}
+
+/// 删除当前文档的 AI 总结
+#[tauri::command]
+pub fn delete_document_summary(
+    state: State<'_, AppState>,
+    document_id: String,
+) -> Result<DeleteSummaryResult, AppError> {
+    let deleted = {
+        let connection = state.storage.connection();
+        document_summaries::delete_by_document_id(&connection, &document_id)?
+    };
+
+    Ok(DeleteSummaryResult { deleted })
+}
+
 /// 返回当前文档的历史会话列表
 #[tauri::command]
 pub fn list_chat_sessions(
@@ -182,6 +254,18 @@ pub fn list_chat_sessions(
             })
         })
         .collect()
+}
+
+fn summary_dto_from_record(record: document_summaries::SummaryRecord) -> AISummaryDto {
+    AISummaryDto {
+        summary_id: record.summary_id,
+        document_id: record.document_id,
+        content_md: record.content_md,
+        provider: record.provider,
+        model: record.model,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+    }
 }
 
 /// 返回指定会话的历史消息

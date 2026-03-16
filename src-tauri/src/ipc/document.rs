@@ -1,16 +1,17 @@
-// A. 文档与应用状态 Command (4 个)
+// A. 文档与应用状态 Command
 // 对应 rust-backend-system.md Section 7.3 A
 use std::{path::Path, str::FromStr};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use tauri::State;
 
 use crate::{
     app_state::AppState,
+    artifact_aggregator::{self, DocumentArtifactDto},
     errors::{AppError, AppErrorCode},
     models::{DocumentSourceType, ProviderId},
-    storage::{documents, translation_artifacts, translation_jobs},
+    storage::{document_summaries, documents, translation_artifacts, translation_jobs},
 };
 
 use super::{translation::TranslationEngineStatus, zotero::ZoteroStatusDto};
@@ -38,7 +39,19 @@ pub struct DocumentSnapshot {
     pub source_type: DocumentSourceType,
     pub zotero_item_key: Option<String>,
     pub cached_translation: Option<CachedTranslationInfo>,
+    pub has_summary: bool,
+    pub is_favorite: bool,
+    pub artifact_count: u32,
     pub last_opened_at: String,
+}
+
+/// 文档筛选条件输入
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentFilterInput {
+    pub has_translation: Option<bool>,
+    pub has_summary: Option<bool>,
+    pub is_favorite: Option<bool>,
 }
 
 /// 缓存翻译信息
@@ -143,16 +156,75 @@ pub fn open_document(
 pub fn list_recent_documents(
     state: State<'_, AppState>,
     limit: Option<u32>,
+    query: Option<String>,
+    filter: Option<DocumentFilterInput>,
 ) -> Result<Vec<DocumentSnapshot>, crate::errors::AppError> {
     let records = {
         let connection = state.storage.connection();
-        documents::list_recent(&connection, limit.unwrap_or(10).clamp(1, 50))?
+        let filter = filter.unwrap_or_default();
+        documents::list_with_filters(
+            &connection,
+            documents::DocumentFilter {
+                query,
+                is_favorite: filter.is_favorite,
+                has_translation: filter.has_translation,
+                has_summary: filter.has_summary,
+            },
+            limit.unwrap_or(10).clamp(1, 50),
+        )?
     };
 
     records
         .into_iter()
         .map(|record| snapshot_from_record(&state, record))
         .collect()
+}
+
+/// 从历史记录中移除文档
+#[tauri::command]
+pub fn remove_recent_document(
+    state: State<'_, AppState>,
+    document_id: String,
+) -> Result<serde_json::Value, AppError> {
+    let removed = {
+        let connection = state.storage.connection();
+        documents::soft_delete(&connection, &document_id)?
+    };
+
+    Ok(serde_json::json!({ "removed": removed }))
+}
+
+/// 收藏或取消收藏文档
+#[tauri::command]
+pub fn toggle_document_favorite(
+    state: State<'_, AppState>,
+    document_id: String,
+    favorite: bool,
+) -> Result<serde_json::Value, AppError> {
+    let updated = {
+        let connection = state.storage.connection();
+        documents::toggle_favorite(&connection, &document_id, favorite)?
+    };
+
+    Ok(serde_json::json!({ "updated": updated }))
+}
+
+/// 在 Finder 中定位文件
+#[tauri::command]
+pub fn reveal_in_finder(file_path: String) -> Result<(), AppError> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-R", &file_path])
+            .spawn()?;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = file_path;
+    }
+
+    Ok(())
 }
 
 /// 返回单文档快照，包括缓存可用性
@@ -170,18 +242,28 @@ pub fn get_document_snapshot(
     snapshot_from_record(&state, record)
 }
 
+#[tauri::command]
+pub fn list_document_artifacts(
+    state: State<'_, AppState>,
+    document_id: String,
+) -> Result<Vec<DocumentArtifactDto>, AppError> {
+    let connection = state.storage.connection();
+    artifact_aggregator::list_artifacts_for_document(&connection, &document_id)
+}
+
 fn snapshot_from_record(
     state: &State<'_, AppState>,
     record: documents::DocumentRecord,
 ) -> Result<DocumentSnapshot, AppError> {
-    let cached_translation = {
+    let (cached_translation, has_summary, artifact_count) = {
         let connection = state.storage.connection();
-        if let Some(job) = translation_jobs::find_latest_completed_for_document(
-            &connection,
-            &record.document_id,
-            None,
-            None,
-        )? {
+        let cached_translation = if let Some(job) =
+            translation_jobs::find_latest_completed_for_document(
+                &connection,
+                &record.document_id,
+                None,
+                None,
+            )? {
             let artifacts = translation_artifacts::list_by_job(&connection, &job.job_id)?;
             let translated_pdf_path = artifacts
                 .iter()
@@ -202,7 +284,14 @@ fn snapshot_from_record(
             })
         } else {
             None
-        }
+        };
+        let has_summary =
+            document_summaries::get_by_document_id(&connection, &record.document_id)?.is_some();
+        let artifact_count =
+            artifact_aggregator::count_artifacts_for_document(&connection, &record.document_id)?
+                .total_count();
+
+        (cached_translation, has_summary, artifact_count)
     };
 
     Ok(DocumentSnapshot {
@@ -214,6 +303,9 @@ fn snapshot_from_record(
         source_type: DocumentSourceType::from_str(&record.source_type)?,
         zotero_item_key: record.zotero_item_key,
         cached_translation,
+        has_summary,
+        is_favorite: record.is_favorite,
+        artifact_count,
         last_opened_at: record.last_opened_at,
     })
 }
@@ -245,12 +337,13 @@ mod tests {
             zotero::ZoteroStatusDto,
         },
         keychain::KeychainService,
+        models::DocumentSourceType,
         notebooklm_manager::NotebookLMManager,
         storage::Storage,
         translation_manager::TranslationManager,
     };
 
-    use super::open_document;
+    use super::{open_document, DocumentSnapshot};
 
     #[test]
     fn open_document_command_returns_serialized_app_error_payload() {
@@ -321,6 +414,29 @@ mod tests {
 
         assert_eq!(error["code"], "DOCUMENT_UNSUPPORTED");
         assert_eq!(error["retryable"], false);
+    }
+
+    #[test]
+    fn document_snapshot_serializes_new_fields_in_camel_case() {
+        let payload = serde_json::to_value(DocumentSnapshot {
+            document_id: "doc-1".to_string(),
+            file_path: "/tmp/doc.pdf".to_string(),
+            file_sha256: "sha-1".to_string(),
+            title: "Demo".to_string(),
+            page_count: 12,
+            source_type: DocumentSourceType::Local,
+            zotero_item_key: None,
+            cached_translation: None,
+            has_summary: true,
+            is_favorite: true,
+            artifact_count: 3,
+            last_opened_at: "2026-03-16T12:00:00Z".to_string(),
+        })
+        .unwrap();
+
+        assert_eq!(payload["hasSummary"], json!(true));
+        assert_eq!(payload["isFavorite"], json!(true));
+        assert_eq!(payload["artifactCount"], json!(3));
     }
 
     fn build_test_state() -> AppState {
