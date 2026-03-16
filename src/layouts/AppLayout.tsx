@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from '../components/sidebar/Sidebar';
 import { RightPanel } from '../components/panel/RightPanel';
 import { TranslationSwitch } from '../components/pdf-viewer/TranslationSwitch';
@@ -57,28 +58,42 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
       {/* 主内容区域（PDF Viewer） */}
       <main className="flex-1 relative h-full flex flex-col bg-[var(--color-bg-secondary)] min-w-0">
-        {/* 控制按钮 */}
+        {/* 控制按钮（带淡入淡出动画） */}
         <div className="absolute top-3 left-3 z-10">
-          {!isSidebarOpen && (
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="p-2 rounded-lg bg-[var(--color-bg-overlay)] backdrop-blur-lg shadow-sm border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] transition-colors"
-              aria-label="打开侧边栏"
-            >
-              <PanelLeftOpen size={18} />
-            </button>
-          )}
+          <AnimatePresence>
+            {!isSidebarOpen && (
+              <motion.button
+                key="sidebar-toggle"
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.85 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                onClick={() => setSidebarOpen(true)}
+                className="p-2 rounded-lg bg-[var(--color-bg-overlay)] backdrop-blur-lg shadow-sm border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] transition-colors"
+                aria-label="打开侧边栏"
+              >
+                <PanelLeftOpen size={18} />
+              </motion.button>
+            )}
+          </AnimatePresence>
         </div>
         <div className="absolute top-3 right-3 z-10">
-          {!isRightPanelOpen && (
-            <button
-              onClick={() => setRightPanelOpen(true)}
-              className="p-2 rounded-lg bg-[var(--color-bg-overlay)] backdrop-blur-lg shadow-sm border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] transition-colors"
-              aria-label="打开 AI 助手"
-            >
-              <PanelRightOpen size={18} />
-            </button>
-          )}
+          <AnimatePresence>
+            {!isRightPanelOpen && (
+              <motion.button
+                key="panel-toggle"
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.85 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                onClick={() => setRightPanelOpen(true)}
+                className="p-2 rounded-lg bg-[var(--color-bg-overlay)] backdrop-blur-lg shadow-sm border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] transition-colors"
+                aria-label="打开 AI 助手"
+              >
+                <PanelRightOpen size={18} />
+              </motion.button>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* PDF 渲染内容 */}

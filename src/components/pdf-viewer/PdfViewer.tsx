@@ -352,6 +352,13 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   const ownedObjectUrlRef = useRef<string | null>(null);
   const fontsReadyResolvedRef = useRef(false);
   const latestUsedFamiliesRef = useRef<string[]>([]);
+
+  // ---------------------------------------------------------------------------
+  // 自动缩放：用户最后一次手动设置的缩放值和对应的容器宽度作为比例计算基准
+  // ---------------------------------------------------------------------------
+  const userSetScaleRef = useRef(ZOOM_DEFAULT);
+  const referenceWidthRef = useRef<number | null>(null);
+  const rafIdRef = useRef<number>(0);
   const sourcePdfUrl = storePdfUrl ?? initialUrl;
   const activePdfUrl = translatedPdfUrl && !bilingualMode ? translatedPdfUrl : sourcePdfUrl;
 
@@ -503,6 +510,10 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     setSelectionPopup(null);
     setIsLoading(true);
 
+    // 文档切换时重置自动缩放基准
+    userSetScaleRef.current = ZOOM_DEFAULT;
+    referenceWidthRef.current = null;
+
     const loadPdf = async () => {
       try {
         loadingTask = pdfjsLib.getDocument(url);
@@ -590,20 +601,86 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     }
   }, [scale]);
 
-  // 缩放控制
-  const handleZoomIn = useCallback(() => {
-    setScale(prev => Math.min(prev + ZOOM_STEP, ZOOM_MAX));
+  // ---------------------------------------------------------------------------
+  // 自动缩放：根据容器宽度变化比例调整缩放值
+  // ---------------------------------------------------------------------------
+
+  /** 更新缩放参考基准（手动缩放时调用，确保后续自动缩放以用户意图为基准） */
+  const updateZoomReference = useCallback((newScale: number) => {
+    userSetScaleRef.current = newScale;
+    referenceWidthRef.current = containerRef.current?.clientWidth ?? referenceWidthRef.current;
   }, []);
+
+  /** 根据当前容器宽度按比例计算新缩放值 */
+  const applyAutoZoom = useCallback((currentWidth: number) => {
+    const refWidth = referenceWidthRef.current;
+    if (!refWidth || refWidth <= 0) return;
+
+    const ratio = currentWidth / refWidth;
+    const newScale = userSetScaleRef.current * ratio;
+    const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newScale));
+
+    setScale((prev) => {
+      // 忽略微小浮点变化，避免抖动
+      if (Math.abs(clamped - prev) < 0.005) return prev;
+      return clamped;
+    });
+  }, []);
+
+  // 缩放控制（手动缩放时同步更新参考基准）
+  const handleZoomIn = useCallback(() => {
+    setScale(prev => {
+      const next = Math.min(prev + ZOOM_STEP, ZOOM_MAX);
+      updateZoomReference(next);
+      return next;
+    });
+  }, [updateZoomReference]);
 
   const handleZoomOut = useCallback(() => {
-    setScale(prev => Math.max(prev - ZOOM_STEP, ZOOM_MIN));
-  }, []);
+    setScale(prev => {
+      const next = Math.max(prev - ZOOM_STEP, ZOOM_MIN);
+      updateZoomReference(next);
+      return next;
+    });
+  }, [updateZoomReference]);
 
   const handleZoomReset = useCallback(() => {
+    updateZoomReference(ZOOM_DEFAULT);
     setScale(ZOOM_DEFAULT);
-  }, []);
+  }, [updateZoomReference]);
 
-  // Ctrl+滚轮缩放
+  // 监听容器宽度变化，自动按比例调整缩放（覆盖侧栏展开/收起、窗口 resize）
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const currentWidth = entry.contentRect.width;
+      if (currentWidth <= 0) return;
+
+      // 首次回调：初始化参考宽度，不调整缩放
+      if (referenceWidthRef.current === null) {
+        referenceWidthRef.current = currentWidth;
+        return;
+      }
+
+      // 使用 rAF 节流，避免 framer-motion 动画期间过度渲染
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = requestAnimationFrame(() => {
+        applyAutoZoom(currentWidth);
+      });
+    });
+
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(rafIdRef.current);
+    };
+  }, [applyAutoZoom]);
+
+  // Ctrl+滚轮缩放（同步更新参考基准）
   useEffect(() => {
     const container = viewerContainerRef.current ?? containerRef.current;
     if (!container) return;
@@ -612,13 +689,17 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-        setScale(prev => Math.min(Math.max(prev + delta, ZOOM_MIN), ZOOM_MAX));
+        setScale(prev => {
+          const next = Math.min(Math.max(prev + delta, ZOOM_MIN), ZOOM_MAX);
+          updateZoomReference(next);
+          return next;
+        });
       }
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
-  }, [pdf]);
+  }, [pdf, updateZoomReference]);
 
   // 判断拖拽内容是否包含文件
   const hasFiles = useCallback((e: React.DragEvent) => {

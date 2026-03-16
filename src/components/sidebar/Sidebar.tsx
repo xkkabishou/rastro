@@ -432,66 +432,69 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle }: SidebarProps) =>
   };
 
   return (
-    <AnimatePresence initial={false}>
-      {isOpen && (
-        <motion.aside
-          initial={{ width: 0, opacity: 0, x: isMobile ? -280 : 0 }}
-          animate={{ width: 280, opacity: 1, x: 0 }}
-          exit={{ width: 0, opacity: 0, x: isMobile ? -280 : 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          className={`h-full border-r border-[var(--color-border)] bg-[var(--color-bg)]/90 backdrop-blur-xl overflow-hidden flex flex-col pt-8 ${isMobile ? 'absolute left-0 top-0 bottom-0 z-30' : 'relative'}`}
-        >
-          {/* 头部 */}
-          <div className="flex items-center justify-between px-4 pb-3 shrink-0">
-            <span className="font-semibold px-1 text-[var(--color-text)] flex items-center gap-2">
-              <img src={shibaLogoUrl} alt="Rastro" className="w-6 h-6 rounded-md" />
-              Rastro
-            </span>
-            <button
-              onClick={onToggle}
-              className="p-1.5 rounded-md hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)] transition-colors"
-            >
-              <Menu size={18} />
-            </button>
-          </div>
+    <>
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.aside
+            key="sidebar"
+            initial={{ width: 0, opacity: 0, x: isMobile ? -280 : 0 }}
+            animate={{ width: 280, opacity: 1, x: 0 }}
+            exit={{ width: 0, opacity: 0, x: isMobile ? -280 : 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className={`h-full border-r border-[var(--color-border)] bg-[var(--color-bg)]/90 backdrop-blur-xl overflow-hidden flex flex-col pt-8 ${isMobile ? 'absolute left-0 top-0 bottom-0 z-30' : 'relative'}`}
+          >
+            {/* 头部 */}
+            <div className="flex items-center justify-between px-4 pb-3 shrink-0">
+              <span className="font-semibold px-1 text-[var(--color-text)] flex items-center gap-2">
+                <img src={shibaLogoUrl} alt="Rastro" className="w-6 h-6 rounded-md" />
+                Rastro
+              </span>
+              <button
+                onClick={onToggle}
+                className="p-1.5 rounded-md hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)] transition-colors"
+              >
+                <Menu size={18} />
+              </button>
+            </div>
 
-          {/* 搜索栏 + 分组筛选 */}
-          <SearchBar />
-          <GroupChips />
+            {/* 搜索栏 + 分组筛选 */}
+            <SearchBar />
+            <GroupChips />
 
-          {/* 打开文件按钮 */}
-          <div className="px-3 pb-2 shrink-0">
-            <button
-              onClick={handleOpenLocalPdf}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[var(--color-primary)] text-white text-xs font-medium shadow-sm hover:opacity-90 active:scale-[0.98] transition-all"
-            >
-              <FolderOpen size={14} />
-              打开本地 PDF
-            </button>
-          </div>
+            {/* 打开文件按钮 */}
+            <div className="px-3 pb-2 shrink-0">
+              <button
+                onClick={handleOpenLocalPdf}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[var(--color-primary)] text-white text-xs font-medium shadow-sm hover:opacity-90 active:scale-[0.98] transition-all"
+              >
+                <FolderOpen size={14} />
+                打开本地 PDF
+              </button>
+            </div>
 
-          {/* 文档树 */}
-          <div className="flex-1 overflow-hidden border-t border-[var(--color-separator)] px-2 pt-1">
-            {isLoadingRecent ? (
-              <div className="flex items-center justify-center h-full text-xs text-[var(--color-text-quaternary)]">
-                加载中...
-              </div>
-            ) : (
-              <DocumentTree
-                documents={recentDocuments}
-                activeDocumentId={currentDocument?.documentId}
-                onDocumentClick={handleDocumentClick}
-                onArtifactClick={handleArtifactClick}
-                onContextMenuAction={handleContextMenuAction}
-                emptyMessage={searchQuery ? '未找到匹配的文献' : '还没有最近打开的文档'}
-              />
-            )}
-          </div>
+            {/* 文档树 */}
+            <div className="flex-1 overflow-hidden border-t border-[var(--color-separator)] px-2 pt-1">
+              {isLoadingRecent ? (
+                <div className="flex items-center justify-center h-full text-xs text-[var(--color-text-quaternary)]">
+                  加载中...
+                </div>
+              ) : (
+                <DocumentTree
+                  documents={recentDocuments}
+                  activeDocumentId={currentDocument?.documentId}
+                  onDocumentClick={handleDocumentClick}
+                  onArtifactClick={handleArtifactClick}
+                  onContextMenuAction={handleContextMenuAction}
+                  emptyMessage={searchQuery ? '未找到匹配的文献' : '还没有最近打开的文档'}
+                />
+              )}
+            </div>
 
-        </motion.aside>
-      )}
+          </motion.aside>
+        )}
+      </AnimatePresence>
 
-      {/* T2.4.2: 通用确认弹窗 */}
+      {/* T2.4.2: 通用确认弹窗（必须在 AnimatePresence 外部，否则干扰侧栏动画） */}
       <Dialog
         isOpen={!!confirmDialog}
         onClose={closeConfirmDialog}
@@ -522,7 +525,7 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle }: SidebarProps) =>
           </div>
         </div>
       </Dialog>
-    </AnimatePresence>
+    </>
   );
 };
 
