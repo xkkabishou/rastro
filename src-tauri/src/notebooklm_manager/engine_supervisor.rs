@@ -610,7 +610,10 @@ fn open_until_duration_string(open_until: Instant, now: Instant) -> String {
 
 fn valid_health_signature(health: &HealthzResponse) -> bool {
     matches!(health.service.as_deref(), Some("notebooklm-engine-system"))
-        && matches!(health.engine_version.as_deref(), Some(EXPECTED_ENGINE_VERSION))
+        && matches!(
+            health.engine_version.as_deref(),
+            Some(EXPECTED_ENGINE_VERSION)
+        )
 }
 
 fn is_notebooklm_engine_service(health: &HealthzResponse) -> bool {

@@ -1,30 +1,24 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, FileText, Library, Menu, FolderOpen } from 'lucide-react';
+import { Settings, Menu, FolderOpen, Search } from 'lucide-react';
 import shibaLogoUrl from '../../assets/shiba/shiba-logo.png';
 import { open } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { ZoteroList } from './ZoteroList';
+import { DocumentTree } from './DocumentTree';
 import { useDocumentStore } from '../../stores/useDocumentStore';
 import { ipcClient } from '../../lib/ipc-client';
-import type { DocumentSnapshot } from '../../shared/types';
+import type { DocumentSnapshot, DocumentArtifactDto } from '../../shared/types';
 
 // ---------------------------------------------------------------------------
-// 类型
+// 常量
 // ---------------------------------------------------------------------------
 
-type SidebarSection = 'recent' | 'zotero';
+/** 搜索防抖延迟 (ms) */
+const SEARCH_DEBOUNCE_MS = 300;
 
-const formatLastOpenedAt = (timestamp: string) => (
-  new Date(timestamp).toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-);
-
-const getFileName = (filePath: string) => filePath.split(/[/\\]/).at(-1) ?? filePath;
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
 
 interface SidebarProps {
   isOpen: boolean;
@@ -38,14 +32,26 @@ interface SidebarProps {
 // ---------------------------------------------------------------------------
 
 export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: SidebarProps) => {
-  const [activeSection, setActiveSection] = useState<SidebarSection>('recent');
   const [isLoadingRecent, setIsLoadingRecent] = useState(false);
   const setCurrentDocument = useDocumentStore((s) => s.setCurrentDocument);
   const setPdfUrl = useDocumentStore((s) => s.setPdfUrl);
   const currentDocument = useDocumentStore((s) => s.currentDocument);
   const recentDocuments = useDocumentStore((s) => s.recentDocuments);
   const setRecentDocuments = useDocumentStore((s) => s.setRecentDocuments);
+  const searchQuery = useDocumentStore((s) => s.searchQuery);
+  const setSearchQuery = useDocumentStore((s) => s.setSearchQuery);
+  const activeFilter = useDocumentStore((s) => s.activeFilter);
 
+  // 搜索防抖
+  const [localQuery, setLocalQuery] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(localQuery);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [localQuery, setSearchQuery]);
+
+  // 打开文档到阅读器
   const openDocumentInViewer = useCallback((doc: DocumentSnapshot) => {
     setCurrentDocument(doc);
     setPdfUrl(convertFileSrc(doc.filePath));
@@ -54,28 +60,36 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: 
     }
   }, [isMobile, onToggle, setCurrentDocument, setPdfUrl]);
 
+  // 加载文档列表（v2: 支持搜索和筛选）
   const loadRecentDocuments = useCallback(async () => {
     try {
       setIsLoadingRecent(true);
-      const docs = await ipcClient.listRecentDocuments(20);
+      const docs = await ipcClient.listRecentDocuments(
+        50,
+        searchQuery || undefined,
+        Object.keys(activeFilter).length > 0 ? activeFilter : undefined,
+      );
       setRecentDocuments(docs);
     } catch (err) {
-      console.error('加载近期文档失败:', err);
+      console.error('加载文档列表失败:', err);
     } finally {
       setIsLoadingRecent(false);
     }
-  }, [setRecentDocuments]);
+  }, [setRecentDocuments, searchQuery, activeFilter]);
 
+  // 初始加载 + 搜索/筛选变化时重新加载
   useEffect(() => {
     void loadRecentDocuments();
   }, [loadRecentDocuments]);
 
+  // 文档切换时刷新列表
   useEffect(() => {
     if (!currentDocument) return;
     void loadRecentDocuments();
   }, [currentDocument?.documentId, currentDocument?.lastOpenedAt, loadRecentDocuments]);
 
-  const handleOpenRecentDocument = useCallback(async (doc: DocumentSnapshot) => {
+  // 点击文档节点
+  const handleDocumentClick = useCallback(async (doc: DocumentSnapshot) => {
     try {
       const openedDocument = doc.sourceType === 'zotero' && doc.zoteroItemKey
         ? await ipcClient.openZoteroAttachment(doc.zoteroItemKey)
@@ -85,19 +99,47 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: 
             zoteroItemKey: doc.zoteroItemKey,
           });
       openDocumentInViewer(openedDocument);
-      await loadRecentDocuments();
     } catch (err) {
-      console.error('重新打开近期文档失败:', err);
+      console.error('打开文档失败:', err);
     }
-  }, [loadRecentDocuments, openDocumentInViewer]);
+  }, [openDocumentInViewer]);
 
-  // 处理本地文件选择（使用 Tauri 原生对话框获取绝对路径）
+  // 点击产物节点
+  const handleArtifactClick = useCallback((artifact: DocumentArtifactDto, doc: DocumentSnapshot) => {
+    switch (artifact.kind) {
+      case 'original_pdf':
+        openDocumentInViewer(doc);
+        break;
+      case 'translated_pdf':
+      case 'bilingual_pdf':
+        if (artifact.filePath) {
+          setCurrentDocument(doc);
+          setPdfUrl(convertFileSrc(artifact.filePath));
+          if (isMobile) onToggle();
+        }
+        break;
+      case 'ai_summary':
+        // TODO: Wave 4+ — 打开 AI 总结面板
+        openDocumentInViewer(doc);
+        break;
+      default:
+        // NotebookLM 产物或其他产物 — 在 Finder 中打开
+        if (artifact.filePath) {
+          ipcClient.revealInFinder(artifact.filePath).catch((err) => {
+            console.error('打开产物失败:', err);
+          });
+        }
+        break;
+    }
+  }, [openDocumentInViewer, setCurrentDocument, setPdfUrl, isMobile, onToggle]);
+
+  // 处理本地文件选择
   const handleOpenLocalPdf = async () => {
     const selected = await open({
       multiple: false,
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
     });
-    if (!selected) return; // 用户取消
+    if (!selected) return;
 
     try {
       const doc = await ipcClient.openDocument({ filePath: selected });
@@ -112,15 +154,15 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: 
     <AnimatePresence initial={false}>
       {isOpen && (
         <motion.aside
-          initial={{ width: 0, opacity: 0, x: isMobile ? -260 : 0 }}
-          animate={{ width: 260, opacity: 1, x: 0 }}
-          exit={{ width: 0, opacity: 0, x: isMobile ? -260 : 0 }}
+          initial={{ width: 0, opacity: 0, x: isMobile ? -280 : 0 }}
+          animate={{ width: 280, opacity: 1, x: 0 }}
+          exit={{ width: 0, opacity: 0, x: isMobile ? -280 : 0 }}
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
           className={`h-full border-r border-[var(--color-border)] bg-[var(--color-bg)]/90 backdrop-blur-xl overflow-hidden flex flex-col pt-8 ${isMobile ? 'absolute left-0 top-0 bottom-0 z-30' : 'relative'}`}
         >
           {/* 头部 */}
-          <div className="flex items-center justify-between px-4 pb-4 border-b border-[var(--color-separator)] shrink-0">
-            <span className="font-semibold px-2 text-[var(--color-text)] flex items-center gap-2">
+          <div className="flex items-center justify-between px-4 pb-3 shrink-0">
+            <span className="font-semibold px-1 text-[var(--color-text)] flex items-center gap-2">
               <img src={shibaLogoUrl} alt="Rastro" className="w-6 h-6 rounded-md" />
               Rastro
             </span>
@@ -132,96 +174,60 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: 
             </button>
           </div>
 
-          {/* 导航列表 */}
-          <div className="py-2 px-3 space-y-1 shrink-0">
-            <NavItem
-              icon={<FileText size={18} />}
-              label="近期文档"
-              active={activeSection === 'recent'}
-              onClick={() => setActiveSection('recent')}
-            />
-            <NavItem
-              icon={<Library size={18} />}
-              label="Zotero"
-              active={activeSection === 'zotero'}
-              onClick={() => setActiveSection('zotero')}
-            />
+          {/* 搜索栏 */}
+          <div className="px-3 pb-2 shrink-0">
+            <div className="relative">
+              <Search
+                size={14}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-quaternary)]"
+              />
+              <input
+                type="text"
+                value={localQuery}
+                onChange={(e) => setLocalQuery(e.target.value)}
+                placeholder="搜索文献..."
+                className="input-base w-full pl-8 pr-3 py-1.5 text-xs rounded-lg"
+              />
+            </div>
           </div>
 
-          {/* 内容区域 — 根据 activeSection 切换 */}
-          <div className="flex-1 overflow-hidden border-t border-[var(--color-separator)]">
-            {activeSection === 'recent' && (
-              <div className="flex flex-col h-full p-3 gap-3">
-                <div className="shrink-0">
-                  <button
-                    onClick={handleOpenLocalPdf}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-medium shadow-sm hover:opacity-90 active:scale-[0.98] transition-all"
-                  >
-                    <FolderOpen size={16} />
-                    打开本地 PDF
-                  </button>
-                  <span className="block mt-2 text-xs text-[var(--color-text-quaternary)] text-center">
-                    或拖拽 PDF 文件到窗口打开
-                  </span>
-                </div>
+          {/* 打开文件按钮 */}
+          <div className="px-3 pb-2 shrink-0">
+            <button
+              onClick={handleOpenLocalPdf}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[var(--color-primary)] text-white text-xs font-medium shadow-sm hover:opacity-90 active:scale-[0.98] transition-all"
+            >
+              <FolderOpen size={14} />
+              打开本地 PDF
+            </button>
+          </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto">
-                  {isLoadingRecent ? (
-                    <div className="flex items-center justify-center h-full text-xs text-[var(--color-text-quaternary)]">
-                      正在加载近期文档...
-                    </div>
-                  ) : recentDocuments.length === 0 ? (
-                    <div className="flex items-center justify-center h-full px-4 text-center text-xs text-[var(--color-text-quaternary)] leading-relaxed">
-                      还没有最近打开的文档
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {recentDocuments.map((doc) => {
-                        const isActive = currentDocument?.documentId === doc.documentId;
-                        return (
-                          <button
-                            key={doc.documentId}
-                            onClick={() => void handleOpenRecentDocument(doc)}
-                            className={`w-full rounded-xl border px-3 py-2.5 text-left transition-colors ${
-                              isActive
-                                ? 'border-[var(--color-primary)] bg-[var(--color-selected)]'
-                                : 'border-[var(--color-border)] hover:bg-[var(--color-hover)]'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2 mb-1.5">
-                              <span className="truncate text-sm font-medium text-[var(--color-text)]">
-                                {doc.title}
-                              </span>
-                              <span className="shrink-0 rounded-full bg-[var(--color-bg-secondary)] px-2 py-0.5 text-[10px] text-[var(--color-text-quaternary)]">
-                                {doc.sourceType === 'zotero' ? 'Zotero' : '本地'}
-                              </span>
-                            </div>
-                            <p className="truncate text-[11px] text-[var(--color-text-tertiary)]">
-                              {getFileName(doc.filePath)}
-                            </p>
-                            <p className="mt-1 text-[10px] text-[var(--color-text-quaternary)]">
-                              最近打开 {formatLastOpenedAt(doc.lastOpenedAt)}
-                            </p>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+          {/* 文档树 */}
+          <div className="flex-1 overflow-hidden border-t border-[var(--color-separator)] px-2 pt-1">
+            {isLoadingRecent ? (
+              <div className="flex items-center justify-center h-full text-xs text-[var(--color-text-quaternary)]">
+                加载中...
               </div>
-            )}
-            {activeSection === 'zotero' && (
-              <ZoteroList />
+            ) : (
+              <DocumentTree
+                documents={recentDocuments}
+                activeDocumentId={currentDocument?.documentId}
+                onDocumentClick={handleDocumentClick}
+                onArtifactClick={handleArtifactClick}
+                emptyMessage={searchQuery ? '未找到匹配的文献' : '还没有最近打开的文档'}
+              />
             )}
           </div>
 
           {/* 底部设置 */}
-          <div className="p-4 border-t border-[var(--color-separator)] shrink-0">
-            <NavItem
-              icon={<Settings size={18} />}
-              label="设置"
+          <div className="p-3 border-t border-[var(--color-separator)] shrink-0">
+            <button
               onClick={onOpenSettings}
-            />
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text)] transition-colors"
+            >
+              <Settings size={18} />
+              <span>设置</span>
+            </button>
           </div>
         </motion.aside>
       )}
@@ -229,30 +235,3 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: 
   );
 };
 
-// ---------------------------------------------------------------------------
-// 子组件
-// ---------------------------------------------------------------------------
-
-const NavItem = ({
-  icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick?: () => void;
-}) => (
-  <button
-    onClick={onClick}
-    className={`w-full flex flex-shrink-0 whitespace-nowrap items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
-      active
-        ? 'bg-[var(--color-selected)] text-[var(--color-primary)]'
-        : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text)]'
-    }`}
-  >
-    {icon}
-    <span>{label}</span>
-  </button>
-);

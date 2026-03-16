@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import csv
+import re
 import subprocess
 import tempfile
 import threading
@@ -100,6 +101,9 @@ _ACK_KEYWORDS = {
     "acknowledgment", "acknowledgments",
 }
 
+# 用于去除行首编号前缀的正则，如 "7.", "VII.", "7 ", "VII "
+_HEADING_NUM_PREFIX_RE = re.compile(r'^(?:[\dIVXivx]+[\.\)\s]+)')
+
 
 def _parse_pages(pages_str: str) -> set[int]:
     """解析页码字符串 '1-3,5,7-8' → {1,2,3,5,7,8}"""
@@ -114,45 +118,132 @@ def _parse_pages(pages_str: str) -> set[int]:
     return result
 
 
+def _is_ref_heading_line(line_text: str) -> bool:
+    """判断一行文本是否是参考文献的节标题。
+
+    满足以下条件视为标题行：
+    1. 去除编号前缀后，以关键词开头
+    2. 行长度较短（< 60 字符），排除正文段落中的偶然提及
+    """
+    text = line_text.strip()
+    if not text or len(text) > 60:
+        return False
+
+    lower = text.lower()
+    # 去除编号前缀，如 "7. References" → "references"
+    clean = _HEADING_NUM_PREFIX_RE.sub('', lower).strip()
+    return any(clean.startswith(kw) for kw in _REF_KEYWORDS)
+
+
+def _find_heading_y_in_page(page: Any, keywords: set[str]) -> float | None:
+    """在页面中查找关键词标题行的 y 坐标。"""
+    blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)["blocks"]
+    for block in blocks:
+        if block.get("type", 0) != 0:
+            continue
+        for line in block.get("lines", []):
+            line_text = "".join(span["text"] for span in line["spans"]).strip()
+            if _is_ref_heading_line(line_text):
+                # 返回该行的 y 坐标（行顶部）
+                return line["bbox"][1]
+    return None
+
+
 def detect_reference_pages(pdf_path: Path) -> list[int]:
     """检测参考文献页（1-based）。
 
-    策略：找到 references/bibliography 标题后——
+    策略：从后往前扫描页面，用 PyMuPDF 文本块/行信息识别参考文献节标题。
+    仅当检测到独立的标题行（短行、以关键词开头、可含编号前缀）时才触发跳过，
+    排除正文段落中的偶然提及（如 "see references [1,2]"）。
+
     - 标题在页面前 20%：该页及后续全部跳过
     - 标题在中后部：仅跳过后续页
     """
     doc = fitz.open(str(pdf_path))
+    total = len(doc)
     ref_pages: list[int] = []
     ref_heading_page = None
+    matched_line_text = None
 
-    for page in doc:
-        text = page.get_text().lower()
-        if any(kw in text for kw in _REF_KEYWORDS):
-            cutoff = max(500, len(text) // 5)
-            head = text[:cutoff]
-            if any(kw in head for kw in _REF_KEYWORDS):
-                ref_heading_page = page.number
-            else:
-                ref_heading_page = page.number + 1
+    _log(f"[ref-detect] Scanning {total} pages for reference heading (backward)...")
+
+    # 从最后一页向前扫描，参考文献部分通常在论文后半部分
+    for page_idx in range(total - 1, -1, -1):
+        page = doc[page_idx]
+        blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)["blocks"]
+
+        found = False
+        for block in blocks:
+            if block.get("type", 0) != 0:  # 只处理文本块
+                continue
+            for line in block.get("lines", []):
+                line_text = "".join(span["text"] for span in line["spans"]).strip()
+                if _is_ref_heading_line(line_text):
+                    ref_heading_page = page_idx
+                    matched_line_text = line_text
+                    found = True
+                    _log(f"[ref-detect] Found reference heading on page {page_idx + 1}: '{line_text}'")
+                    break
+            if found:
+                break
+        if found:
             break
 
     if ref_heading_page is not None:
-        for pn in range(ref_heading_page, len(doc)):
+        page = doc[ref_heading_page]
+        page_height = page.rect.height
+        heading_y = _find_heading_y_in_page(page, _REF_KEYWORDS)
+
+        _log(f"[ref-detect] Heading Y={heading_y}, page height={page_height}, threshold={page_height * 0.2}")
+
+        if heading_y is not None and heading_y < page_height * 0.2:
+            start = ref_heading_page  # 标题在页面顶部，当前页也跳过
+        else:
+            start = ref_heading_page + 1  # 标题在中下部，只跳后续页
+
+        for pn in range(start, total):
             ref_pages.append(pn + 1)
+
+        _log(f"[ref-detect] Reference pages to skip: {ref_pages}")
+    else:
+        _log("[ref-detect] No reference heading found.")
 
     doc.close()
     return ref_pages
 
 
+def _is_ack_heading_line(line_text: str) -> bool:
+    """判断一行文本是否是致谢的节标题。"""
+    text = line_text.strip()
+    if not text or len(text) > 60:
+        return False
+    lower = text.lower()
+    clean = _HEADING_NUM_PREFIX_RE.sub('', lower).strip()
+    return any(clean.startswith(kw) for kw in _ACK_KEYWORDS)
+
+
 def detect_acknowledgement_pages(pdf_path: Path) -> list[int]:
-    """检测致谢页（1-based），只跳包含关键词的页。"""
+    """检测致谢页（1-based），使用结构化标题检测，只跳包含标题的页。"""
     doc = fitz.open(str(pdf_path))
     ack_pages: list[int] = []
 
     for page in doc:
-        text = page.get_text().lower()
-        if any(kw in text for kw in _ACK_KEYWORDS):
-            ack_pages.append(page.number + 1)
+        blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)["blocks"]
+        for block in blocks:
+            if block.get("type", 0) != 0:
+                continue
+            for line in block.get("lines", []):
+                line_text = "".join(span["text"] for span in line["spans"]).strip()
+                if _is_ack_heading_line(line_text):
+                    ack_pages.append(page.number + 1)
+                    _log(f"[ack-detect] Found acknowledgement heading on page {page.number + 1}: '{line_text}'")
+                    break
+            else:
+                continue
+            break
+
+    if not ack_pages:
+        _log("[ack-detect] No acknowledgement heading found.")
 
     doc.close()
     return ack_pages
@@ -291,10 +382,12 @@ def translate(
         working_pdf = input_pdf
 
     # ── 参考文献 / 致谢页检测 ─────────────────────────────────────
+    _log(f"[preprocess] skip_references={skip_references}, total_pages={total_pages}, pages={pages}")
     if skip_references:
         ref_pages = detect_reference_pages(working_pdf)
         ack_pages = detect_acknowledgement_pages(working_pdf)
         skip_pages = set(ref_pages) | set(ack_pages)
+        _log(f"[preprocess] ref_pages={ref_pages}, ack_pages={ack_pages}, skip_pages={sorted(skip_pages)}")
         if skip_pages:
             if pages is None:
                 candidate_pages = set(range(1, total_pages + 1))
@@ -302,8 +395,13 @@ def translate(
                 candidate_pages = _parse_pages(pages)
             translate_pages = sorted(candidate_pages - skip_pages)
             pages = ",".join(str(p) for p in translate_pages)
-            _log(f"[preprocess] Skipping reference pages: {sorted(skip_pages)}")
+            _log(f"[preprocess] candidate_pages={sorted(candidate_pages)}")
+            _log(f"[preprocess] Skipping pages: {sorted(skip_pages)}")
             _log(f"[preprocess] Translating pages: {pages}")
+        else:
+            _log("[preprocess] No pages to skip, translating all pages.")
+    else:
+        _log("[preprocess] Reference skipping disabled.")
 
     # ── 构建命令 ──────────────────────────────────────────────────
     prompt_text = custom_prompt or ARCHAEOLOGY_PROMPT

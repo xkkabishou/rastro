@@ -1,5 +1,10 @@
 import { create } from 'zustand';
-import type { DocumentSnapshot, TranslationJobDto } from '../shared/types';
+import type {
+  DocumentSnapshot,
+  TranslationJobDto,
+  DocumentArtifactDto,
+  DocumentFilter,
+} from '../shared/types';
 import { ipcClient } from '../lib/ipc-client';
 import { useChatStore } from './useChatStore';
 import { useSummaryStore } from './useSummaryStore';
@@ -22,7 +27,17 @@ interface DocumentState {
   /** 翻译后 PDF 的 URL */
   translatedPdfUrl: string | null;
 
-  // Actions
+  // V2: 树形侧栏状态
+  /** 文档产物缓存，key = documentId */
+  artifactsByDocId: Record<string, DocumentArtifactDto[]>;
+  /** 已展开的文档 ID 集合 */
+  expandedDocIds: Set<string>;
+  /** 侧栏搜索关键词 */
+  searchQuery: string;
+  /** 侧栏筛选条件 */
+  activeFilter: DocumentFilter;
+
+  // Actions (v1)
   setCurrentDocument: (doc: DocumentSnapshot | null) => void;
   setZoomLevel: (level: number) => void;
   setBilingualMode: (mode: boolean) => void;
@@ -32,9 +47,21 @@ interface DocumentState {
   setPdfUrl: (url: string | null) => void;
   setTranslatedPdfUrl: (url: string | null) => void;
   reset: () => void;
+
+  // Actions (v2)
+  /** 展开/折叠文档节点；首次展开时自动加载产物 */
+  toggleExpand: (docId: string) => void;
+  /** 加载文档产物（forceRefresh=true 时忽略缓存） */
+  loadArtifacts: (docId: string, forceRefresh?: boolean) => Promise<void>;
+  /** 设置侧栏搜索关键词 */
+  setSearchQuery: (query: string) => void;
+  /** 设置侧栏筛选条件 */
+  setActiveFilter: (filter: DocumentFilter) => void;
+  /** 清除指定文档的产物缓存 */
+  invalidateArtifacts: (docId: string) => void;
 }
 
-export const useDocumentStore = create<DocumentState>((set) => ({
+export const useDocumentStore = create<DocumentState>((set, get) => ({
   currentDocument: null,
   zoomLevel: 100,
   bilingualMode: false,
@@ -43,6 +70,12 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   recentDocuments: [],
   pdfUrl: null,
   translatedPdfUrl: null,
+
+  // V2 初始值
+  artifactsByDocId: {},
+  expandedDocIds: new Set<string>(),
+  searchQuery: '',
+  activeFilter: {},
 
   setCurrentDocument: (doc) => {
     const prev = useDocumentStore.getState().currentDocument;
@@ -88,5 +121,64 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     translationProgress: 0,
     pdfUrl: null,
     translatedPdfUrl: null,
+    artifactsByDocId: {},
+    expandedDocIds: new Set<string>(),
+    searchQuery: '',
+    activeFilter: {},
   }),
+
+  // --- V2 Actions ---
+
+  toggleExpand: (docId) => {
+    const { expandedDocIds, artifactsByDocId } = get();
+    const next = new Set(expandedDocIds);
+
+    if (next.has(docId)) {
+      // 折叠
+      next.delete(docId);
+      set({ expandedDocIds: next });
+    } else {
+      // 展开
+      next.add(docId);
+      set({ expandedDocIds: next });
+
+      // 首次展开且无缓存时，自动加载产物
+      if (!artifactsByDocId[docId]) {
+        get().loadArtifacts(docId);
+      }
+    }
+  },
+
+  loadArtifacts: async (docId, forceRefresh = false) => {
+    const { artifactsByDocId } = get();
+
+    // 有缓存且不强制刷新时跳过
+    if (artifactsByDocId[docId] && !forceRefresh) {
+      return;
+    }
+
+    try {
+      const artifacts = await ipcClient.listDocumentArtifacts(docId);
+      set({
+        artifactsByDocId: {
+          ...get().artifactsByDocId,
+          [docId]: artifacts,
+        },
+      });
+    } catch (err) {
+      console.error(`加载文档 ${docId} 产物失败:`, err);
+    }
+  },
+
+  setSearchQuery: (query) => set({ searchQuery: query }),
+
+  setActiveFilter: (filter) => set({ activeFilter: filter }),
+
+  invalidateArtifacts: (docId) => {
+    const { artifactsByDocId } = get();
+    const next = { ...artifactsByDocId };
+    delete next[docId];
+    set({ artifactsByDocId: next });
+  },
 }));
+

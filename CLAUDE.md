@@ -9,7 +9,7 @@
 ## 架构总览
 
 ```
-[React 19 前端] <--Tauri IPC (25个Command + 6个Event)--> [Rust 后端]
+[React 19 前端] <--Tauri IPC (33个Command + 6个Event)--> [Rust 后端]
                                                             |
                                                             +--> SQLite (app.db)
                                                             +--> macOS Keychain (API Key)
@@ -22,7 +22,7 @@
 - **前端**：React 19 + Vite 7 + TypeScript + Tailwind CSS 4 + Radix UI + Zustand 状态管理
 - **后端**：Rust (Tauri 2) + rusqlite + reqwest + tokio + security-framework (macOS Keychain)
 - **翻译引擎**：Python HTTP 服务 (`rastro_translation_engine`)，桥接 `antigravity_translate` 核心与 `pdf2zh` 工具
-- **数据库**：SQLite，7 张表 + 6 个索引，存储文档、聊天会话/消息、翻译任务/产物、使用统计、Provider 配置
+- **数据库**：SQLite，9 张表 + 8 个索引，存储文档、聊天会话/消息、翻译任务/产物、AI 总结、NotebookLM 产物、使用统计、Provider 配置
 
 ## 模块结构图
 
@@ -45,6 +45,7 @@ graph TD
     C --> C4["translation_manager - 翻译管理"];
     C --> C5["zotero_connector - Zotero 集成"];
     C --> C6["keychain - macOS Keychain"];
+    C --> C7["artifact_aggregator - 产物聚合 (v2)"];
 
     click B "./src/CLAUDE.md" "查看前端模块文档"
     click C "./src-tauri/CLAUDE.md" "查看 Rust 后端模块文档"
@@ -57,9 +58,9 @@ graph TD
 | 模块路径 | 语言 | 职责 | 入口文件 | 测试 |
 |---------|------|------|---------|------|
 | `src/` | TypeScript/React | 前端 UI：PDF 查看器、侧边栏、聊天面板、设置面板 | `src/main.tsx` | 无 |
-| `src-tauri/` | Rust | Tauri 后端：25 个 IPC Command、SQLite 存储、AI 集成、翻译管理 | `src-tauri/src/main.rs` | 有 (内联 `#[cfg(test)]`) |
+| `src-tauri/` | Rust | Tauri 后端：33 个 IPC Command、SQLite 存储、AI 集成、翻译管理、产物聚合 | `src-tauri/src/main.rs` | 有 (内联 `#[cfg(test)]`，70+ tests) |
 | `rastro_translation_engine/` | Python | 翻译引擎 HTTP 服务，提供 REST API 供 Rust 端调用 | `rastro_translation_engine/__main__.py` | 无 |
-| `antigravity_translate/` | Python | PDF 翻译核心：旋转页预处理、参考文献检测、调用 pdf2zh | `antigravity_translate/core.py` | 无 |
+| `antigravity_translate/` | Python | PDF 翻译核心：旋转页预处理、参考文献/致谢页结构化检测、调用 pdf2zh | `antigravity_translate/core.py` | 无 |
 
 ## 运行与开发
 
@@ -130,21 +131,28 @@ cd src-tauri && cargo test
 - **Python**：使用 `from __future__ import annotations` 延迟类型标注；配置通过模块级变量 + 环境变量注入
 - **IPC 契约**：Rust 端 DTO 与 TypeScript 类型一一对应，错误码使用 `SCREAMING_SNAKE_CASE`
 
-## 设计文档 (`genesis/v1/`)
+## 设计文档
 
-项目包含完整的设计文档套件，位于 `genesis/v1/`：
+### `genesis/v1/` — 初始版本设计
 
 | 文档 | 内容 |
 |------|------|
-| `00_MANIFEST.md` | 版本清单与检查表 |
 | `01_PRD.md` | 产品需求：9 个用户故事，10 维歧义扫描 |
 | `02_ARCHITECTURE_OVERVIEW.md` | C4 L1 上下文图，3 系统分解 |
-| `03_ADR/ADR_001_TECH_STACK.md` | 技术栈决策：Tauri 2 > Electron, React > SwiftUI |
-| `03_ADR/ADR_002_MULTI_MODEL_COLLABORATION.md` | 5-Wave 并行开发策略（Wave 0 IPC 契约先行） |
-| `04_SYSTEM_DESIGN/frontend-system.md` | 前端架构设计 |
-| `04_SYSTEM_DESIGN/rust-backend-system.md` | Rust 后端系统设计（**权威 IPC 命名源**）|
-| `04_SYSTEM_DESIGN/translation-engine-system.md` | Python 翻译引擎设计 |
-| `07_CHALLENGE_REPORT.md` | 设计评审：12 个问题（5 High / 5 Medium / 2 Low）|
+| `03_ADR/` | 技术栈决策 + 多模型协作策略 |
+| `04_SYSTEM_DESIGN/` | 前端 / Rust 后端 / 翻译引擎系统设计 |
+| `07_CHALLENGE_REPORT.md` | 设计评审：12 个问题 |
+
+### `genesis/v2/` — 文档管理迭代（⬅ 当前活跃版本）
+
+| 文档 | 内容 |
+|------|------|
+| `01_PRD.md` | v2 PRD：侧栏树形重构 + 翻译管理 + AI 总结管理（US-010 ~ US-017） |
+| `02_ARCHITECTURE_OVERVIEW.md` | v2 架构总览 |
+| `04_SYSTEM_DESIGN/rust-backend-system.md` | v2 Rust 后端设计（新增 artifact_aggregator + document_summaries + 8 IPC）|
+| `05_TASKS.md` | WBS 任务清单：4 Sprint × 33 + 4 INT 任务 |
+| `06_CHANGELOG.md` | 变更记录 |
+| `07_CHALLENGE_REPORT.md` | v2 设计评审 |
 
 ### 关键设计决策
 
@@ -170,9 +178,21 @@ cd src-tauri && cargo test
 5. **状态管理**：前端使用 Zustand store（`useDocumentStore` / `useChatStore`），后端使用 `AppState` 单例
 6. **翻译缓存**：基于文档 SHA256 + Provider + 模型 + 语言参数生成 cache_key，命中缓存直接返回
 
+## v2 迭代进度
+
+| Sprint | 状态 | 完成情况 |
+|--------|------|----------|
+| **S1** 数据基石 | ✅ 完成 | 7/7 后端任务，70 tests passing（migration + storage + aggregator + 8 IPC） |
+| **S2** 树形视图 | 🔜 待开始 | 0/9 前端任务（types + IPC client + sidebar + store + icons） |
+| **S3** 产物管理 | ⏳ 未开始 | 右键菜单 + 翻译管理 + AI 总结 UI |
+| **S4** 搜索优化 | ⏳ 未开始 | 搜索筛选 + 缓存管理 |
+
 ## 变更记录 (Changelog)
 
 | 日期 | 操作 | 说明 |
 |------|------|------|
 | 2026-03-12 | 初始化 | 首次全仓扫描，生成根级 + 4 个模块级 CLAUDE.md |
 | 2026-03-12 | 补扫 | 深度扫描 ai_integration/、translation_manager/ 子模块；补录 genesis/v1/ 设计文档 |
+| 2026-03-16 | Bug 修复 | 翻译引擎检测逻辑修复，解决全文翻译仅翻前几页问题 |
+| 2026-03-16 | v2 Genesis | 完成 v2 设计全流程：PRD → Architecture → System Design → Blueprint → Challenge |
+| 2026-03-16 | v2 S1 完成 | 后端数据层 + IPC 契约实现（7 任务，10 文件，70 tests） |

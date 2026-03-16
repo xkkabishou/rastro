@@ -146,11 +146,9 @@ export const useNotebookLMStore = create<NotebookLMState>((set, get) => ({
     try {
       const notebook = await notebooklmClient.createNotebook({ title, description });
       const notebooks = [notebook, ...get().notebooks.filter((item) => item.id !== notebook.id)];
-      const status = get().status
-        ? {
-            ...get().status,
-            notebooks,
-          }
+      const currentStatus = get().status;
+      const status: NotebookLMStatus | null = currentStatus
+        ? { ...currentStatus, notebooks }
         : null;
       set({
         busy: false,

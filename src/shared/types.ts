@@ -33,10 +33,25 @@ export type TranslationStage =
 /** 文档来源类型 */
 export type DocumentSourceType = "local" | "zotero";
 
-/** 翻译产物类型 */
-export type ArtifactKind =
+/** 翻译产物类型（v1） */
+export type TranslationArtifactKind =
   | "translated_pdf"
   | "bilingual_pdf"
+  | "figure_report"
+  | "manifest";
+
+/** 文档产物类型（v2 统一枚举，覆盖所有产物来源） */
+export type ArtifactKind =
+  | "original_pdf"
+  | "translated_pdf"
+  | "bilingual_pdf"
+  | "ai_summary"
+  | "notebooklm_mindmap"
+  | "notebooklm_slides"
+  | "notebooklm_quiz"
+  | "notebooklm_flashcards"
+  | "notebooklm_audio"
+  | "notebooklm_report"
   | "figure_report"
   | "manifest";
 
@@ -114,7 +129,7 @@ export interface AppError {
 // A. 文档与应用状态
 // ---------------------------------------------------------------------------
 
-/** 文档快照（包含缓存可用性） */
+/** 文档快照（包含缓存可用性 + v2 状态字段） */
 export interface DocumentSnapshot {
   documentId: string;
   filePath: string;
@@ -131,6 +146,12 @@ export interface DocumentSnapshot {
     bilingualPdfPath?: string;
     updatedAt?: string;
   };
+  /** v2: 是否有已保存的 AI 总结 */
+  hasSummary: boolean;
+  /** v2: 是否已收藏 */
+  isFavorite: boolean;
+  /** v2: 文档关联的产物总数（翻译+总结+NotebookLM） */
+  artifactCount: number;
   lastOpenedAt: string;
 }
 
@@ -155,9 +176,13 @@ export interface OpenDocumentInput {
   zoteroItemKey?: string;
 }
 
-/** list_recent_documents 请求 */
+/** list_recent_documents 请求（v2 扩展：支持搜索和筛选） */
 export interface ListRecentDocumentsInput {
   limit?: number;
+  /** v2: 搜索关键词（匹配标题/文件名） */
+  query?: string;
+  /** v2: 筛选条件 */
+  filter?: DocumentFilter;
 }
 
 /** get_document_snapshot 请求 */
@@ -596,6 +621,72 @@ export interface OpenZoteroAttachmentInput {
 }
 
 // ---------------------------------------------------------------------------
+// V2: 文档工作空间 DTO
+// ---------------------------------------------------------------------------
+
+/** 文档产物统一 DTO（对齐 artifact_aggregator.rs::DocumentArtifactDto） */
+export interface DocumentArtifactDto {
+  artifactId: string;
+  documentId: string;
+  kind: ArtifactKind;
+  title: string;
+  filePath?: string;
+  contentPreview?: string;
+  provider?: ProviderId;
+  model?: string;
+  fileSize?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** AI 总结 DTO（对齐 ai.rs::AISummaryDto） */
+export interface AISummaryDto {
+  summaryId: string;
+  documentId: string;
+  contentMd: string;
+  provider: string;
+  model: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 文档筛选条件（对齐 document.rs::DocumentFilterInput） */
+export interface DocumentFilter {
+  hasTranslation?: boolean;
+  hasSummary?: boolean;
+  isFavorite?: boolean;
+}
+
+/** 缓存统计 DTO */
+export interface CacheStatsDto {
+  totalBytes: number;
+  translationBytes: number;
+  summaryCount: number;
+  documentCount: number;
+}
+
+/** 删除翻译缓存结果（对齐 translation.rs::DeleteCacheResult） */
+export interface DeleteCacheResult {
+  deleted: boolean;
+  freedBytes: number;
+}
+
+/** 删除 AI 总结结果（对齐 ai.rs::DeleteSummaryResult） */
+export interface DeleteSummaryResult {
+  deleted: boolean;
+}
+
+/** 移除文档结果 */
+export interface RemoveDocumentResult {
+  removed: boolean;
+}
+
+/** 收藏切换结果 */
+export interface ToggleFavoriteResult {
+  updated: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Tauri Event Payloads
 // ---------------------------------------------------------------------------
 
@@ -683,6 +774,17 @@ export const IPC_COMMANDS = {
   DETECT_ZOTERO_LIBRARY: "detect_zotero_library",
   FETCH_ZOTERO_ITEMS: "fetch_zotero_items",
   OPEN_ZOTERO_ATTACHMENT: "open_zotero_attachment",
+  // V2: 文档工作空间
+  LIST_DOCUMENT_ARTIFACTS: "list_document_artifacts",
+  DELETE_TRANSLATION_CACHE: "delete_translation_cache",
+  GET_DOCUMENT_SUMMARY: "get_document_summary",
+  SAVE_DOCUMENT_SUMMARY: "save_document_summary",
+  DELETE_DOCUMENT_SUMMARY: "delete_document_summary",
+  REMOVE_RECENT_DOCUMENT: "remove_recent_document",
+  TOGGLE_DOCUMENT_FAVORITE: "toggle_document_favorite",
+  REVEAL_IN_FINDER: "reveal_in_finder",
+  GET_CACHE_STATS: "get_cache_stats",
+  CLEAR_ALL_TRANSLATION_CACHE: "clear_all_translation_cache",
 } as const;
 
 /** Tauri Event 名称常量 */

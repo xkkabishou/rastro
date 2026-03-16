@@ -59,6 +59,15 @@ import {
   FetchZoteroItemsInput,
   PagedZoteroItemsDto,
   OpenZoteroAttachmentInput,
+  // V2: 文档工作空间
+  DocumentArtifactDto,
+  AISummaryDto,
+  DocumentFilter,
+  CacheStatsDto,
+  DeleteCacheResult,
+  DeleteSummaryResult,
+  RemoveDocumentResult,
+  ToggleFavoriteResult,
   // Event Payloads
   AiStreamChunkPayload,
   AiStreamFinishedPayload,
@@ -107,9 +116,9 @@ export const ipcClient = {
   openDocument: (input: OpenDocumentInput) =>
     safeInvoke<DocumentSnapshot>(IPC_COMMANDS.OPEN_DOCUMENT, { ...input }),
 
-  /** 获取最近文档列表 */
-  listRecentDocuments: (limit?: number) =>
-    safeInvoke<DocumentSnapshot[]>(IPC_COMMANDS.LIST_RECENT_DOCUMENTS, { limit }),
+  /** 获取最近文档列表（v2: 支持搜索和筛选） */
+  listRecentDocuments: (limit?: number, query?: string, filter?: DocumentFilter) =>
+    safeInvoke<DocumentSnapshot[]>(IPC_COMMANDS.LIST_RECENT_DOCUMENTS, { limit, query, filter }),
 
   /** 获取文档快照 */
   getDocumentSnapshot: (documentId: string) =>
@@ -278,6 +287,54 @@ export const ipcClient = {
   /** 打开 Zotero 附件 */
   openZoteroAttachment: (itemKey: string) =>
     safeInvoke<DocumentSnapshot>(IPC_COMMANDS.OPEN_ZOTERO_ATTACHMENT, { itemKey }),
+
+  // =========================================================================
+  // V2: 文档工作空间
+  // =========================================================================
+
+  /** 获取文献下所有产物（翻译/总结/NotebookLM） */
+  listDocumentArtifacts: (documentId: string) =>
+    safeInvoke<DocumentArtifactDto[]>(IPC_COMMANDS.LIST_DOCUMENT_ARTIFACTS, { documentId }),
+
+  /** 删除文档的翻译缓存 */
+  deleteTranslationCache: (documentId: string) =>
+    safeInvoke<DeleteCacheResult>(IPC_COMMANDS.DELETE_TRANSLATION_CACHE, { documentId }),
+
+  /** 获取已保存的 AI 总结 */
+  getDocumentSummary: (documentId: string) =>
+    safeInvoke<AISummaryDto | null>(IPC_COMMANDS.GET_DOCUMENT_SUMMARY, { documentId }),
+
+  /** 保存 AI 总结 */
+  saveDocumentSummary: (documentId: string, contentMd: string, provider: string, model: string) =>
+    safeInvoke<AISummaryDto>(IPC_COMMANDS.SAVE_DOCUMENT_SUMMARY, {
+      documentId, contentMd, provider, model,
+    }),
+
+  /** 删除 AI 总结 */
+  deleteDocumentSummary: (documentId: string) =>
+    safeInvoke<DeleteSummaryResult>(IPC_COMMANDS.DELETE_DOCUMENT_SUMMARY, { documentId }),
+
+  /** 从历史记录中移除文档（软删除） */
+  removeRecentDocument: (documentId: string) =>
+    safeInvoke<RemoveDocumentResult>(IPC_COMMANDS.REMOVE_RECENT_DOCUMENT, { documentId }),
+
+  /** 收藏/取消收藏文档 */
+  toggleDocumentFavorite: (documentId: string, favorite: boolean) =>
+    safeInvoke<ToggleFavoriteResult>(IPC_COMMANDS.TOGGLE_DOCUMENT_FAVORITE, {
+      documentId, favorite,
+    }),
+
+  /** 在 Finder 中显示文件 */
+  revealInFinder: (filePath: string) =>
+    safeInvoke<void>(IPC_COMMANDS.REVEAL_IN_FINDER, { filePath }),
+
+  /** 获取缓存统计 */
+  getCacheStats: () =>
+    safeInvoke<CacheStatsDto>(IPC_COMMANDS.GET_CACHE_STATS),
+
+  /** 清理所有翻译缓存 */
+  clearAllTranslationCache: () =>
+    safeInvoke<{ freedBytes: number }>(IPC_COMMANDS.CLEAR_ALL_TRANSLATION_CACHE),
 };
 
 // ---------------------------------------------------------------------------

@@ -468,7 +468,10 @@ impl EngineSupervisor {
 
         // babeldoc (pdf2zh 依赖) 在导入时创建 ~/.cache/babeldoc/，
         // macOS 下可能因权限问题失败，重定向到应用缓存目录
-        let cache_dir = self.inner.runtime_dir.parent()
+        let cache_dir = self
+            .inner
+            .runtime_dir
+            .parent()
             .map(|p| p.join("cache"))
             .unwrap_or_else(|| self.inner.runtime_dir.join("cache"));
         let _ = fs::create_dir_all(&cache_dir);

@@ -36,35 +36,17 @@
 
 > **注意**: 此部分由 `/genesis`、`/blueprint` 和 `/forge` 自动维护。
 
-- **最新架构版本**: `genesis/v1`
-- **活动任务清单**: `genesis/v1/05_TASKS.md`
-- **待办任务数**: 42 (已完成 30)
-- **质疑报告**: `genesis/v1/07_CHALLENGE_REPORT.md` — 🟡 5 High / 5 Medium / 2 Low
-- **最近一次更新**: `2026-03-11T16:55`
+- **最新架构版本**: `genesis/v2`
+- **活动任务清单**: `genesis/v2/05_TASKS.md`
+- **待办任务数**: 37 (33 任务 + 4 INT)
+- **最近一次更新**: `2026-03-16`
 
-### 🌊 Wave 0 ✅ — 契约先行 (2026-03-11)
-T0.1.1 (types.ts) ✅, T0.1.2 (Rust Command Traits) ✅
+### v1 历史 (已冻结)
 
-### 🌊 Wave 1a ∥ 1b ✅ — 双轮启动 (2026-03-11)
-- **1a (Codex)**: T1a.1.1✅, T1a.1.2✅, T1a.2.1✅, T1a.2.2✅, T1a.2.3✅, T1a.2.4✅
-- **1b (Claude+Gemini)**: T1b.1.1✅, T1b.1.2✅, T1b.2.1✅, T1b.2.2✅, T1b.2.3✅
-- **INT-S1** ✅
+v1 共 42 个任务，已完成 30 个。详见 `genesis/v1/05_TASKS.md`。
 
-### 🌊 Wave 2b ✅ — 功能页面 (2026-03-11)
-T2b.1.1 (Chat Panel) ✅, T2b.1.2 (翻译切换) ✅, T2b.1.3 (Settings) ✅, T2b.1.4 (AI总结) ✅
-**技术债务补齐**: D1 (Design System) ✅, D2 (PdfViewer) ✅, D3 (IPC Client) ✅
-⚠️ 待安装依赖: react-markdown, rehype-sanitize, remark-gfm
-
-### 🌊 Wave S3-frontend ✅ — 扩展集成前端 (2026-03-11)
-T3.1.1 (NotebookLM WebView) ✅, T3.1.2 (错误处理) ✅, T4.1.4 (Zotero UI) ✅, T4.1.5 (Python 引导) ✅
-**新增依赖**: @tanstack/react-virtual
-
-### 🌊 Wave 2a+4-backend ✅ — Codex 后端实现 (2026-03-11)
-T2a.1.1 (Engine Supervisor) ✅, T2a.1.2 (翻译编排) ✅, T2a.1.3 (翻译 IPC) ✅
-T4.1.1 (Zotero Connector) ✅, T4.1.2 (缓存淘汰) ✅, T4.1.3 (API 统计) ✅
-
-### 🌟 INT-S2 ✅ + INT-S3 ✅ — 集成验证 (2026-03-11)
-cargo check ✅, 25个 Command 注册 ✅, 16个 IPC 签名对齐 ✅
+### 🌊 v2 Wave 1 — 数据基石 (S1)
+T1.1.1, T1.1.2, T1.1.3, T1.2.1, T1.2.2, T1.2.3, T1.2.4, T2.1.1, T2.1.2
 
 ---
 
@@ -105,13 +87,12 @@ antigravity-paper/
 
 > **注意**: 此部分由 `/genesis` 维护。
 
-- **架构总览**: `genesis/v1/02_ARCHITECTURE_OVERVIEW.md`
-- **ADR**: 架构决策见 `genesis/v1/03_ADR/`
-- **frontend-system**: 源码 `src/` → 设计 `genesis/v1/04_SYSTEM_DESIGN/frontend-system.md`
-- **rust-backend-system**: 源码 `src-tauri/` → 设计 `genesis/v1/04_SYSTEM_DESIGN/rust-backend-system.md`
-- **translation-engine-system**: PDFMathTranslate → 设计 `genesis/v1/04_SYSTEM_DESIGN/translation-engine-system.md`
-- **任务清单**: `genesis/v1/05_TASKS.md`
-- **质疑报告**: `genesis/v1/07_CHALLENGE_REPORT.md`
+- **架构总览**: `genesis/v2/02_ARCHITECTURE_OVERVIEW.md`
+- **ADR**: 架构决策见 `genesis/v2/03_ADR/`
+- **frontend-system**: 源码 `src/` → 设计 `genesis/v2/04_SYSTEM_DESIGN/frontend-system.md`
+- **rust-backend-system**: 源码 `src-tauri/` → 设计 `genesis/v2/04_SYSTEM_DESIGN/rust-backend-system.md`
+- **translation-engine-system**: PDFMathTranslate → 设计 `genesis/v2/04_SYSTEM_DESIGN/translation-engine-system.md`
+- **任务清单**: `genesis/v2/05_TASKS.md`
 
 ---
 
@@ -160,14 +141,14 @@ antigravity-paper/
 ### 活跃 ADR
 - ADR-001: 技术栈选择 — Tauri 2.0 + React + PDFMathTranslate (Accepted)
 - ADR-002: 多模型协作策略 — Claude+Gemini 前端 / Codex 后端 / 5 波次执行 (Accepted)
+- ADR-003: 文档工作空间架构 — 统一产物模型 + 虚拟化树形视图 (Accepted)
 
 ### 当前任务状态
-- 任务清单: genesis/v1/05_TASKS.md
-- 总任务数: 42, P0: 22, P1: 14, P2: 6
-- Sprint 数: 5 (S0-S4)
-- 质疑报告: genesis/v1/07_CHALLENGE_REPORT.md (🟡 需解决 P0)
-- Wave 0 建议: T0.1.1 (types.ts), T0.1.2 (Rust Command Traits)
-- 最近更新: 2026-03-11
+- 任务清单: genesis/v2/05_TASKS.md
+- 总任务数: 33, P0: 21, P1: 8, P2: 4
+- Sprint 数: 4 (S1-S4)
+- Wave 1 建议: T1.1.1, T1.1.2, T1.1.3, T1.2.1, T1.2.2, T1.2.3, T1.2.4, T2.1.1, T2.1.2
+- 最近更新: 2026-03-16
 
 <!-- AUTO:END -->
 

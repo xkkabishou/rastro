@@ -113,9 +113,7 @@ pub async fn notebooklm_begin_login(
 }
 
 #[tauri::command]
-pub fn notebooklm_open_external(
-    state: State<'_, AppState>,
-) -> Result<(), crate::errors::AppError> {
+pub fn notebooklm_open_external(state: State<'_, AppState>) -> Result<(), crate::errors::AppError> {
     state.notebooklm_manager.open_external()
 }
 
