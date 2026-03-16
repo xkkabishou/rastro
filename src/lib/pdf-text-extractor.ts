@@ -2,12 +2,14 @@
  * PDF 文本提取工具 — 用于 AI 总结的文本采集
  *
  * 核心问题：Tauri WebView 的 ReadableStream 实现不完整，
- * pdfjs 内部 getTextContent() → streamTextContent() 依赖 ReadableStream
- * 进行文本块传输，即便在 fake worker（主线程）模式下也会崩溃。
+ * pdfjs v5 的 getTextContent() 内部使用 for await...of ReadableStream
+ * 迭代文本块，而 WKWebView 的 ReadableStream 缺少 Symbol.asyncIterator，
+ * 导致 "undefined is not a function" 崩溃。
  *
  * 解决方案（三层修复）：
  *   1. ensureReadableStream() — 检测并修补 ReadableStream
- *   2. PDFWorker fake worker — 避免 worker↔主线程跨线程通信
+ *   2. streamTextContent() + reader.read() — 手动聚合文本块，
+ *      完全绕开 for await...of 路径（与 pdfjs 官方 viewer 消费方式一致）
  *   3. ArrayBuffer 预加载 — 绕过 pdfjs 内部 fetch/stream 路径
  */
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -204,9 +206,21 @@ export async function extractPdfText(
 
     for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
       const page = await pdfDocument.getPage(pageNumber);
-      const textContent = await page.getTextContent();
+      // 使用 streamTextContent() + reader.read() 手动聚合，
+      // 避免 getTextContent() 内部 for await...of ReadableStream 在 Tauri WebView 崩溃
+      const items: Array<{ str?: string }> = [];
+      const stream = page.streamTextContent();
+      const reader = stream.getReader();
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value?.items) {
+          items.push(...value.items);
+        }
+      }
       const pageText = sanitizePageText(
-        textContent.items
+        items
           .map((item) => ('str' in item ? item.str : ''))
           .join(' '),
       );
