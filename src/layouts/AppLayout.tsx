@@ -36,7 +36,6 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => {
         isOpen={isSidebarOpen}
         isMobile={isMobile}
         onToggle={() => setSidebarOpen(!isSidebarOpen)}
-        onOpenSettings={() => setRightPanelOpen(true)}
       />
 
       {/* 小屏幕下的灰色蒙层 (当 Sidebar 打开时) */}

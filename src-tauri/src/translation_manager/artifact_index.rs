@@ -26,6 +26,7 @@ pub struct CacheKeyInput {
     pub figure_translation: bool,
     pub skip_reference_pages: bool,
     pub base_url: Option<String>,
+    pub custom_prompt: Option<String>,
 }
 
 #[derive(Clone)]
@@ -60,6 +61,7 @@ impl TranslationArtifactIndex {
                 "skip_ref:0"
             },
             input.base_url.as_deref().unwrap_or_default(),
+            input.custom_prompt.as_deref().unwrap_or_default(),
         ] {
             hasher.update(segment.as_bytes());
             hasher.update(b"\0");
@@ -276,6 +278,7 @@ mod tests {
             figure_translation: true,
             skip_reference_pages: true,
             base_url: None,
+            custom_prompt: None,
         });
         let second = index.compute_cache_key(&CacheKeyInput {
             model: "gpt-4.1".to_string(),
@@ -289,6 +292,7 @@ mod tests {
                 figure_translation: true,
                 skip_reference_pages: true,
                 base_url: None,
+                custom_prompt: None,
             }
         });
 

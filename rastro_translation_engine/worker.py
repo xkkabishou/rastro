@@ -77,6 +77,7 @@ class TranslationJob:
     skip_reference_pages: bool
     force_refresh: bool
     timeout_seconds: int
+    custom_prompt: str | None = None
 
     status: JobStatus = JobStatus.QUEUED
     stage: str = "queued"
@@ -148,6 +149,7 @@ class TranslationWorker:
             skip_reference_pages=params.get("skipReferencePages", True),
             force_refresh=params.get("forceRefresh", False),
             timeout_seconds=params.get("timeoutSeconds", 1800),
+            custom_prompt=params.get("customPrompt"),
         )
 
         with self._lock:
@@ -260,6 +262,7 @@ class TranslationWorker:
                 no_mono=no_mono,
                 debug=False,
                 skip_references=job.skip_reference_pages,
+                custom_prompt=job.custom_prompt,
                 on_progress=progress_callback,
                 cancel_event=job._cancel_event,
             )

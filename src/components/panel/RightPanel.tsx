@@ -32,7 +32,7 @@ export const RightPanel = ({ isOpen, onToggle, activeTab: controlledTab, onTabCh
         >
           {/* Tab 栏 */}
           <div className="flex items-center justify-between border-b border-[var(--color-border)] shrink-0 pt-7">
-            <div className="flex gap-0 px-2">
+            <div className="flex flex-1 px-2">
               <PanelTabButton
                 icon={<MessageSquare size={14} />}
                 label="对话"
@@ -88,7 +88,7 @@ const PanelTabButton: React.FC<{
 }> = ({ icon, label, active, onClick }) => (
   <button
     onClick={onClick}
-    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+    className={`flex-1 flex items-center justify-center gap-1.5 px-1 py-2 text-xs font-medium border-b-2 transition-colors ${
       active
         ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
         : 'border-transparent text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]'

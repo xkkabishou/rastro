@@ -24,7 +24,7 @@ use crate::{
     ipc::translation::{RequestTranslationInput, TranslationEngineStatus, TranslationJobDto},
     keychain::KeychainService,
     models::ProviderId,
-    storage::{documents, provider_settings, translation_jobs, Storage},
+    storage::{custom_prompts, documents, provider_settings, translation_jobs, Storage},
 };
 
 use self::{
@@ -411,6 +411,13 @@ impl TranslationManager {
 
         let figure_translation = input.figure_translation.unwrap_or(true);
         let skip_reference_pages = input.skip_reference_pages.unwrap_or(true);
+
+        // 读取用户自定义翻译提示词（cache_key 计算需要包含 prompt）
+        let custom_prompt = {
+            let connection = self.inner.storage.connection();
+            custom_prompts::get(&connection, "translation")?
+        };
+
         let cache_key = self.inner.artifact_index.compute_cache_key(&CacheKeyInput {
             document_sha256: document.file_sha256.clone(),
             provider: provider.clone(),
@@ -421,6 +428,7 @@ impl TranslationManager {
             figure_translation,
             skip_reference_pages,
             base_url: provider_record.base_url.clone(),
+            custom_prompt: custom_prompt.clone(),
         });
         let output_dir = self
             .inner
@@ -443,6 +451,7 @@ impl TranslationManager {
             figure_translation,
             skip_reference_pages,
             force_refresh: input.force_refresh.unwrap_or(false),
+            custom_prompt,
         })
     }
 
@@ -525,6 +534,7 @@ impl TranslationManager {
             force_refresh: snapshot.request.force_refresh,
             timeout_seconds: DEFAULT_TIMEOUT_SECONDS,
             glossary: Vec::new(),
+            custom_prompt: snapshot.request.custom_prompt.clone(),
         };
 
         let create_response = match self.inner.http_client.create_job(&create_request).await {

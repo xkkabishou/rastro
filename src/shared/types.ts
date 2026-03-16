@@ -666,6 +666,26 @@ export interface CacheStatsDto {
   documentCount: number;
 }
 
+// ---------------------------------------------------------------------------
+// 自定义提示词 DTO（对齐 settings.rs）
+// ---------------------------------------------------------------------------
+
+/** 提示词 key 类型 */
+export type PromptKey = "translation" | "summary";
+
+/** 自定义提示词 DTO */
+export interface CustomPromptDto {
+  promptKey: PromptKey;
+  content: string | null;
+  isCustom: boolean;
+  defaultContent: string;
+}
+
+/** 重置提示词结果 */
+export interface ResetCustomPromptResult {
+  reset: boolean;
+}
+
 /** 删除翻译缓存结果（对齐 translation.rs::DeleteCacheResult） */
 export interface DeleteCacheResult {
   deleted: boolean;
@@ -786,6 +806,10 @@ export const IPC_COMMANDS = {
   REVEAL_IN_FINDER: "reveal_in_finder",
   GET_CACHE_STATS: "get_cache_stats",
   CLEAR_ALL_TRANSLATION_CACHE: "clear_all_translation_cache",
+  // H. 自定义提示词
+  GET_CUSTOM_PROMPT: "get_custom_prompt",
+  SAVE_CUSTOM_PROMPT: "save_custom_prompt",
+  RESET_CUSTOM_PROMPT: "reset_custom_prompt",
 } as const;
 
 /** Tauri Event 名称常量 */

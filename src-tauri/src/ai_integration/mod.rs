@@ -39,6 +39,7 @@ pub struct GenerateSummaryRequest {
     pub provider: Option<ProviderId>,
     pub model: Option<String>,
     pub prompt_profile: SummaryPromptProfile,
+    pub custom_prompt: Option<String>,
 }
 
 /// 统一流式句柄

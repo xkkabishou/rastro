@@ -60,6 +60,7 @@ pub struct CreateJobRequest {
     pub force_refresh: bool,
     pub timeout_seconds: u64,
     pub glossary: Vec<GlossaryTerm>,
+    pub custom_prompt: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

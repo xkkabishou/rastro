@@ -292,7 +292,7 @@ pub async fn start_summary_flow<R: tauri::Runtime + 'static>(
         input.document_id,
         session_id,
         started_at,
-        build_summary_prompt(&input.file_path, &input.source_text, input.prompt_profile),
+        build_summary_prompt(&input.file_path, &input.source_text, input.prompt_profile, input.custom_prompt.as_deref()),
         UsageFeature::Summary,
     )
     .await
@@ -551,11 +551,20 @@ fn build_summary_prompt(
     file_path: &str,
     source_text: &str,
     profile: SummaryPromptProfile,
+    custom_prompt: Option<&str>,
 ) -> String {
+    // 优先使用自定义提示词，否则按 profile 选择默认值
+    let system_instruction = match custom_prompt {
+        Some(prompt) if !prompt.trim().is_empty() => prompt,
+        _ => match profile {
+            SummaryPromptProfile::Default => crate::ipc::settings::DEFAULT_SUMMARY_PROMPT,
+            SummaryPromptProfile::PaperReview => crate::ipc::settings::PAPER_REVIEW_SUMMARY_PROMPT,
+        },
+    };
     format!(
-        "请基于下面的 PDF 正文摘录生成结构化摘要。\n文档路径：{}\nPrompt Profile：{}\n说明：正文摘录来自前端对 PDF 的文本提取，可能包含少量版式噪声；请只基于摘录内容作答，不要声称你直接访问了原始 PDF。\n\n正文摘录开始：\n{}\n\n正文摘录结束。",
+        "{}\n\n文档路径：{}\n\n正文摘录开始：\n{}\n\n正文摘录结束。",
+        system_instruction,
         file_path,
-        profile.as_str(),
         source_text.trim(),
     )
 }

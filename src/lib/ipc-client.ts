@@ -68,6 +68,10 @@ import {
   DeleteSummaryResult,
   RemoveDocumentResult,
   ToggleFavoriteResult,
+  // H. 自定义提示词
+  CustomPromptDto,
+  ResetCustomPromptResult,
+  PromptKey,
   // Event Payloads
   AiStreamChunkPayload,
   AiStreamFinishedPayload,
@@ -335,6 +339,20 @@ export const ipcClient = {
   /** 清理所有翻译缓存 */
   clearAllTranslationCache: () =>
     safeInvoke<{ freedBytes: number }>(IPC_COMMANDS.CLEAR_ALL_TRANSLATION_CACHE),
+
+  // --- H. 自定义提示词 ---
+
+  /** 获取自定义提示词（含默认值） */
+  getCustomPrompt: (promptKey: PromptKey) =>
+    safeInvoke<CustomPromptDto>(IPC_COMMANDS.GET_CUSTOM_PROMPT, { promptKey }),
+
+  /** 保存自定义提示词 */
+  saveCustomPrompt: (promptKey: PromptKey, content: string) =>
+    safeInvoke<CustomPromptDto>(IPC_COMMANDS.SAVE_CUSTOM_PROMPT, { promptKey, content }),
+
+  /** 重置提示词为默认值 */
+  resetCustomPrompt: (promptKey: PromptKey) =>
+    safeInvoke<ResetCustomPromptResult>(IPC_COMMANDS.RESET_CUSTOM_PROMPT, { promptKey }),
 };
 
 // ---------------------------------------------------------------------------

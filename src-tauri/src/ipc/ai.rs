@@ -8,7 +8,7 @@ use crate::{
     app_state::AppState,
     errors::AppError,
     models::{ChatRole, ProviderId, SummaryPromptProfile},
-    storage::{chat_messages, chat_sessions, document_summaries},
+    storage::{chat_messages, chat_sessions, custom_prompts, document_summaries},
 };
 
 /// AI 流式句柄
@@ -154,6 +154,12 @@ pub async fn generate_summary(
     state: State<'_, AppState>,
     input: GenerateSummaryInput,
 ) -> Result<AIStreamHandle, crate::errors::AppError> {
+    // 从数据库读取用户自定义总结提示词
+    let custom_prompt = {
+        let connection = state.storage.connection();
+        custom_prompts::get(&connection, "summary")?
+    };
+
     let result = state
         .ai_integration
         .generate_summary(
@@ -165,6 +171,7 @@ pub async fn generate_summary(
                 provider: input.provider,
                 model: input.model,
                 prompt_profile: input.prompt_profile.unwrap_or_default(),
+                custom_prompt,
             },
         )
         .await?;

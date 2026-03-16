@@ -20,6 +20,7 @@ pub struct PendingTranslationRequest {
     pub figure_translation: bool,
     pub skip_reference_pages: bool,
     pub force_refresh: bool,
+    pub custom_prompt: Option<String>,
 }
 
 #[derive(Clone)]
@@ -175,6 +176,7 @@ mod tests {
             figure_translation: true,
             skip_reference_pages: true,
             force_refresh: false,
+            custom_prompt: None,
         }
     }
 

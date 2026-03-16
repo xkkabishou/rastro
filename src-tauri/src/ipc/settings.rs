@@ -1,12 +1,12 @@
-// E+F. Provider 配置与凭据 + 使用统计 Command (6 个)
-// 对应 rust-backend-system.md Section 7.3 E + F
+// E+F+H. Provider 配置与凭据 + 使用统计 + 自定义提示词 Command
+// 对应 rust-backend-system.md Section 7.3 E + F + H
 use serde::Serialize;
 use tauri::State;
 
 use crate::{
     app_state::AppState,
     models::ProviderId,
-    storage::{provider_settings, usage_events},
+    storage::{custom_prompts, provider_settings, usage_events},
 };
 
 /// Provider 配置 DTO（脱敏）
@@ -611,6 +611,105 @@ pub fn clear_all_translation_cache(
     transaction.commit()?;
 
     Ok(ClearCacheResult { freed_bytes })
+}
+
+// --- H. 自定义提示词 (3 个) ---
+
+/// 默认翻译提示词（考古学论文，与 Python antigravity_translate/prompts.py 同步）
+pub const DEFAULT_TRANSLATION_PROMPT: &str = "你是考古学论文的英译中引擎。读者是考古学研一新生，英文一般。\n目标：让读者像听导师用大白话讲论文一样轻松读懂。\n\n翻译要求：\n- 意译，不逐词硬译。读懂英文原意后用口语化的中文讲出来\n- 风格像导师给学生解释论文：通俗、好懂，可以适当展开解释\n- 英文论文写得很压缩，翻译时可以稍微展开说清楚，让人一读就明白\n- 不用第一人称，不用'xxx呢'句式\n\n翻译技巧：\n- 英文长句拆成中文短句，英文被动句翻成中文主动句\n- 不照搬英文语序，按中文说话习惯重新组织\n- 'It is worth noting that...' 之类的套话直接省掉，说内容\n- 'was found to be' 'has been shown to' 这类绕弯的说法简化\n- 少用'然而/此外/不仅如此'等书面连接词\n- 可以用'也就是说''简单来说''换句话说'来帮读者理解\n\n翻译示例：\n原：It is worth noting that these ceramics exhibit significant differences in their paste composition, suggesting that they were likely manufactured at different production centers.\n译：这些陶器的胎土成分差别很大，说明它们很可能不是在同一个地方烧制的，而是来自不同的生产中心。\n\n原：Through XRF analysis of the samples, we found that they contained relatively high concentrations of lead.\n译：用X射线荧光(XRF)分析这些样品后发现，里面的铅含量比较高。\n\n括注规则：\n- 只有地名和专业分析方法需要括注英文，其他一律不加括注\n- 地名首次出现时括注：瑙克拉提斯(Naucratis)、雅典(Athens)\n- 分析方法首次出现时括注：中子活化分析(NAA)、X射线荧光(XRF)\n- 除此之外不加任何英文括注\n\n保留原样不翻译：\n化学符号、样品编号、测量值(14C/BP/cal BC)、引用标记[1][Smith 2020]、人名保留英文";
+
+/// 默认总结提示词
+pub const DEFAULT_SUMMARY_PROMPT: &str = "请基于下面的 PDF 正文摘录生成结构化摘要。\n说明：正文摘录来自前端对 PDF 的文本提取，可能包含少量版式噪声；请只基于摘录内容作答，不要声称你直接访问了原始 PDF。\n\n请按照以下结构输出摘要：\n1. 研究背景与目的\n2. 研究方法\n3. 主要发现\n4. 结论与意义\n5. 关键术语解释（如有）";
+
+/// 论文评审模式总结提示词
+pub const PAPER_REVIEW_SUMMARY_PROMPT: &str = "请以论文评审的视角，基于下面的 PDF 正文摘录生成评审摘要。\n说明：正文摘录来自前端对 PDF 的文本提取，可能包含少量版式噪声；请只基于摘录内容作答。\n\n请按照以下结构输出：\n1. 研究问题与创新性\n2. 方法论评价（优势与局限）\n3. 数据与证据质量\n4. 论证逻辑与结论合理性\n5. 改进建议";
+
+/// 自定义提示词 DTO
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomPromptDto {
+    pub prompt_key: String,
+    pub content: Option<String>,
+    pub is_custom: bool,
+    pub default_content: String,
+}
+
+/// 重置提示词结果
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetCustomPromptResult {
+    pub reset: bool,
+}
+
+/// 获取提示词默认值
+fn default_prompt_for_key(key: &str) -> Result<&'static str, crate::errors::AppError> {
+    match key {
+        "translation" => Ok(DEFAULT_TRANSLATION_PROMPT),
+        "summary" => Ok(DEFAULT_SUMMARY_PROMPT),
+        _ => Err(crate::errors::AppError::new(
+            crate::errors::AppErrorCode::InternalError,
+            format!("不支持的提示词 key: '{}'，仅允许 'translation' 或 'summary'", key),
+            false,
+        )),
+    }
+}
+
+/// 获取自定义提示词（含默认值）
+#[tauri::command]
+pub fn get_custom_prompt(
+    state: State<'_, AppState>,
+    prompt_key: String,
+) -> Result<CustomPromptDto, crate::errors::AppError> {
+    let default_content = default_prompt_for_key(&prompt_key)?;
+    let content = {
+        let connection = state.storage.connection();
+        custom_prompts::get(&connection, &prompt_key)?
+    };
+
+    Ok(CustomPromptDto {
+        prompt_key,
+        is_custom: content.is_some(),
+        content: content.clone(),
+        default_content: default_content.to_string(),
+    })
+}
+
+/// 保存自定义提示词
+#[tauri::command]
+pub fn save_custom_prompt(
+    state: State<'_, AppState>,
+    prompt_key: String,
+    content: String,
+) -> Result<CustomPromptDto, crate::errors::AppError> {
+    let default_content = default_prompt_for_key(&prompt_key)?;
+    let timestamp = chrono::Utc::now().to_rfc3339();
+
+    {
+        let connection = state.storage.connection();
+        custom_prompts::upsert(&connection, &prompt_key, &content, &timestamp)?;
+    }
+
+    Ok(CustomPromptDto {
+        prompt_key,
+        content: Some(content),
+        is_custom: true,
+        default_content: default_content.to_string(),
+    })
+}
+
+/// 重置提示词为默认值（删除自定义记录）
+#[tauri::command]
+pub fn reset_custom_prompt(
+    state: State<'_, AppState>,
+    prompt_key: String,
+) -> Result<ResetCustomPromptResult, crate::errors::AppError> {
+    let _ = default_prompt_for_key(&prompt_key)?;
+    let reset = {
+        let connection = state.storage.connection();
+        custom_prompts::delete(&connection, &prompt_key)?
+    };
+
+    Ok(ResetCustomPromptResult { reset })
 }
 
 fn build_provider_config_dto(

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, Menu, FolderOpen, AlertTriangle } from 'lucide-react';
+import { Menu, FolderOpen, AlertTriangle } from 'lucide-react';
 import shibaLogoUrl from '../../assets/shiba/shiba-logo.png';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
@@ -29,14 +29,13 @@ interface SidebarProps {
   isOpen: boolean;
   isMobile?: boolean;
   onToggle: () => void;
-  onOpenSettings?: () => void;
 }
 
 // ---------------------------------------------------------------------------
 // 主组件
 // ---------------------------------------------------------------------------
 
-export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: SidebarProps) => {
+export const Sidebar = ({ isOpen, isMobile = false, onToggle }: SidebarProps) => {
   const [isLoadingRecent, setIsLoadingRecent] = useState(false);
   const setCurrentDocument = useDocumentStore((s) => s.setCurrentDocument);
   const setPdfUrl = useDocumentStore((s) => s.setPdfUrl);
@@ -489,16 +488,6 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: 
             )}
           </div>
 
-          {/* 底部设置 */}
-          <div className="p-3 border-t border-[var(--color-separator)] shrink-0">
-            <button
-              onClick={onOpenSettings}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text)] transition-colors"
-            >
-              <Settings size={18} />
-              <span>设置</span>
-            </button>
-          </div>
         </motion.aside>
       )}
 

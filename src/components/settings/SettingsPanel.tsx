@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { ModelSettings } from './ModelSettings';
-import { Settings, Zap, BarChart3, RefreshCw, HardDrive, Trash2, AlertTriangle } from 'lucide-react';
+import { PromptSettings } from './PromptSettings';
+import { Settings, Zap, BarChart3, RefreshCw, HardDrive, Trash2, AlertTriangle, MessageSquareText } from 'lucide-react';
 import { ipcClient } from '../../lib/ipc-client';
 import type { UsageStatsDto, CacheStatsDto } from '../../shared/types';
 
@@ -24,7 +25,7 @@ function formatBytes(bytes: number): string {
 
 /** 设置面板主组件 */
 export const SettingsPanel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'model' | 'usage' | 'storage'>('model');
+  const [activeTab, setActiveTab] = useState<'model' | 'usage' | 'storage' | 'prompts'>('model');
   const [usageStats, setUsageStats] = useState<UsageStatsDto | null>(null);
   const [cacheStats, setCacheStats] = useState<CacheStatsDto | null>(null);
   const [cacheError, setCacheError] = useState<string | null>(null);
@@ -87,6 +88,12 @@ export const SettingsPanel: React.FC = () => {
           active={activeTab === 'storage'}
           onClick={() => setActiveTab('storage')}
         />
+        <TabButton
+          icon={<MessageSquareText size={14} />}
+          label="提示词"
+          active={activeTab === 'prompts'}
+          onClick={() => setActiveTab('prompts')}
+        />
       </div>
 
       {/* 内容区域 */}
@@ -103,6 +110,7 @@ export const SettingsPanel: React.FC = () => {
             onStatsChange={setCacheStats}
           />
         )}
+        {activeTab === 'prompts' && <PromptSettings />}
       </div>
     </div>
   );
@@ -120,7 +128,7 @@ const TabButton: React.FC<{
 }> = ({ icon, label, active, onClick }) => (
   <button
     onClick={onClick}
-    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+    className={`flex-1 flex items-center justify-center gap-1 px-1 py-1.5 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors ${
       active
         ? 'bg-[var(--color-selected)] text-[var(--color-primary)]'
         : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)]'

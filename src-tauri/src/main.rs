@@ -86,6 +86,10 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             // G. 缓存统计与清理 (2 个)
             ipc::settings::get_cache_stats,
             ipc::settings::clear_all_translation_cache,
+            // H. 自定义提示词 (3 个)
+            ipc::settings::get_custom_prompt,
+            ipc::settings::save_custom_prompt,
+            ipc::settings::reset_custom_prompt,
             // G. Zotero 集成 (3 个)
             ipc::zotero::detect_zotero_library,
             ipc::zotero::fetch_zotero_items,

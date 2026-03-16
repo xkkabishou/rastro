@@ -15,6 +15,7 @@ const ADD_CHAT_MESSAGE_THINKING_SQL: &str =
     include_str!("../../migrations/002_add_chat_message_thinking.sql");
 const DOCUMENT_WORKSPACE_SQL: &str = include_str!("../../migrations/v2_document_workspace.sql");
 const PROVIDER_MASKED_KEY_SQL: &str = include_str!("../../migrations/004_provider_masked_key.sql");
+const CUSTOM_PROMPTS_SQL: &str = include_str!("../../migrations/005_custom_prompts.sql");
 
 struct Migration {
     version: i64,
@@ -42,6 +43,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 4,
         name: "provider_masked_key",
         sql: PROVIDER_MASKED_KEY_SQL,
+    },
+    Migration {
+        version: 5,
+        name: "custom_prompts",
+        sql: CUSTOM_PROMPTS_SQL,
     },
 ];
 
@@ -104,7 +110,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 4);
+        assert_eq!(current_version(&connection).unwrap(), 5);
         assert_eq!(
             table_exists(&connection, "documents"),
             true,
@@ -139,6 +145,10 @@ mod tests {
             column_exists(&connection, "provider_settings", "masked_key"),
             "provider_settings.masked_key should exist after migration"
         );
+        assert!(
+            table_exists(&connection, "custom_prompts"),
+            "custom_prompts should exist after migration"
+        );
     }
 
     #[test]
@@ -148,10 +158,10 @@ mod tests {
         run(&connection).unwrap();
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 4);
+        assert_eq!(current_version(&connection).unwrap(), 5);
         assert_eq!(
             migration_row_count(&connection),
-            4,
+            5,
             "latest migrations should only be recorded once"
         );
     }
@@ -163,7 +173,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 4);
+        assert_eq!(current_version(&connection).unwrap(), 5);
         assert_eq!(
             provider_setting_count(&connection),
             3,
