@@ -41,6 +41,12 @@ src-tauri/runtime/
 # Serena 缓存
 .serena/cache/
 
+# Claude Code 本地规划文件（仅本机使用，不入库）
+.claude/plan/
+.claude/worktrees/
+.claude/settings.local.json
+plan/
+
 # Python 缓存
 __pycache__/
 *.pyc
