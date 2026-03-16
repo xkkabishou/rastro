@@ -31,7 +31,11 @@ export async function extractPdfText(
   let loadingTask: PDFDocumentLoadingTask | null = null;
 
   try {
-    loadingTask = pdfjsLib.getDocument(convertFileSrc(filePath));
+    // 使用 ArrayBuffer 加载 PDF，绕过 Tauri WebView 中 ReadableStream 不兼容的问题
+    const pdfUrl = convertFileSrc(filePath);
+    const response = await fetch(pdfUrl);
+    const arrayBuffer = await response.arrayBuffer();
+    loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
     const pdfDocument = await loadingTask.promise;
     const pageLimit = Math.min(pdfDocument.numPages, maxPages);
     const pageTexts: string[] = [];

@@ -59,6 +59,8 @@ interface DocumentState {
   setActiveFilter: (filter: DocumentFilter) => void;
   /** 清除指定文档的产物缓存 */
   invalidateArtifacts: (docId: string) => void;
+  /** T2.4.2: 刷新单个文档快照数据（操作后同步侧栏状态） */
+  refreshDocumentSnapshot: (docId: string) => Promise<void>;
 }
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
@@ -179,6 +181,26 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     const next = { ...artifactsByDocId };
     delete next[docId];
     set({ artifactsByDocId: next });
+  },
+
+  // T2.4.2: 刷新单个文档快照（操作后同步侧栏状态 icon）
+  refreshDocumentSnapshot: async (docId) => {
+    try {
+      const snapshot = await ipcClient.getDocumentSnapshot(docId);
+      const { recentDocuments, currentDocument } = get();
+      // 更新 recentDocuments 中对应的条目
+      const updatedDocs = recentDocuments.map((d) =>
+        d.documentId === docId ? snapshot : d,
+      );
+      const updates: Partial<DocumentState> = { recentDocuments: updatedDocs };
+      // 如果当前文档就是被刷新的文档，也同步更新
+      if (currentDocument?.documentId === docId) {
+        updates.currentDocument = snapshot;
+      }
+      set(updates);
+    } catch (err) {
+      console.error(`刷新文档快照 ${docId} 失败:`, err);
+    }
   },
 }));
 

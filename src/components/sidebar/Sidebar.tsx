@@ -1,14 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, Menu, FolderOpen, Search } from 'lucide-react';
+import { Settings, Menu, FolderOpen, Search, AlertTriangle } from 'lucide-react';
 import shibaLogoUrl from '../../assets/shiba/shiba-logo.png';
-import { open } from '@tauri-apps/plugin-dialog';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { open, save } from '@tauri-apps/plugin-dialog';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { DocumentTree } from './DocumentTree';
 import type { FlatNode } from './DocumentTree';
 import type { ContextMenuAction } from './DocumentContextMenu';
+import { Dialog } from '../ui/Dialog';
 import { useDocumentStore } from '../../stores/useDocumentStore';
+import { useSummaryStore } from '../../stores/useSummaryStore';
 import { ipcClient } from '../../lib/ipc-client';
+import { extractPdfText, DEFAULT_SUMMARY_SOURCE_PAGES, DEFAULT_SUMMARY_SOURCE_CHARS } from '../../lib/pdf-text-extractor';
 import type { DocumentSnapshot, DocumentArtifactDto } from '../../shared/types';
 
 // ---------------------------------------------------------------------------
@@ -135,13 +138,291 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: 
     }
   }, [openDocumentInViewer, setCurrentDocument, setPdfUrl, isMobile, onToggle]);
 
-  // 右键菜单操作处理 (T2.4.1 框架，实际绑定在 T2.4.2)
+  // -------------------------------------------------------------------------
+  // T2.4.2: 确认弹窗状态
+  // -------------------------------------------------------------------------
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void | Promise<void>;
+    isLoading?: boolean;
+  } | null>(null);
+
+  const closeConfirmDialog = useCallback(() => setConfirmDialog(null), []);
+
+  // -------------------------------------------------------------------------
+  // T2.4.2 + T2.4.4 + T2.4.6: 右键菜单操作处理
+  // -------------------------------------------------------------------------
   const handleContextMenuAction = useCallback(
     (action: ContextMenuAction, node: FlatNode, doc: DocumentSnapshot) => {
-      console.log('[ContextMenu]', action, node.type, doc.documentId);
-      // T2.4.2 将在此处绑定实际操作
+      const docId = doc.documentId;
+
+      switch (action) {
+        // ===== 一级节点 — 文献操作 =====
+
+        case 'translate': {
+          // T2.4.2: 触发翻译（复用 PdfViewer.handleTranslate 模式）
+          void (async () => {
+            try {
+              openDocumentInViewer(doc);
+              const job = await ipcClient.requestTranslation({
+                documentId: docId,
+                filePath: doc.filePath,
+              });
+              useDocumentStore.getState().setTranslationJob(job);
+            } catch (err) {
+              console.error('右键触发翻译失败:', err);
+            }
+          })();
+          break;
+        }
+
+        case 'generate_summary': {
+          // T2.4.2: 触发生成总结（复用 SummaryPanel.handleGenerate 模式）
+          void (async () => {
+            try {
+              openDocumentInViewer(doc);
+              const store = useSummaryStore.getState();
+              store.resetSummary();
+              useSummaryStore.setState({ currentDocumentId: docId });
+              store.startGeneration();
+
+              const { text: sourceText } = await extractPdfText(doc.filePath, {
+                maxPages: DEFAULT_SUMMARY_SOURCE_PAGES,
+                maxChars: DEFAULT_SUMMARY_SOURCE_CHARS,
+              });
+
+              if (!sourceText.trim()) {
+                useSummaryStore.getState().failStream(
+                  null,
+                  `未能从 PDF 前 ${DEFAULT_SUMMARY_SOURCE_PAGES} 页提取到可用文本。`,
+                );
+                return;
+              }
+
+              const handle = await ipcClient.generateSummary({
+                documentId: docId,
+                filePath: doc.filePath,
+                sourceText,
+                promptProfile: 'default',
+              });
+              useSummaryStore.getState().setActiveStreamId(handle.streamId);
+            } catch (err) {
+              console.error('右键触发生成总结失败:', err);
+              useSummaryStore.getState().failStream(
+                null,
+                err && typeof err === 'object' && 'message' in err
+                  ? String((err as { message: string }).message)
+                  : '生成总结失败，请检查 API 配置。',
+              );
+            }
+          })();
+          break;
+        }
+
+        case 'reveal_in_finder': {
+          // T2.4.2: 在 Finder 中显示
+          const filePath = node.type === 'artifact' && node.artifact?.filePath
+            ? node.artifact.filePath
+            : doc.filePath;
+          ipcClient.revealInFinder(filePath).catch((err) => {
+            console.error('在 Finder 中显示失败:', err);
+          });
+          break;
+        }
+
+        case 'remove_from_history': {
+          // T2.4.2: 从历史移除（二次确认）
+          setConfirmDialog({
+            title: '从历史中移除',
+            message: `确定要将「${doc.title || '未命名文档'}」从历史记录中移除吗？文件不会被删除。`,
+            onConfirm: async () => {
+              try {
+                await ipcClient.removeRecentDocument(docId);
+                await loadRecentDocuments();
+              } catch (err) {
+                console.error('移除文档失败:', err);
+              } finally {
+                setConfirmDialog(null);
+              }
+            },
+          });
+          break;
+        }
+
+        case 'toggle_favorite': {
+          // T2.4.2: 切换收藏
+          void (async () => {
+            try {
+              await ipcClient.toggleDocumentFavorite(docId, !doc.isFavorite);
+              await useDocumentStore.getState().refreshDocumentSnapshot(docId);
+            } catch (err) {
+              console.error('切换收藏失败:', err);
+            }
+          })();
+          break;
+        }
+
+        // ===== 二级节点 — 翻译产物操作 (T2.4.4) =====
+
+        case 'view_translation_detail': {
+          // T2.4.4: 查看翻译详情 — 打开文档
+          openDocumentInViewer(doc);
+          break;
+        }
+
+        case 'retranslate': {
+          // T2.4.4: 重新翻译（forceRefresh）
+          void (async () => {
+            try {
+              openDocumentInViewer(doc);
+              const job = await ipcClient.requestTranslation({
+                documentId: docId,
+                filePath: doc.filePath,
+                forceRefresh: true,
+              });
+              useDocumentStore.getState().setTranslationJob(job);
+              useDocumentStore.getState().setTranslatedPdfUrl(null);
+            } catch (err) {
+              console.error('重新翻译失败:', err);
+            }
+          })();
+          break;
+        }
+
+        case 'delete_translation': {
+          // T2.4.4: 删除翻译（二次确认）
+          setConfirmDialog({
+            title: '确认删除翻译',
+            message: '确定要删除此文档的翻译缓存吗？翻译后的 PDF 文件将被删除，需要时可以重新翻译。',
+            onConfirm: async () => {
+              try {
+                await ipcClient.deleteTranslationCache(docId);
+                // 清除产物缓存并刷新
+                useDocumentStore.getState().invalidateArtifacts(docId);
+                await useDocumentStore.getState().loadArtifacts(docId, true);
+                await useDocumentStore.getState().refreshDocumentSnapshot(docId);
+                // 如果当前显示的是该文档的翻译 PDF，回退到原文
+                const current = useDocumentStore.getState().currentDocument;
+                if (current?.documentId === docId) {
+                  useDocumentStore.getState().setTranslatedPdfUrl(null);
+                  useDocumentStore.getState().setTranslationJob(null);
+                }
+              } catch (err) {
+                console.error('删除翻译缓存失败:', err);
+              } finally {
+                setConfirmDialog(null);
+              }
+            },
+          });
+          break;
+        }
+
+        // ===== 二级节点 — AI 总结操作 (T2.4.6) =====
+
+        case 'view_summary': {
+          // T2.4.6: 查看总结 — 打开文档并加载已保存的总结
+          openDocumentInViewer(doc);
+          void useSummaryStore.getState().loadSavedSummary(docId);
+          break;
+        }
+
+        case 'regenerate_summary': {
+          // T2.4.6: 重新生成总结（确认框提示消耗 API 额度）
+          setConfirmDialog({
+            title: '重新生成总结',
+            message: '重新生成将消耗 API 额度，旧的总结将被替换。确定要继续吗？',
+            onConfirm: async () => {
+              try {
+                // 删除旧总结
+                await ipcClient.deleteDocumentSummary(docId);
+                setConfirmDialog(null);
+
+                // 打开文档并触发生成
+                openDocumentInViewer(doc);
+                const store = useSummaryStore.getState();
+                store.resetSummary();
+                useSummaryStore.setState({ currentDocumentId: docId });
+                store.startGeneration();
+
+                const { text: sourceText } = await extractPdfText(doc.filePath, {
+                  maxPages: DEFAULT_SUMMARY_SOURCE_PAGES,
+                  maxChars: DEFAULT_SUMMARY_SOURCE_CHARS,
+                });
+
+                if (!sourceText.trim()) {
+                  useSummaryStore.getState().failStream(
+                    null,
+                    `未能从 PDF 提取到可用文本。`,
+                  );
+                  return;
+                }
+
+                const handle = await ipcClient.generateSummary({
+                  documentId: docId,
+                  filePath: doc.filePath,
+                  sourceText,
+                  promptProfile: 'default',
+                });
+                useSummaryStore.getState().setActiveStreamId(handle.streamId);
+
+                // 刷新文档快照更新 hasSummary 状态
+                await useDocumentStore.getState().refreshDocumentSnapshot(docId);
+              } catch (err) {
+                console.error('重新生成总结失败:', err);
+                useSummaryStore.getState().failStream(
+                  null,
+                  err && typeof err === 'object' && 'message' in err
+                    ? String((err as { message: string }).message)
+                    : '重新生成总结失败。',
+                );
+                setConfirmDialog(null);
+              }
+            },
+          });
+          break;
+        }
+
+        case 'export_summary_md': {
+          // T2.4.6: 导出总结为 Markdown 文件
+          void (async () => {
+            try {
+              // 先获取总结内容
+              const summary = await ipcClient.getDocumentSummary(docId);
+              if (!summary?.contentMd?.trim()) {
+                console.warn('没有可导出的总结内容');
+                return;
+              }
+
+              // 弹出保存对话框
+              const fileName = `${(doc.title || 'summary').replace(/[/\\:*?"<>|]/g, '_')}_summary.md`;
+              const filePath = await save({
+                defaultPath: fileName,
+                filters: [{ name: 'Markdown', extensions: ['md'] }],
+              });
+              if (!filePath) return;
+
+              // 使用 Tauri writeFile 写入
+              await invoke('plugin:fs|write_text_file', {
+                path: filePath,
+                contents: summary.contentMd,
+              });
+              console.log('[Summary] 导出成功:', filePath);
+            } catch (err) {
+              console.error('导出总结失败:', err);
+            }
+          })();
+          break;
+        }
+
+        default: {
+          // 其他操作暂未实现（NotebookLM 相关）
+          console.log('[ContextMenu] 未实现的操作:', action, node.type, docId);
+          break;
+        }
+      }
     },
-    [],
+    [openDocumentInViewer, loadRecentDocuments],
   );
 
   // 处理本地文件选择
@@ -243,6 +524,38 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: 
           </div>
         </motion.aside>
       )}
+
+      {/* T2.4.2: 通用确认弹窗 */}
+      <Dialog
+        isOpen={!!confirmDialog}
+        onClose={closeConfirmDialog}
+        title={confirmDialog?.title ?? ''}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
+              <AlertTriangle size={18} className="text-red-500" />
+            </div>
+            <p className="text-sm text-[var(--color-text)] leading-relaxed">
+              {confirmDialog?.message}
+            </p>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={closeConfirmDialog}
+              className="px-4 py-2 text-xs font-medium rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={() => { void confirmDialog?.onConfirm(); }}
+              className="px-4 py-2 text-xs font-medium rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors flex items-center gap-1.5"
+            >
+              确认
+            </button>
+          </div>
+        </div>
+      </Dialog>
     </AnimatePresence>
   );
 };
