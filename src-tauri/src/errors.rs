@@ -49,6 +49,8 @@ pub enum AppErrorCode {
     // 精确语义替代
     ProviderNotConfigured,
     ChatSessionNotFound,
+    // 标注相关
+    AnnotationNotFound,
     // 通用
     InternalError,
 }
@@ -88,6 +90,7 @@ impl AppErrorCode {
             Self::ResourceOwnershipMismatch => "RESOURCE_OWNERSHIP_MISMATCH",
             Self::ProviderNotConfigured => "PROVIDER_NOT_CONFIGURED",
             Self::ChatSessionNotFound => "CHAT_SESSION_NOT_FOUND",
+            Self::AnnotationNotFound => "ANNOTATION_NOT_FOUND",
             Self::InternalError => "INTERNAL_ERROR",
         }
     }
@@ -246,12 +249,13 @@ mod tests {
             "PROVIDER_NOT_CONFIGURED",
         ),
         (AppErrorCode::ChatSessionNotFound, "CHAT_SESSION_NOT_FOUND"),
+        (AppErrorCode::AnnotationNotFound, "ANNOTATION_NOT_FOUND"),
         (AppErrorCode::InternalError, "INTERNAL_ERROR"),
     ];
 
     #[test]
     fn app_error_code_serializes_to_expected_contract_literals() {
-        assert_eq!(ALL_ERROR_CODES.len(), 31);
+        assert_eq!(ALL_ERROR_CODES.len(), 32);
 
         for (code, expected) in ALL_ERROR_CODES {
             assert_eq!(

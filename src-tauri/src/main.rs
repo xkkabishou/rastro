@@ -106,6 +106,12 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             ipc::notebooklm::notebooklm_get_task,
             ipc::notebooklm::notebooklm_list_artifacts,
             ipc::notebooklm::notebooklm_download_artifact,
+            // I. 标注 (5 个)
+            ipc::annotations::save_annotation,
+            ipc::annotations::update_annotation,
+            ipc::annotations::delete_annotation,
+            ipc::annotations::list_annotations,
+            ipc::annotations::list_annotations_by_page,
         ])
         .run(tauri::generate_context!())?;
     Ok(())

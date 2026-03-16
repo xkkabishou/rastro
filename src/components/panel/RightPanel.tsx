@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, MessageSquare, Settings, BookOpen, Globe } from 'lucide-react';
+import { X, MessageSquare, Settings, BookOpen, Globe, Highlighter } from 'lucide-react';
 import { ChatPanel } from '../chat-panel/ChatPanel';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { SummaryPanel } from '../summary/SummaryPanel';
 import { NotebookLMView } from '../notebooklm/NotebookLMView';
+import { AnnotationPanel } from '../annotations/AnnotationPanel';
+import { useAnnotationStore } from '../../stores/useAnnotationStore';
 
-type PanelTab = 'chat' | 'settings' | 'summary' | 'notebooklm';
+type PanelTab = 'chat' | 'annotations' | 'settings' | 'summary' | 'notebooklm';
 
 interface RightPanelProps {
   isOpen: boolean;
@@ -24,6 +26,7 @@ export const RightPanel = ({ isOpen, onToggle, activeTab: controlledTab, onTabCh
   const [internalTab, setInternalTab] = useState<PanelTab>('chat');
   const activeTab = controlledTab ?? internalTab;
   const setActiveTab = onTabChange ?? setInternalTab;
+  const annotationCount = useAnnotationStore((s) => s.annotations.length);
 
   return (
     <AnimatePresence initial={false}>
@@ -46,6 +49,13 @@ export const RightPanel = ({ isOpen, onToggle, activeTab: controlledTab, onTabCh
                 label="对话"
                 active={activeTab === 'chat'}
                 onClick={() => setActiveTab('chat')}
+              />
+              <PanelTabButton
+                icon={<Highlighter size={14} />}
+                label="标注"
+                active={activeTab === 'annotations'}
+                onClick={() => setActiveTab('annotations')}
+                badge={annotationCount > 0 ? annotationCount : undefined}
               />
               <PanelTabButton
                 icon={<BookOpen size={14} />}
@@ -77,6 +87,7 @@ export const RightPanel = ({ isOpen, onToggle, activeTab: controlledTab, onTabCh
           {/* 面板内容 */}
           <div className="flex-1 overflow-hidden">
             {activeTab === 'chat' && <ChatPanel />}
+            {activeTab === 'annotations' && <AnnotationPanel />}
             {activeTab === 'summary' && <SummaryPanel />}
             {activeTab === 'notebooklm' && <NotebookLMView />}
             {activeTab === 'settings' && <SettingsPanel />}
@@ -93,10 +104,11 @@ const PanelTabButton: React.FC<{
   label: string;
   active: boolean;
   onClick: () => void;
-}> = ({ icon, label, active, onClick }) => (
+  badge?: number;
+}> = ({ icon, label, active, onClick, badge }) => (
   <button
     onClick={onClick}
-    className={`flex-1 flex items-center justify-center gap-1.5 px-1 py-2 text-xs font-medium border-b-2 transition-colors ${
+    className={`relative flex-1 flex items-center justify-center gap-1.5 px-1 py-2 text-xs font-medium border-b-2 transition-colors ${
       active
         ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
         : 'border-transparent text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]'
@@ -104,5 +116,10 @@ const PanelTabButton: React.FC<{
   >
     {icon}
     {label}
+    {badge !== undefined && badge > 0 && (
+      <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-[var(--color-primary)] text-white text-[9px] font-bold px-0.5">
+        {badge > 99 ? '99+' : badge}
+      </span>
+    )}
   </button>
 );

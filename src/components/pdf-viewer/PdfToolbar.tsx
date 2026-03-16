@@ -1,5 +1,6 @@
 import React from 'react';
 import { ZoomIn, ZoomOut, RotateCcw, Languages, Loader2 } from 'lucide-react';
+import { AnnotationToolbar } from './AnnotationToolbar';
 
 interface PdfToolbarProps {
   currentPage: number;
@@ -76,6 +77,10 @@ export const PdfToolbar: React.FC<PdfToolbarProps> = ({
         >
           <RotateCcw size={14} />
         </button>
+
+        {/* 标注工具栏 */}
+        <div className="w-px h-4 bg-[var(--color-separator)] mx-1" />
+        <AnnotationToolbar />
       </div>
 
       {/* 右侧：翻译全文按钮 */}

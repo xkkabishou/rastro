@@ -1,4 +1,5 @@
 // SQLite 存储模块入口
+pub mod annotations;
 pub mod chat_messages;
 pub mod chat_sessions;
 pub mod custom_prompts;

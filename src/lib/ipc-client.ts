@@ -72,6 +72,11 @@ import {
   CustomPromptDto,
   ResetCustomPromptResult,
   PromptKey,
+  // I. 标注
+  SaveAnnotationInput,
+  UpdateAnnotationInput,
+  AnnotationDto,
+  DeleteAnnotationResult,
   // Event Payloads
   AiStreamChunkPayload,
   AiStreamFinishedPayload,
@@ -353,6 +358,30 @@ export const ipcClient = {
   /** 重置提示词为默认值 */
   resetCustomPrompt: (promptKey: PromptKey) =>
     safeInvoke<ResetCustomPromptResult>(IPC_COMMANDS.RESET_CUSTOM_PROMPT, { promptKey }),
+
+  // =========================================================================
+  // I. 标注
+  // =========================================================================
+
+  /** 创建标注 */
+  saveAnnotation: (input: SaveAnnotationInput) =>
+    safeInvoke<AnnotationDto>(IPC_COMMANDS.SAVE_ANNOTATION, { input }),
+
+  /** 更新标注 */
+  updateAnnotation: (input: UpdateAnnotationInput) =>
+    safeInvoke<AnnotationDto>(IPC_COMMANDS.UPDATE_ANNOTATION, { input }),
+
+  /** 删除标注 */
+  deleteAnnotation: (annotationId: string) =>
+    safeInvoke<DeleteAnnotationResult>(IPC_COMMANDS.DELETE_ANNOTATION, { annotationId }),
+
+  /** 获取文档所有标注 */
+  listAnnotations: (documentId: string) =>
+    safeInvoke<AnnotationDto[]>(IPC_COMMANDS.LIST_ANNOTATIONS, { documentId }),
+
+  /** 获取文档指定页标注 */
+  listAnnotationsByPage: (documentId: string, pageNumber: number) =>
+    safeInvoke<AnnotationDto[]>(IPC_COMMANDS.LIST_ANNOTATIONS_BY_PAGE, { documentId, pageNumber }),
 };
 
 // ---------------------------------------------------------------------------

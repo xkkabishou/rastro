@@ -16,6 +16,7 @@ const ADD_CHAT_MESSAGE_THINKING_SQL: &str =
 const DOCUMENT_WORKSPACE_SQL: &str = include_str!("../../migrations/v2_document_workspace.sql");
 const PROVIDER_MASKED_KEY_SQL: &str = include_str!("../../migrations/004_provider_masked_key.sql");
 const CUSTOM_PROMPTS_SQL: &str = include_str!("../../migrations/005_custom_prompts.sql");
+const ANNOTATIONS_SQL: &str = include_str!("../../migrations/006_annotations.sql");
 
 struct Migration {
     version: i64,
@@ -48,6 +49,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 5,
         name: "custom_prompts",
         sql: CUSTOM_PROMPTS_SQL,
+    },
+    Migration {
+        version: 6,
+        name: "annotations",
+        sql: ANNOTATIONS_SQL,
     },
 ];
 
@@ -110,7 +116,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 5);
+        assert_eq!(current_version(&connection).unwrap(), 6);
         assert_eq!(
             table_exists(&connection, "documents"),
             true,
@@ -149,6 +155,10 @@ mod tests {
             table_exists(&connection, "custom_prompts"),
             "custom_prompts should exist after migration"
         );
+        assert!(
+            table_exists(&connection, "annotations"),
+            "annotations should exist after migration"
+        );
     }
 
     #[test]
@@ -158,10 +168,10 @@ mod tests {
         run(&connection).unwrap();
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 5);
+        assert_eq!(current_version(&connection).unwrap(), 6);
         assert_eq!(
             migration_row_count(&connection),
-            5,
+            6,
             "latest migrations should only be recorded once"
         );
     }
@@ -173,7 +183,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 5);
+        assert_eq!(current_version(&connection).unwrap(), 6);
         assert_eq!(
             provider_setting_count(&connection),
             3,

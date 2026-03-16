@@ -8,6 +8,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { PdfToolbar } from './PdfToolbar';
 import { AnnotationOverlay } from './AnnotationOverlay';
+import { AnnotationContextMenu, useAnnotationContextMenu } from './AnnotationContextMenu';
 import { NotePopup } from './NotePopup';
 import { ipcClient } from '../../lib/ipc-client';
 import { useDocumentStore } from '../../stores/useDocumentStore';
@@ -353,6 +354,13 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   // 标注: 页面容器元素跟踪（用于 Portal 注入 AnnotationOverlay）
   const [pageElements, setPageElements] = useState<HTMLElement[]>([]);
 
+  // 右键菜单
+  const {
+    menu: annotationContextMenu,
+    openMenu: openAnnotationContextMenu,
+    closeMenu: closeAnnotationContextMenu,
+  } = useAnnotationContextMenu();
+
   // 监听全局 store 中的 pdfUrl 变化（来自 Sidebar 文件选择 / Zotero 打开）
   const storePdfUrl = useDocumentStore((s) => s.pdfUrl);
   const translatedPdfUrl = useDocumentStore((s) => s.translatedPdfUrl);
@@ -381,7 +389,6 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   // 标注 store
   const annotationActiveTool = useAnnotationStore((s) => s.activeTool);
   const annotationActiveColor = useAnnotationStore((s) => s.activeColor);
-  const annotationIsToolLocked = useAnnotationStore((s) => s.isToolLocked);
   const annotationSetActiveTool = useAnnotationStore((s) => s.setActiveTool);
   const annotationCreateAnnotation = useAnnotationStore((s) => s.createAnnotation);
   const annotationLoadAnnotations = useAnnotationStore((s) => s.loadAnnotations);
@@ -993,14 +1000,22 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     };
 
     const handleMouseUp = () => {
-      // 标注模式: 选中文本后自动创建标注
-      const { activeTool, activeColor, isToolLocked, createAnnotation, setActiveTool } = useAnnotationStore.getState();
+      // 标注模式: 选中文本后自动创建标注（工具保持激活）
+      const { activeTool, activeColor, createAnnotation, startEditingNote } = useAnnotationStore.getState();
       if (activeTool) {
         const selection = window.getSelection();
         const text = selection?.toString().trim() || '';
         if (text.length >= 2 && scrollContainer) {
           const rects = selectionToAnnotationRects(selection!, scrollContainer);
           if (rects.length > 0) {
+            // 跨页标注暂不支持
+            const pageNumbers = new Set(rects.map((r) => r.pageNumber));
+            if (pageNumbers.size > 1) {
+              console.warn('暂不支持跨页标注');
+              selection?.removeAllRanges();
+              setSelectionPopup(null);
+              return;
+            }
             const doc = useDocumentStore.getState().currentDocument;
             if (doc) {
               void createAnnotation({
@@ -1011,11 +1026,14 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
                 text,
                 noteContent: activeTool === 'note' ? '' : undefined,
                 rects,
+              }).then((created) => {
+                // 笔记类型创建后自动弹出编辑器
+                if (created && activeTool === 'note') {
+                  startEditingNote(created.annotationId);
+                }
               });
               selection?.removeAllRanges();
-              if (!isToolLocked) {
-                setActiveTool(null);
-              }
+              // 工具保持激活（不自动取消）
               setSelectionPopup(null);
               return;
             }
@@ -1061,9 +1079,16 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       useChatStore.getState().setContextQuote(text);
     });
     setSelectionPopup(null);
-    // 清除选区
     window.getSelection()?.removeAllRanges();
   }, []);
+
+  // 标注右键菜单回调
+  const handleAnnotationContextMenu = useCallback((annotation: import('../../shared/types').AnnotationDto, event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    useAnnotationStore.getState().selectAnnotation(annotation.annotationId);
+    openAnnotationContextMenu(annotation, event.clientX, event.clientY);
+  }, [openAnnotationContextMenu]);
 
   const debugPayload = JSON.stringify({
     selection: selectionDebug,
@@ -1175,7 +1200,11 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
             const pageNum = parseInt(pageEl.dataset.pageNumber || '0', 10);
             if (!pageNum) return null;
             return createPortal(
-              <AnnotationOverlay key={pageNum} pageNumber={pageNum} scale={scale} />,
+              <AnnotationOverlay
+                key={pageNum}
+                pageNumber={pageNum}
+                onAnnotationContextMenu={handleAnnotationContextMenu}
+              />,
               pageEl,
             );
           })}
@@ -1218,6 +1247,13 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
           </div>
         )}
       </div>
+
+      {/* 标注右键菜单 */}
+      <AnnotationContextMenu
+        menu={annotationContextMenu}
+        onClose={closeAnnotationContextMenu}
+        onQuoteToChat={handleQuoteToChat}
+      />
 
       {/* 笔记编辑弹窗 */}
       <NotePopup />

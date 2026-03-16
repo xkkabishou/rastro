@@ -256,3 +256,115 @@ impl fmt::Display for UsageFeature {
         f.write_str(self.as_str())
     }
 }
+
+/// 标注类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AnnotationType {
+    Highlight,
+    Underline,
+    Note,
+}
+
+impl AnnotationType {
+    /// 返回标注类型的稳定字符串值
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Highlight => "highlight",
+            Self::Underline => "underline",
+            Self::Note => "note",
+        }
+    }
+}
+
+impl fmt::Display for AnnotationType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for AnnotationType {
+    type Err = AppError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "highlight" => Ok(Self::Highlight),
+            "underline" => Ok(Self::Underline),
+            "note" => Ok(Self::Note),
+            other => Err(AppError::new(
+                AppErrorCode::InternalError,
+                format!("不支持的标注类型: {other}"),
+                false,
+            )),
+        }
+    }
+}
+
+/// 标注颜色
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AnnotationColor {
+    Yellow,
+    Red,
+    Green,
+    Blue,
+    Purple,
+    Magenta,
+    Orange,
+    Gray,
+}
+
+impl AnnotationColor {
+    /// 返回标注颜色的稳定字符串值
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Yellow => "yellow",
+            Self::Red => "red",
+            Self::Green => "green",
+            Self::Blue => "blue",
+            Self::Purple => "purple",
+            Self::Magenta => "magenta",
+            Self::Orange => "orange",
+            Self::Gray => "gray",
+        }
+    }
+}
+
+impl fmt::Display for AnnotationColor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for AnnotationColor {
+    type Err = AppError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "yellow" => Ok(Self::Yellow),
+            "red" => Ok(Self::Red),
+            "green" => Ok(Self::Green),
+            "blue" => Ok(Self::Blue),
+            "purple" => Ok(Self::Purple),
+            "magenta" => Ok(Self::Magenta),
+            "orange" => Ok(Self::Orange),
+            "gray" => Ok(Self::Gray),
+            other => Err(AppError::new(
+                AppErrorCode::InternalError,
+                format!("不支持的标注颜色: {other}"),
+                false,
+            )),
+        }
+    }
+}
+
+/// 标注矩形（PDF 归一化坐标）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub page_number: i64,
+}

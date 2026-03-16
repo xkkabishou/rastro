@@ -64,6 +64,20 @@ export type SummaryPromptProfile = "default" | "paper-review";
 /** 聊天消息角色 */
 export type ChatRole = "user" | "assistant" | "system";
 
+/** 标注类型 */
+export type AnnotationType = "highlight" | "underline" | "note";
+
+/** 标注颜色 */
+export type AnnotationColor =
+  | "yellow"
+  | "red"
+  | "green"
+  | "blue"
+  | "purple"
+  | "magenta"
+  | "orange"
+  | "gray";
+
 // ---------------------------------------------------------------------------
 // 统一错误模型
 // ---------------------------------------------------------------------------
@@ -110,6 +124,8 @@ export type AppErrorCode =
   // 精确语义替代
   | "PROVIDER_NOT_CONFIGURED"
   | "CHAT_SESSION_NOT_FOUND"
+  // 标注相关
+  | "ANNOTATION_NOT_FOUND"
   // 通用
   | "INTERNAL_ERROR";
 
@@ -686,6 +702,56 @@ export interface ResetCustomPromptResult {
   reset: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// I. 标注
+// ---------------------------------------------------------------------------
+
+/** 标注矩形 DTO（PDF 归一化坐标） */
+export interface AnnotationRectDto {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  pageNumber: number;
+}
+
+/** 标注 DTO */
+export interface AnnotationDto {
+  annotationId: string;
+  documentId: string;
+  type: AnnotationType;
+  color: AnnotationColor;
+  pageNumber: number;
+  text: string;
+  noteContent?: string;
+  rects: AnnotationRectDto[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** save_annotation 请求 */
+export interface SaveAnnotationInput {
+  documentId: string;
+  type: AnnotationType;
+  color: AnnotationColor;
+  pageNumber: number;
+  text: string;
+  noteContent?: string;
+  rects: AnnotationRectDto[];
+}
+
+/** update_annotation 请求 */
+export interface UpdateAnnotationInput {
+  annotationId: string;
+  color?: AnnotationColor;
+  noteContent?: string;
+}
+
+/** delete_annotation 响应 */
+export interface DeleteAnnotationResult {
+  deleted: boolean;
+}
+
 /** 删除翻译缓存结果（对齐 translation.rs::DeleteCacheResult） */
 export interface DeleteCacheResult {
   deleted: boolean;
@@ -810,6 +876,12 @@ export const IPC_COMMANDS = {
   GET_CUSTOM_PROMPT: "get_custom_prompt",
   SAVE_CUSTOM_PROMPT: "save_custom_prompt",
   RESET_CUSTOM_PROMPT: "reset_custom_prompt",
+  // I. 标注
+  SAVE_ANNOTATION: "save_annotation",
+  UPDATE_ANNOTATION: "update_annotation",
+  DELETE_ANNOTATION: "delete_annotation",
+  LIST_ANNOTATIONS: "list_annotations",
+  LIST_ANNOTATIONS_BY_PAGE: "list_annotations_by_page",
 } as const;
 
 /** Tauri Event 名称常量 */
