@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { PDFDocumentProxy, PDFDocumentLoadingTask } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { EventBus, PDFLinkService, PDFViewer as PdfJsViewer } from 'pdfjs-dist/legacy/web/pdf_viewer.mjs';
@@ -6,8 +7,13 @@ import 'pdfjs-dist/legacy/web/pdf_viewer.css';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { PdfToolbar } from './PdfToolbar';
+import { AnnotationOverlay } from './AnnotationOverlay';
+import { NotePopup } from './NotePopup';
 import { ipcClient } from '../../lib/ipc-client';
 import { useDocumentStore } from '../../stores/useDocumentStore';
+import { useAnnotationStore } from '../../stores/useAnnotationStore';
+import { useAnnotationShortcuts } from '../../lib/useAnnotationShortcuts';
+import { selectionToAnnotationRects } from '../../lib/annotation-coords';
 
 import shibaReadingUrl from '../../assets/shiba/shiba-reading.png';
 
@@ -344,6 +350,8 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   const [fontDebug, setFontDebug] = useState<FontDebugSnapshot | null>(
     getPdfSelectionDebugEnabled() ? collectFontDebugSnapshot([], false) : null,
   );
+  // 标注: 页面容器元素跟踪（用于 Portal 注入 AnnotationOverlay）
+  const [pageElements, setPageElements] = useState<HTMLElement[]>([]);
 
   // 监听全局 store 中的 pdfUrl 变化（来自 Sidebar 文件选择 / Zotero 打开）
   const storePdfUrl = useDocumentStore((s) => s.pdfUrl);
@@ -359,8 +367,34 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   const userSetScaleRef = useRef(ZOOM_DEFAULT);
   const referenceWidthRef = useRef<number | null>(null);
   const rafIdRef = useRef<number>(0);
+  /** pagesinit 事件中使用的初始缩放值（fit-to-width 计算结果） */
+  const initialScaleRef = useRef(ZOOM_DEFAULT);
   const sourcePdfUrl = storePdfUrl ?? initialUrl;
   const activePdfUrl = translatedPdfUrl && !bilingualMode ? translatedPdfUrl : sourcePdfUrl;
+
+  // 当前文档（标注和翻译都需要，提前声明避免引用顺序问题）
+  const currentDocument = useDocumentStore((s) => s.currentDocument);
+
+  // 标注快捷键
+  useAnnotationShortcuts();
+
+  // 标注 store
+  const annotationActiveTool = useAnnotationStore((s) => s.activeTool);
+  const annotationActiveColor = useAnnotationStore((s) => s.activeColor);
+  const annotationIsToolLocked = useAnnotationStore((s) => s.isToolLocked);
+  const annotationSetActiveTool = useAnnotationStore((s) => s.setActiveTool);
+  const annotationCreateAnnotation = useAnnotationStore((s) => s.createAnnotation);
+  const annotationLoadAnnotations = useAnnotationStore((s) => s.loadAnnotations);
+  const annotationReset = useAnnotationStore((s) => s.reset);
+
+  // 文档切换时加载标注数据
+  useEffect(() => {
+    if (currentDocument?.documentId) {
+      annotationLoadAnnotations(currentDocument.documentId);
+    } else {
+      annotationReset();
+    }
+  }, [currentDocument?.documentId, annotationLoadAnnotations, annotationReset]);
 
   useEffect(() => {
     if (!activePdfUrl) {
@@ -510,8 +544,7 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     setSelectionPopup(null);
     setIsLoading(true);
 
-    // 文档切换时重置自动缩放基准
-    userSetScaleRef.current = ZOOM_DEFAULT;
+    // 文档切换时重置自动缩放基准（fit-to-width 将由 pagesinit 事件计算）
     referenceWidthRef.current = null;
 
     const loadPdf = async () => {
@@ -554,7 +587,7 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       eventBus,
       linkService,
       textLayerMode: 1,
-      removePageBorders: false,
+      removePageBorders: true,
       supportsPinchToZoom: false,
     });
 
@@ -564,9 +597,20 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     });
     eventBus.on('pagesloaded', ({ pagesCount }: { pagesCount: number }) => {
       setTotalPages(pagesCount);
+      // 收集页面元素用于标注 Portal 注入
+      if (viewer) {
+        const pages = Array.from(viewer.querySelectorAll<HTMLElement>('.page'));
+        setPageElements(pages);
+      }
     });
     eventBus.on('pagesinit', () => {
-      pdfViewer.currentScale = scale;
+      // 使用 pdfjs 内置 page-width 模式精确适配容器宽度（自动处理内边距、滚动条等）
+      (pdfViewer as unknown as { currentScaleValue: string }).currentScaleValue = 'page-width';
+      const fitScale = pdfViewer.currentScale;
+      initialScaleRef.current = fitScale;
+      userSetScaleRef.current = fitScale;
+      referenceWidthRef.current = containerRef.current?.clientWidth ?? null;
+      setScale(fitScale);
     });
 
     pdfViewerRef.current = pdfViewer;
@@ -645,8 +689,15 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   }, [updateZoomReference]);
 
   const handleZoomReset = useCallback(() => {
-    updateZoomReference(ZOOM_DEFAULT);
-    setScale(ZOOM_DEFAULT);
+    // 重置到 fit-to-width：用 pdfjs 内置 page-width 模式重新计算（适配当前容器宽度）
+    const pdfViewer = pdfViewerRef.current;
+    if (pdfViewer) {
+      (pdfViewer as unknown as { currentScaleValue: string }).currentScaleValue = 'page-width';
+      const fitScale = pdfViewer.currentScale;
+      initialScaleRef.current = fitScale;
+      updateZoomReference(fitScale);
+      setScale(fitScale);
+    }
   }, [updateZoomReference]);
 
   // 监听容器宽度变化，自动按比例调整缩放（覆盖侧栏展开/收起、窗口 resize）
@@ -730,7 +781,6 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   }, [hasFiles]);
 
   // 翻译全文处理
-  const currentDocument = useDocumentStore((s) => s.currentDocument);
   const translationJob = useDocumentStore((s) => s.translationJob);
   const translationProgress = useDocumentStore((s) => s.translationProgress);
   const setTranslationJob = useDocumentStore((s) => s.setTranslationJob);
@@ -943,6 +993,35 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     };
 
     const handleMouseUp = () => {
+      // 标注模式: 选中文本后自动创建标注
+      const { activeTool, activeColor, isToolLocked, createAnnotation, setActiveTool } = useAnnotationStore.getState();
+      if (activeTool) {
+        const selection = window.getSelection();
+        const text = selection?.toString().trim() || '';
+        if (text.length >= 2 && scrollContainer) {
+          const rects = selectionToAnnotationRects(selection!, scrollContainer);
+          if (rects.length > 0) {
+            const doc = useDocumentStore.getState().currentDocument;
+            if (doc) {
+              void createAnnotation({
+                documentId: doc.documentId,
+                type: activeTool,
+                color: activeColor,
+                pageNumber: rects[0].pageNumber,
+                text,
+                noteContent: activeTool === 'note' ? '' : undefined,
+                rects,
+              });
+              selection?.removeAllRanges();
+              if (!isToolLocked) {
+                setActiveTool(null);
+              }
+              setSelectionPopup(null);
+              return;
+            }
+          }
+        }
+      }
       updateSelectionPopup();
     };
 
@@ -1084,12 +1163,22 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
 
         <div
           ref={viewerContainerRef}
-          className={`absolute inset-0 overflow-auto ${pdf && !isLoading ? '' : 'pointer-events-none opacity-0'}`}
+          className={`absolute inset-0 overflow-auto pdf-scroll-container ${pdf && !isLoading ? '' : 'pointer-events-none opacity-0'}`}
+          style={annotationActiveTool ? { cursor: 'text' } : undefined}
         >
           <div
             ref={viewerRef}
-            className="pdfViewer p-6"
+            className="pdfViewer"
           />
+          {/* 标注渲染层 — Portal 注入每个页面 */}
+          {pageElements.map((pageEl) => {
+            const pageNum = parseInt(pageEl.dataset.pageNumber || '0', 10);
+            if (!pageNum) return null;
+            return createPortal(
+              <AnnotationOverlay key={pageNum} pageNumber={pageNum} scale={scale} />,
+              pageEl,
+            );
+          })}
         </div>
 
         {isSelectionDebugEnabled && (
@@ -1129,6 +1218,9 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
           </div>
         )}
       </div>
+
+      {/* 笔记编辑弹窗 */}
+      <NotePopup />
     </div>
   );
 };

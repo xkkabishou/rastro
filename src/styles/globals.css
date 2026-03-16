@@ -151,6 +151,39 @@
     --color-code-bg: #F5EDE0;
     --color-code-text: #3D2B1F;
 
+    /* 标注颜色 — Yellow */
+    --annotation-yellow-bg: rgba(255, 235, 59, 0.35);
+    --annotation-yellow-border: rgba(255, 235, 59, 0.6);
+    --annotation-yellow-dot: #FFEB3B;
+    /* 标注颜色 — Red */
+    --annotation-red-bg: rgba(239, 83, 80, 0.30);
+    --annotation-red-border: rgba(239, 83, 80, 0.55);
+    --annotation-red-dot: #EF5350;
+    /* 标注颜色 — Green */
+    --annotation-green-bg: rgba(102, 187, 106, 0.30);
+    --annotation-green-border: rgba(102, 187, 106, 0.55);
+    --annotation-green-dot: #66BB6A;
+    /* 标注颜色 — Blue */
+    --annotation-blue-bg: rgba(66, 165, 245, 0.30);
+    --annotation-blue-border: rgba(66, 165, 245, 0.55);
+    --annotation-blue-dot: #42A5F5;
+    /* 标注颜色 — Purple */
+    --annotation-purple-bg: rgba(171, 71, 188, 0.30);
+    --annotation-purple-border: rgba(171, 71, 188, 0.55);
+    --annotation-purple-dot: #AB47BC;
+    /* 标注颜色 — Magenta */
+    --annotation-magenta-bg: rgba(236, 64, 122, 0.30);
+    --annotation-magenta-border: rgba(236, 64, 122, 0.55);
+    --annotation-magenta-dot: #EC407A;
+    /* 标注颜色 — Orange */
+    --annotation-orange-bg: rgba(255, 167, 38, 0.35);
+    --annotation-orange-border: rgba(255, 167, 38, 0.6);
+    --annotation-orange-dot: #FFA726;
+    /* 标注颜色 — Gray */
+    --annotation-gray-bg: rgba(158, 158, 158, 0.30);
+    --annotation-gray-border: rgba(158, 158, 158, 0.55);
+    --annotation-gray-dot: #9E9E9E;
+
     /* 兼容旧变量 */
     --background: var(--color-bg);
     --foreground: var(--color-text);
@@ -211,6 +244,32 @@
     /* 专用 — 代码块 */
     --color-code-bg: #2A2420;
     --color-code-text: #F5EDE0;
+
+    /* 标注颜色 — Dark Mode */
+    --annotation-yellow-bg: rgba(255, 235, 59, 0.20);
+    --annotation-yellow-border: rgba(255, 235, 59, 0.45);
+    --annotation-yellow-dot: #FDD835;
+    --annotation-red-bg: rgba(239, 83, 80, 0.20);
+    --annotation-red-border: rgba(239, 83, 80, 0.40);
+    --annotation-red-dot: #E53935;
+    --annotation-green-bg: rgba(102, 187, 106, 0.20);
+    --annotation-green-border: rgba(102, 187, 106, 0.40);
+    --annotation-green-dot: #43A047;
+    --annotation-blue-bg: rgba(66, 165, 245, 0.20);
+    --annotation-blue-border: rgba(66, 165, 245, 0.40);
+    --annotation-blue-dot: #1E88E5;
+    --annotation-purple-bg: rgba(171, 71, 188, 0.20);
+    --annotation-purple-border: rgba(171, 71, 188, 0.40);
+    --annotation-purple-dot: #8E24AA;
+    --annotation-magenta-bg: rgba(236, 64, 122, 0.20);
+    --annotation-magenta-border: rgba(236, 64, 122, 0.40);
+    --annotation-magenta-dot: #D81B60;
+    --annotation-orange-bg: rgba(255, 167, 38, 0.20);
+    --annotation-orange-border: rgba(255, 167, 38, 0.45);
+    --annotation-orange-dot: #FB8C00;
+    --annotation-gray-bg: rgba(158, 158, 158, 0.20);
+    --annotation-gray-border: rgba(158, 158, 158, 0.40);
+    --annotation-gray-dot: #757575;
     }
 
   }
@@ -438,6 +497,27 @@
     background: var(--color-bg-secondary);
     font-weight: 600;
   }
+}
+
+/* ---------------------------------------------------------------------------
+ * pdfjs 页面样式覆盖 — 去除多余边距，让 PDF 尽量撑满阅读区
+ * --------------------------------------------------------------------------- */
+
+.pdfViewer .page {
+  margin: 0 auto;
+}
+
+/* ---------------------------------------------------------------------------
+ * PDF 阅读区滚动条 — 隐藏自定义样式，使用 macOS 原生悬浮滚动条
+ * --------------------------------------------------------------------------- */
+
+.pdf-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+.pdf-scroll-container {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* ---------------------------------------------------------------------------
