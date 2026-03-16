@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, Menu, FolderOpen, Search, AlertTriangle } from 'lucide-react';
+import { Settings, Menu, FolderOpen, AlertTriangle } from 'lucide-react';
 import shibaLogoUrl from '../../assets/shiba/shiba-logo.png';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { DocumentTree } from './DocumentTree';
 import type { FlatNode } from './DocumentTree';
 import type { ContextMenuAction } from './DocumentContextMenu';
+import { SearchBar } from './SearchBar';
+import { GroupChips } from './GroupChips';
 import { Dialog } from '../ui/Dialog';
 import { useDocumentStore } from '../../stores/useDocumentStore';
 import { useSummaryStore } from '../../stores/useSummaryStore';
@@ -18,9 +20,7 @@ import type { DocumentSnapshot, DocumentArtifactDto } from '../../shared/types';
 // 常量
 // ---------------------------------------------------------------------------
 
-/** 搜索防抖延迟 (ms) */
-const SEARCH_DEBOUNCE_MS = 300;
-
+// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -44,17 +44,7 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: 
   const recentDocuments = useDocumentStore((s) => s.recentDocuments);
   const setRecentDocuments = useDocumentStore((s) => s.setRecentDocuments);
   const searchQuery = useDocumentStore((s) => s.searchQuery);
-  const setSearchQuery = useDocumentStore((s) => s.setSearchQuery);
   const activeFilter = useDocumentStore((s) => s.activeFilter);
-
-  // 搜索防抖
-  const [localQuery, setLocalQuery] = useState('');
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearchQuery(localQuery);
-    }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [localQuery, setSearchQuery]);
 
   // 打开文档到阅读器
   const openDocumentInViewer = useCallback((doc: DocumentSnapshot) => {
@@ -466,22 +456,9 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: 
             </button>
           </div>
 
-          {/* 搜索栏 */}
-          <div className="px-3 pb-2 shrink-0">
-            <div className="relative">
-              <Search
-                size={14}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-quaternary)]"
-              />
-              <input
-                type="text"
-                value={localQuery}
-                onChange={(e) => setLocalQuery(e.target.value)}
-                placeholder="搜索文献..."
-                className="input-base w-full pl-8 pr-3 py-1.5 text-xs rounded-lg"
-              />
-            </div>
-          </div>
+          {/* 搜索栏 + 分组筛选 */}
+          <SearchBar />
+          <GroupChips />
 
           {/* 打开文件按钮 */}
           <div className="px-3 pb-2 shrink-0">

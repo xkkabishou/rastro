@@ -1,14 +1,14 @@
 /**
  * PDF 文本提取工具 — 用于 AI 总结的文本采集
  *
- * 核心修复：Tauri WebView 的 ReadableStream 支持不完整，
- * pdfjs worker 的 getTextContent() 在 worker↔主线程通过
- * ReadableStream 传输文本内容时会崩溃（"undefined is not a function"）。
+ * 核心问题：Tauri WebView 的 ReadableStream 实现不完整，
+ * pdfjs 内部 getTextContent() → streamTextContent() 依赖 ReadableStream
+ * 进行文本块传输，即便在 fake worker（主线程）模式下也会崩溃。
  *
- * 解决方案：创建独立的 PDFWorker 实例（不传 port），触发 pdfjs 内部
- * 的 fake worker 初始化，使 getTextContent() 完全在主线程执行。
- * 不修改 GlobalWorkerOptions.workerSrc，不影响 PdfViewer 的正常渲染。
- * 对于 ≤20 页的摘要提取，主线程执行的性能完全可接受。
+ * 解决方案（三层修复）：
+ *   1. ensureReadableStream() — 检测并修补 ReadableStream
+ *   2. PDFWorker fake worker — 避免 worker↔主线程跨线程通信
+ *   3. ArrayBuffer 预加载 — 绕过 pdfjs 内部 fetch/stream 路径
  */
 import { convertFileSrc } from '@tauri-apps/api/core';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -16,6 +16,143 @@ import type { PDFDocumentLoadingTask } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 // PDFWorker 类型在 pdfjs-dist v5 中需要从主入口获取
 const { PDFWorker } = pdfjsLib;
+
+// ---------------------------------------------------------------------------
+// ReadableStream 最小化 Polyfill
+// pdfjs 的 streamTextContent() / sendWithStream 仅使用以下特性：
+//   - new ReadableStream({ start(controller), pull(controller), cancel(reason) })
+//   - controller.enqueue(chunk) / controller.close() / controller.error(e)
+//   - stream.getReader() → { read(), cancel() }
+// ---------------------------------------------------------------------------
+
+/**
+ * 检测 ReadableStream 是否可用且功能正常。
+ * Tauri WebView 中 ReadableStream 可能存在但 getReader().read() 会崩溃。
+ */
+function isReadableStreamWorking(): boolean {
+  try {
+    if (typeof ReadableStream === 'undefined') return false;
+    // 尝试实际创建并读取一次，确保不是"存在但残缺"的实现
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue('test');
+        controller.close();
+      },
+    });
+    const reader = stream.getReader();
+    // 如果 read() 存在且可调用，认为基本可用
+    if (typeof reader.read !== 'function') return false;
+    reader.releaseLock();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 最小化 ReadableStream polyfill — 仅覆盖 pdfjs 所需的子集
+ */
+function createMinimalReadableStream() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return class MinimalReadableStream {
+    private _queue: unknown[] = [];
+    private _closed = false;
+    private _errored: unknown = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private _waitResolve: ((result: any) => void) | null = null;
+
+    constructor(underlyingSource?: {
+      start?: (controller: unknown) => void;
+      pull?: (controller: unknown) => void;
+      cancel?: (reason?: unknown) => void;
+    }) {
+      const self = this;
+      const controller = {
+        enqueue(chunk: unknown) {
+          if (self._waitResolve) {
+            const resolve = self._waitResolve;
+            self._waitResolve = null;
+            resolve({ value: chunk, done: false });
+          } else {
+            self._queue.push(chunk);
+          }
+        },
+        close() {
+          self._closed = true;
+          if (self._waitResolve) {
+            const resolve = self._waitResolve;
+            self._waitResolve = null;
+            resolve({ value: undefined, done: true });
+          }
+        },
+        error(e: unknown) {
+          self._errored = e;
+          if (self._waitResolve) {
+            const resolve = self._waitResolve;
+            self._waitResolve = null;
+            resolve(Promise.reject(e));
+          }
+        },
+        desiredSize: 1,
+      };
+
+      if (underlyingSource?.start) {
+        underlyingSource.start(controller);
+      }
+    }
+
+    getReader() {
+      const self = this;
+      return {
+        read() {
+          if (self._errored) return Promise.reject(self._errored);
+          if (self._queue.length > 0) {
+            return Promise.resolve({ value: self._queue.shift(), done: false });
+          }
+          if (self._closed) {
+            return Promise.resolve({ value: undefined, done: true });
+          }
+          // 等待 enqueue 或 close
+          return new Promise((resolve) => {
+            self._waitResolve = resolve;
+          });
+        },
+        releaseLock() {
+          // noop — 单一 reader 场景
+        },
+        cancel() {
+          self._closed = true;
+          self._queue.length = 0;
+          return Promise.resolve();
+        },
+      };
+    }
+
+    cancel() {
+      this._closed = true;
+      this._queue.length = 0;
+      return Promise.resolve();
+    }
+  };
+}
+
+/**
+ * 确保 ReadableStream 在当前环境中可用。
+ * 如果原生实现残缺（Tauri WebView），替换为 polyfill。
+ */
+function ensureReadableStream(): void {
+  if (!isReadableStreamWorking()) {
+    console.warn(
+      '[pdf-text-extractor] ReadableStream 不可用或残缺，注入最小化 polyfill',
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).ReadableStream = createMinimalReadableStream();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 公共 API
+// ---------------------------------------------------------------------------
 
 export const DEFAULT_SUMMARY_SOURCE_PAGES = 20;
 export const DEFAULT_SUMMARY_SOURCE_CHARS = 40_000;
@@ -38,15 +175,18 @@ export async function extractPdfText(
   filePath: string,
   options: ExtractPdfTextOptions = {},
 ): Promise<ExtractPdfTextResult> {
+  // ① 修补 ReadableStream（仅在残缺时注入 polyfill）
+  ensureReadableStream();
+
   const maxPages = options.maxPages ?? DEFAULT_SUMMARY_SOURCE_PAGES;
   const maxChars = options.maxChars ?? DEFAULT_SUMMARY_SOURCE_CHARS;
   let loadingTask: PDFDocumentLoadingTask | null = null;
-  // 创建独立的 fake worker（不传 port → 主线程执行，绕过 ReadableStream）
+  // ② 创建独立的 fake worker（不传 port → 主线程执行）
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pdfjs 类型定义将 name 错误标注为 null|undefined
   const fakeWorker = new PDFWorker({ name: 'rastro-text-extractor' } as any);
 
   try {
-    // 先 fetch 为 ArrayBuffer，绕过 pdfjs 内部 fetch/stream 路径
+    // ③ 先 fetch 为 ArrayBuffer，绕过 pdfjs 内部 fetch/stream 路径
     const pdfUrl = convertFileSrc(filePath);
     const response = await fetch(pdfUrl);
     const arrayBuffer = await response.arrayBuffer();
