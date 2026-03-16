@@ -18,17 +18,31 @@ export const SummaryPanel: React.FC = () => {
     summaryContent,
     isGenerating,
     hasGenerated,
+    isLoadingSaved,
     startGeneration,
     setActiveStreamId,
     failStream,
+    loadSavedSummary,
+    resetSummary,
   } = useSummaryStore();
   const contentRef = useRef<HTMLDivElement>(null);
   const documentId = currentDocument?.documentId;
+
+  // T2.4.5: 文档切换时自动加载已保存的总结
+  useEffect(() => {
+    if (documentId) {
+      loadSavedSummary(documentId);
+    } else {
+      resetSummary();
+    }
+  }, [documentId, loadSavedSummary, resetSummary]);
 
   // 生成总结
   const handleGenerate = useCallback(async () => {
     if (!currentDocument || isGenerating) return;
 
+    // T2.4.5: 确保 currentDocumentId 已设置（用于 finishStream 自动保存）
+    useSummaryStore.setState({ currentDocumentId: currentDocument.documentId });
     startGeneration();
 
     try {
@@ -107,7 +121,12 @@ export const SummaryPanel: React.FC = () => {
 
       {/* 内容区域 */}
       <div ref={contentRef} className="flex-1 overflow-y-auto">
-        {!hasGenerated ? (
+        {isLoadingSaved ? (
+          // T2.4.5: 加载已保存总结的加载态
+          <div className="flex items-center justify-center h-full">
+            <Loader2 size={20} className="animate-spin text-[var(--color-text-tertiary)]" />
+          </div>
+        ) : !hasGenerated ? (
           // 未生成 — 引导状态
           <div className="flex flex-col items-center justify-center h-full p-6 text-center">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500/10 to-amber-500/10 flex items-center justify-center mb-3">

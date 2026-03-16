@@ -1,12 +1,18 @@
 import { create } from 'zustand';
 import type { AiStreamChunkPayload } from '../shared/types';
-import { ipcEvents } from '../lib/ipc-client';
+import { ipcEvents, ipcClient } from '../lib/ipc-client';
 
 interface SummaryState {
   summaryContent: string;
   isGenerating: boolean;
   activeStreamId: string | null;
   hasGenerated: boolean;
+  /** T2.4.5: 已保存的总结 ID（来自持久化） */
+  savedSummaryId: string | null;
+  /** T2.4.5: 当前总结关联的文档 ID */
+  currentDocumentId: string | null;
+  /** T2.4.5: 是否正在加载已保存的总结 */
+  isLoadingSaved: boolean;
   startGeneration: () => void;
   setActiveStreamId: (streamId: string | null) => void;
   appendStreamChunk: (
@@ -17,6 +23,10 @@ interface SummaryState {
   finishStream: (streamId: string) => void;
   failStream: (streamId: string | null, errorMessage: string) => void;
   resetSummary: () => void;
+  /** T2.4.5: 加载已保存的总结 */
+  loadSavedSummary: (documentId: string) => Promise<void>;
+  /** T2.4.5: 设置已保存的总结内容 */
+  setSavedContent: (content: string, summaryId: string, documentId: string) => void;
 }
 
 const buildErrorContent = (existingContent: string, errorMessage: string) => (
@@ -25,17 +35,21 @@ const buildErrorContent = (existingContent: string, errorMessage: string) => (
     : `⚠️ ${errorMessage}`
 );
 
-export const useSummaryStore = create<SummaryState>((set) => ({
+export const useSummaryStore = create<SummaryState>((set, get) => ({
   summaryContent: '',
   isGenerating: false,
   activeStreamId: null,
   hasGenerated: false,
+  savedSummaryId: null,
+  currentDocumentId: null,
+  isLoadingSaved: false,
 
   startGeneration: () => set({
     summaryContent: '',
     isGenerating: true,
     activeStreamId: null,
     hasGenerated: true,
+    savedSummaryId: null,
   }),
 
   setActiveStreamId: (streamId) => set({ activeStreamId: streamId }),
@@ -56,16 +70,29 @@ export const useSummaryStore = create<SummaryState>((set) => ({
     });
   },
 
-  finishStream: (streamId) => set((state) => {
-    if (state.activeStreamId !== streamId) {
-      return state;
-    }
+  finishStream: (streamId) => {
+    const state = get();
+    if (state.activeStreamId !== streamId) return;
 
-    return {
+    set({
       isGenerating: false,
       activeStreamId: null,
-    };
-  }),
+    });
+
+    // T2.4.5: 生成完成后自动持久化保存
+    const { summaryContent, currentDocumentId } = get();
+    if (currentDocumentId && summaryContent.trim()) {
+      ipcClient
+        .saveDocumentSummary(currentDocumentId, summaryContent, 'ai', 'default')
+        .then((saved) => {
+          set({ savedSummaryId: saved.summaryId });
+          console.log('[Summary] 自动保存成功:', saved.summaryId);
+        })
+        .catch((err: unknown) => {
+          console.error('[Summary] 自动保存失败:', err);
+        });
+    }
+  },
 
   failStream: (streamId, errorMessage) => set((state) => {
     if (streamId && state.activeStreamId !== streamId) {
@@ -85,6 +112,39 @@ export const useSummaryStore = create<SummaryState>((set) => ({
     isGenerating: false,
     activeStreamId: null,
     hasGenerated: false,
+    savedSummaryId: null,
+    currentDocumentId: null,
+    isLoadingSaved: false,
+  }),
+
+  // T2.4.5: 加载已保存的总结
+  loadSavedSummary: async (documentId: string) => {
+    set({ isLoadingSaved: true, currentDocumentId: documentId });
+    try {
+      const saved = await ipcClient.getDocumentSummary(documentId);
+      if (saved && saved.contentMd.trim()) {
+        set({
+          summaryContent: saved.contentMd,
+          hasGenerated: true,
+          savedSummaryId: saved.summaryId,
+          isLoadingSaved: false,
+        });
+      } else {
+        set({ isLoadingSaved: false });
+      }
+    } catch (err) {
+      console.error('[Summary] 加载已保存总结失败:', err);
+      set({ isLoadingSaved: false });
+    }
+  },
+
+  // T2.4.5: 设置已保存的总结内容
+  setSavedContent: (content: string, summaryId: string, documentId: string) => set({
+    summaryContent: content,
+    hasGenerated: true,
+    savedSummaryId: summaryId,
+    currentDocumentId: documentId,
+    isLoadingSaved: false,
   }),
 }));
 

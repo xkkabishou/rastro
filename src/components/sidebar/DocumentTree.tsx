@@ -5,6 +5,7 @@ import type { DocumentSnapshot, DocumentArtifactDto } from '../../shared/types';
 import { useDocumentStore } from '../../stores/useDocumentStore';
 import { DocumentNode } from './DocumentNode';
 import { ArtifactNode } from './ArtifactNode';
+import { DocumentContextMenu, type ContextMenuAction } from './DocumentContextMenu';
 
 // ---------------------------------------------------------------------------
 // FlatNode — ADR-003 扁平化节点类型
@@ -53,6 +54,8 @@ export interface DocumentTreeProps {
   onDocumentClick?: (doc: DocumentSnapshot) => void;
   /** 点击产物回调 */
   onArtifactClick?: (artifact: DocumentArtifactDto, doc: DocumentSnapshot) => void;
+  /** 右键菜单操作回调 (T2.4.1) */
+  onContextMenuAction?: (action: ContextMenuAction, node: FlatNode, doc: DocumentSnapshot) => void;
   /** 空状态消息 */
   emptyMessage?: string;
 }
@@ -73,6 +76,7 @@ export const DocumentTree: React.FC<DocumentTreeProps> = ({
   activeDocumentId,
   onDocumentClick,
   onArtifactClick,
+  onContextMenuAction,
   emptyMessage = '暂无文档',
 }) => {
   const parentRef = useRef<HTMLDivElement>(null);
@@ -143,6 +147,14 @@ export const DocumentTree: React.FC<DocumentTreeProps> = ({
     [documents, onArtifactClick],
   );
 
+  // 右键菜单操作回调 (T2.4.1)
+  const handleContextMenuAction = useCallback(
+    (action: ContextMenuAction, node: FlatNode, doc: DocumentSnapshot) => {
+      onContextMenuAction?.(action, node, doc);
+    },
+    [onContextMenuAction],
+  );
+
   // 空状态
   if (documents.length === 0) {
     return (
@@ -183,21 +195,33 @@ export const DocumentTree: React.FC<DocumentTreeProps> = ({
               }}
             >
               {node.type === 'document' ? (
-                <DocumentNode
+                <DocumentContextMenu
                   node={node}
-                  isActive={activeDocumentId === node.doc.documentId}
-                  onToggle={handleToggle}
-                  onClick={handleDocClick}
-                  isTranslating={
-                    translationJob?.documentId === node.doc.documentId &&
-                    (translationJob?.status === 'running' || translationJob?.status === 'queued')
-                  }
-                />
+                  doc={node.doc}
+                  onAction={handleContextMenuAction}
+                >
+                  <DocumentNode
+                    node={node}
+                    isActive={activeDocumentId === node.doc.documentId}
+                    onToggle={handleToggle}
+                    onClick={handleDocClick}
+                    isTranslating={
+                      translationJob?.documentId === node.doc.documentId &&
+                      (translationJob?.status === 'running' || translationJob?.status === 'queued')
+                    }
+                  />
+                </DocumentContextMenu>
               ) : (
-                <ArtifactNode
+                <DocumentContextMenu
                   node={node}
-                  onClick={handleArtifactClick}
-                />
+                  doc={documents.find(d => d.documentId === node.parentDocId) ?? documents[0]}
+                  onAction={handleContextMenuAction}
+                >
+                  <ArtifactNode
+                    node={node}
+                    onClick={handleArtifactClick}
+                  />
+                </DocumentContextMenu>
               )}
             </div>
           );

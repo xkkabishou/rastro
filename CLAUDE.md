@@ -1,78 +1,516 @@
-# Rastro - 科研文献阅读助手
+# Rastro — 科研文献阅读助手
 
-> Tauri v2 + React 19 桌面应用，面向科研人员提供 PDF 阅读、AI 翻译、AI 问答、Zotero 集成等功能。
+> Tauri v2 + React 19 桌面应用，面向科研人员提供 PDF 阅读、AI 翻译、AI 问答、NotebookLM 集成、Zotero 集成。
+> 产品名 "Rastro"（西班牙语 "踪迹"），标识符 `com.rastro.app`。
 
-## 项目愿景
+---
 
-为考古学及其他学科的研一新生和科研人员提供一站式英文文献翻译与阅读工具。核心功能包括：PDF 查看与注释、基于多 AI 提供商（OpenAI/Claude/Gemini）的论文翻译（通过 pdf2zh 引擎）、AI 问答与总结、Zotero 文献管理集成。产品名"Rastro"（西班牙语"踪迹"），标识符 `com.rastro.app`。
+## 项目架构
 
-## 架构总览
-
+```text
+[React 19 前端] <--Tauri IPC (40个Command + 6个Event)--> [Rust 后端]
+                                                             |
+                                                             +---> SQLite (app.db)
+                                                             +---> macOS Keychain (API Key)
+                                                             +---> HTTP --> [Python 翻译引擎 :8890]
+                                                             |                 +-> antigravity_translate
+                                                             |                 +-> pdf2zh (外部可执行文件)
+                                                             +---> HTTP --> [NotebookLM 引擎 :8891]
 ```
-[React 19 前端] <--Tauri IPC (33个Command + 6个Event)--> [Rust 后端]
-                                                            |
-                                                            +--> SQLite (app.db)
-                                                            +--> macOS Keychain (API Key)
-                                                            +--> HTTP --> [Python 翻译引擎 :8890]
-                                                                              |
-                                                                              +--> antigravity_translate
-                                                                              +--> pdf2zh (外部可执行文件)
-```
 
-- **前端**：React 19 + Vite 7 + TypeScript + Tailwind CSS 4 + Radix UI + Zustand 状态管理
-- **后端**：Rust (Tauri 2) + rusqlite + reqwest + tokio + security-framework (macOS Keychain)
-- **翻译引擎**：Python HTTP 服务 (`rastro_translation_engine`)，桥接 `antigravity_translate` 核心与 `pdf2zh` 工具
-- **数据库**：SQLite，9 张表 + 8 个索引，存储文档、聊天会话/消息、翻译任务/产物、AI 总结、NotebookLM 产物、使用统计、Provider 配置
+### 数据流
 
-## 模块结构图
+- **前端 → 后端**: Tauri IPC `invoke()` / `listen()`, JSON 序列化
+- **后端 → 前端**: `AppHandle::emit()` 事件推送（翻译进度、AI 流式 token 等）
+- **后端 → 翻译引擎**: HTTP REST API（reqwest → FastAPI）
+- **后端 → NotebookLM 引擎**: HTTP REST API
+- **后端 → 数据库**: rusqlite 直连 SQLite 文件（`app.db`）
+- **后端 → Keychain**: `security-framework` macOS 原生 Keychain 读写
+
+---
+
+## 技术栈
+
+### 前端
+
+| 依赖 | 版本 | 用途 |
+|------|------|------|
+| React | ^19.2.4 | UI 框架 |
+| TypeScript | ^5.9.3 | 类型系统 |
+| Vite | ^7.3.1 | 构建工具，dev server :1420 |
+| Tailwind CSS | ^4.2.1 | 原子化 CSS（v4 `@theme` + `@layer`） |
+| Zustand | ^5.0.11 | 全局状态管理 |
+| @tanstack/react-virtual | ^3.13.21 | 虚拟化长列表 |
+| @radix-ui/themes | ^3.3.0 | 无障碍 UI 原语 |
+| framer-motion | ^12.35.2 | 动画 |
+| lucide-react | ^0.577.0 | 图标库 |
+| pdfjs-dist | ^5.5.207 | PDF 渲染 |
+| react-markdown | ^10.1.0 | Markdown 渲染（配合 remark-gfm + rehype-sanitize） |
+| @tauri-apps/api | ^2.10.1 | Tauri IPC 前端 SDK |
+| @tauri-apps/plugin-dialog | ^2.6.0 | 原生文件对话框 |
+
+### 后端 (Rust)
+
+| 依赖 | 版本 | 用途 |
+|------|------|------|
+| tauri | 2 | 应用框架（features: `protocol-asset`, `test`） |
+| rusqlite | 0.37 | SQLite 持久层（bundled 编译） |
+| serde / serde_json | 1 | JSON 序列化 |
+| reqwest | 0.12 | HTTP 客户端（rustls-tls, json, stream） |
+| tokio | 1 | 异步运行时 |
+| chrono | 0.4 | 时间处理 |
+| uuid | 1 | UUID v4 生成 |
+| parking_lot | 0.12 | 高性能互斥锁 |
+| sha2 | 0.10 | 文件哈希（翻译缓存 key） |
+| security-framework | 3 | macOS Keychain（cfg target_os = macos） |
+| tauri-plugin-dialog | 2.6.0 | 原生对话框插件 |
+| **[dev]** axum | 0.8 | 测试用 mock HTTP 服务器 |
+
+- Rust edition: **2021**
+- Cargo package name: `rastro`, version: `0.1.0`
+
+### Python 引擎
+
+| 依赖 | 版本 | 模块 |
+|------|------|------|
+| PyMuPDF | ≥1.24.0 | `antigravity_translate` PDF 处理 |
+| notebooklm-py | 0.3.4 | `rastro_notebooklm_engine` API 客户端 |
+| browser-cookie3 | 0.20.1 | NotebookLM 认证 cookie 读取 |
+| pdf2zh | 外部可执行文件 | PDF 数学公式翻译 |
+
+- Python 要求: **3.12+**
+
+---
+
+## 项目模块划分
 
 ```mermaid
 graph TD
-    A["(根) Rastro"] --> B["src - 前端 React"];
-    A --> C["src-tauri - Rust 后端"];
-    A --> D["rastro_translation_engine - Python 翻译服务"];
-    A --> E["antigravity_translate - Python 翻译核心"];
+    A["Rastro"] --> B["src/ — 前端 React"];
+    A --> C["src-tauri/ — Rust 后端"];
+    A --> D["rastro_translation_engine/ — 翻译服务"];
+    A --> E["antigravity_translate/ — 翻译核心"];
+    A --> F["rastro_notebooklm_engine/ — NotebookLM 服务"];
 
-    B --> B1["components"];
-    B --> B2["stores"];
-    B --> B3["lib"];
-    B --> B4["shared"];
-    B --> B5["layouts"];
+    B --> B1["components/ — UI 组件"];
+    B --> B2["stores/ — Zustand 状态"];
+    B --> B3["lib/ — 工具库"];
+    B --> B4["shared/ — 跨层类型"];
+    B --> B5["layouts/ — 布局"];
+    B --> B6["styles/ — 设计系统"];
 
-    C --> C1["ipc - IPC Command 层"];
-    C --> C2["storage - SQLite 持久层"];
-    C --> C3["ai_integration - AI 集成"];
-    C --> C4["translation_manager - 翻译管理"];
-    C --> C5["zotero_connector - Zotero 集成"];
-    C --> C6["keychain - macOS Keychain"];
-    C --> C7["artifact_aggregator - 产物聚合 (v2)"];
-
-    click B "./src/CLAUDE.md" "查看前端模块文档"
-    click C "./src-tauri/CLAUDE.md" "查看 Rust 后端模块文档"
-    click D "./rastro_translation_engine/CLAUDE.md" "查看翻译服务模块文档"
-    click E "./antigravity_translate/CLAUDE.md" "查看翻译核心模块文档"
+    C --> C1["ipc/ — IPC Command 层（6 子模块）"];
+    C --> C2["storage/ — SQLite 持久层（10 子模块）"];
+    C --> C3["ai_integration/ — AI Provider 集成"];
+    C --> C4["translation_manager/ — 翻译任务管理"];
+    C --> C5["notebooklm_manager/ — NotebookLM 管理"];
+    C --> C6["zotero_connector/ — Zotero 集成"];
+    C --> C7["keychain/ — macOS Keychain"];
+    C --> C8["artifact_aggregator — 产物聚合（v2）"];
 ```
 
-## 模块索引
+### 模块索引
 
-| 模块路径 | 语言 | 职责 | 入口文件 | 测试 |
-|---------|------|------|---------|------|
-| `src/` | TypeScript/React | 前端 UI：PDF 查看器、侧边栏、聊天面板、设置面板 | `src/main.tsx` | 无 |
-| `src-tauri/` | Rust | Tauri 后端：33 个 IPC Command、SQLite 存储、AI 集成、翻译管理、产物聚合 | `src-tauri/src/main.rs` | 有 (内联 `#[cfg(test)]`，70+ tests) |
-| `rastro_translation_engine/` | Python | 翻译引擎 HTTP 服务，提供 REST API 供 Rust 端调用 | `rastro_translation_engine/__main__.py` | 无 |
-| `antigravity_translate/` | Python | PDF 翻译核心：旋转页预处理、参考文献/致谢页结构化检测、调用 pdf2zh | `antigravity_translate/core.py` | 无 |
+| 模块路径 | 语言 | 职责 | 入口 | 测试 |
+|---------|------|------|------|------|
+| `src/` | TS/React | 前端 UI: PDF 查看器、侧栏、聊天、设置、NotebookLM | `src/main.tsx` | 无 |
+| `src-tauri/` | Rust | 后端: 40 IPC Command、SQLite、AI、翻译、Zotero | `src-tauri/src/main.rs` | 有（70+ tests） |
+| `rastro_translation_engine/` | Python | 翻译引擎 HTTP 服务 | `__main__.py` | 无 |
+| `antigravity_translate/` | Python | PDF 翻译核心逻辑 | `core.py` | 无 |
+| `rastro_notebooklm_engine/` | Python | NotebookLM 本地代理 HTTP 服务 | `__main__.py` | 无 |
 
-## 运行与开发
+---
+
+## 文件与文件夹布局
+
+```text
+antigravity-paper/
+├── CLAUDE.md                          # 项目指导文件（本文件）
+├── package.json                       # Node 依赖 + scripts
+├── tsconfig.json                      # TypeScript 配置（strict, ES2020）
+├── vite.config.ts                     # Vite 开发服务器配置（port 1420）
+├── tailwind.config.js                 # Tailwind CSS 配置
+├── postcss.config.js                  # PostCSS 配置
+├── index.html                         # SPA 入口
+├── requirements.txt                   # Python 依赖
+│
+├── src/                               # ===== 前端 =====
+│   ├── main.tsx                       # React 挂载入口
+│   ├── App.tsx                        # 根组件
+│   ├── vite-env.d.ts                  # Vite 类型声明
+│   ├── shared/
+│   │   └── types.ts                   # IPC DTO 类型定义（与 Rust 一一对应）
+│   ├── lib/
+│   │   ├── ipc-client.ts              # IPC 客户端封装
+│   │   ├── notebooklm-client.ts       # NotebookLM 客户端
+│   │   ├── notebooklm-automation.ts   # NotebookLM 自动化逻辑
+│   │   └── pdf-text-extractor.ts      # PDF 文本提取
+│   ├── stores/
+│   │   ├── useDocumentStore.ts        # 文档状态 + PDF + 翻译
+│   │   ├── useChatStore.ts            # 聊天会话状态
+│   │   ├── useSummaryStore.ts         # AI 总结状态
+│   │   └── useNotebookLMStore.ts      # NotebookLM 状态
+│   ├── layouts/
+│   │   └── AppLayout.tsx              # 三栏布局（sidebar + main + right panel）
+│   ├── styles/
+│   │   └── globals.css                # 设计系统（Shiba Warm Palette, 461 行）
+│   ├── components/
+│   │   ├── sidebar/                   # 侧栏
+│   │   │   ├── Sidebar.tsx            # 主容器（近期文档 + Zotero 切换）
+│   │   │   ├── ZoteroList.tsx         # Zotero 文献列表（虚拟化）
+│   │   │   └── DocumentTree.tsx       # v2: 树形文献列表（开发中）
+│   │   ├── pdf-viewer/                # PDF 查看器
+│   │   │   ├── PdfViewer.tsx          # PDF 渲染（pdfjs-dist）
+│   │   │   ├── PdfToolbar.tsx         # 工具栏（缩放、翻译按钮）
+│   │   │   └── TranslationSwitch.tsx  # 原文/译文切换
+│   │   ├── chat-panel/                # AI 聊天
+│   │   │   ├── ChatPanel.tsx          # 聊天面板
+│   │   │   ├── ChatInput.tsx          # 输入框
+│   │   │   └── ChatMessage.tsx        # 消息气泡
+│   │   ├── summary/
+│   │   │   └── SummaryPanel.tsx       # AI 总结面板
+│   │   ├── notebooklm/
+│   │   │   └── NotebookLMView.tsx     # NotebookLM 视图
+│   │   ├── settings/                  # 设置
+│   │   │   ├── SettingsPanel.tsx       # 设置面板
+│   │   │   ├── ProviderCard.tsx        # Provider 配置卡片
+│   │   │   └── ModelSettings.tsx       # 模型选择
+│   │   ├── setup/
+│   │   │   └── SetupWizard.tsx        # 首次启动向导
+│   │   ├── panel/
+│   │   │   └── RightPanel.tsx         # 右侧面板容器
+│   │   └── ui/                        # 基础 UI 原语
+│   │       ├── Button.tsx
+│   │       ├── Card.tsx
+│   │       ├── Dialog.tsx
+│   │       └── Input.tsx
+│   └── assets/shiba/                  # 柴犬主题图片资源
+│
+├── src-tauri/                         # ===== Rust 后端 =====
+│   ├── Cargo.toml
+│   ├── tauri.conf.json                # Tauri 应用配置
+│   ├── capabilities/                  # Tauri v2 权限声明
+│   ├── migrations/
+│   │   ├── 001_init.sql               # v1 Schema（7 表）
+│   │   └── v2_document_workspace.sql  # v2 Schema（+2 表 + ALTER）
+│   └── src/
+│       ├── main.rs                    # 入口：注册 40 个 IPC Command
+│       ├── app_state.rs               # AppState 单例（Storage + AI + Translation + Keychain）
+│       ├── errors.rs                  # 统一错误模型（31 AppErrorCode + AppError）
+│       ├── models.rs                  # 共享数据模型
+│       ├── artifact_aggregator.rs     # v2: 跨表产物聚合查询
+│       ├── ipc/                       # IPC Command 层
+│       │   ├── mod.rs
+│       │   ├── document.rs            # 文档管理（8 Commands）
+│       │   ├── translation.rs         # 翻译任务（8 Commands）
+│       │   ├── ai.rs                  # AI 问答/总结（8 Commands）
+│       │   ├── settings.rs            # Provider 配置 + 统计（8 Commands）
+│       │   ├── zotero.rs              # Zotero 集成（3 Commands）
+│       │   └── notebooklm.rs          # NotebookLM（11 Commands）
+│       ├── storage/                   # SQLite 持久层
+│       │   ├── mod.rs                 # Storage 包装（Arc<Mutex<Connection>>）
+│       │   ├── migration.rs           # Migration 框架
+│       │   ├── migrations.rs          # Migration 注册表
+│       │   ├── documents.rs           # documents 表（CRUD + 过滤）
+│       │   ├── document_summaries.rs  # v2: AI 总结表（upsert/get/delete）
+│       │   ├── chat_sessions.rs       # 聊天会话表
+│       │   ├── chat_messages.rs       # 聊天消息表
+│       │   ├── translation_jobs.rs    # 翻译任务表
+│       │   ├── translation_artifacts.rs # 翻译产物表
+│       │   ├── provider_settings.rs   # Provider 配置表
+│       │   └── usage_events.rs        # 使用统计表
+│       ├── ai_integration/            # AI Provider 集成
+│       │   ├── mod.rs
+│       │   ├── chat_service.rs        # 流式聊天服务
+│       │   ├── provider_registry.rs   # Provider 注册与切换
+│       │   └── usage_meter.rs         # Token 用量统计
+│       ├── translation_manager/       # 翻译管理
+│       │   ├── mod.rs
+│       │   ├── engine_supervisor.rs   # 引擎进程监控
+│       │   ├── http_client.rs         # 翻译引擎 HTTP 客户端
+│       │   ├── job_registry.rs        # 翻译任务注册表
+│       │   ├── artifact_index.rs      # 翻译产物索引
+│       │   └── cache_eviction.rs      # 缓存淘汰策略
+│       ├── notebooklm_manager/        # NotebookLM 引擎管理
+│       │   ├── mod.rs
+│       │   ├── engine_supervisor.rs   # 引擎进程监控
+│       │   └── http_client.rs         # NotebookLM 引擎 HTTP 客户端
+│       ├── zotero_connector/
+│       │   └── mod.rs                 # Zotero SQLite 只读连接
+│       └── keychain/
+│           └── mod.rs                 # macOS Keychain CRUD
+│
+├── rastro_translation_engine/         # ===== Python 翻译服务 =====
+│   ├── __init__.py
+│   ├── __main__.py                    # 入口
+│   ├── server.py                      # FastAPI HTTP 服务
+│   └── worker.py                      # 翻译工作线程
+│
+├── antigravity_translate/             # ===== Python 翻译核心 =====
+│   ├── __init__.py
+│   ├── __main__.py                    # CLI 入口
+│   ├── core.py                        # 翻译核心逻辑
+│   ├── config.py                      # 配置
+│   └── prompts.py                     # AI 翻译 Prompt 模板
+│
+├── rastro_notebooklm_engine/          # ===== Python NotebookLM 服务 =====
+│   ├── __init__.py
+│   ├── __main__.py                    # 入口（未使用，由 server.py 入口）
+│   ├── server.py                      # HTTP 服务
+│   ├── service.py                     # 核心业务逻辑
+│   └── models.py                      # 数据模型
+│
+├── genesis/                           # ===== 设计文档 =====
+│   ├── v1/                            # v1 初始设计
+│   └── v2/                            # v2 文档管理迭代（当前活跃）
+│
+├── scripts/                           # 构建脚本
+│   └── generate_app_icons.py          # 图标生成
+│
+└── .agent/                            # AI Agent 配置
+    ├── workflows/                     # Agent 工作流定义
+    └── skills/                        # Agent 技能定义
+```
+
+---
+
+## 项目业务模块
+
+### 1. PDF 阅读器
+
+- `PdfViewer.tsx` + `PdfToolbar.tsx` 基于 pdfjs-dist 渲染 PDF
+- 支持缩放（25%-400%）、页码跳转、全屏
+- 本地文件通过 Tauri `protocol-asset` 协议加载（`convertFileSrc`）
+
+### 2. AI 翻译
+
+- 翻译流程: 前端 `requestTranslation` → Rust `TranslationManager` → HTTP → Python `rastro_translation_engine` → `pdf2zh` + LLM API
+- 缓存策略: SHA256(文件内容) + Provider + Model + 语言参数 → `cache_key`
+- 翻译产物: 翻译后的 PDF 文件存储在 `data_dir/translation_cache/`
+- 进度推送: Rust 通过 `AppHandle::emit("translation-progress", ...)` → 前端 `listen()`
+
+### 3. AI 问答
+
+- 基于选中文本或全文的上下文问答
+- 流式输出: Rust SSE 桥接 → 前端 `listen("ai-stream-token")` 逐 token 渲染
+- 支持 OpenAI / Claude / Gemini 多 Provider 切换
+
+### 4. AI 总结
+
+- 一键生成文献总结（Markdown 格式）
+- v2: 总结持久化到 `document_summaries` 表，可重新生成
+
+### 5. NotebookLM 集成
+
+- 本地代理引擎 (Python) 自动上传 PDF 并生成产物（思维导图、测验等）
+- Rust `NotebookLMManager` 管理引擎生命周期
+
+### 6. Zotero 集成
+
+- 只读连接 Zotero SQLite 数据库
+- 虚拟化列表展示 Zotero 文献，支持搜索、分页
+
+### 7. 文档工作空间 (v2)
+
+- 文献 → 产物的树形结构管理（翻译 PDF / AI 总结 / NotebookLM 产物）
+- `artifact_aggregator.rs` 跨表聚合查询
+- 收藏、软删除、搜索过滤
+
+---
+
+## 代码风格与规范
+
+### 命名约定
+
+#### Rust
+
+| 元素 | 风格 | 示例 |
+|------|------|------|
+| 模块/文件 | `snake_case` | `translation_manager`, `cache_eviction.rs` |
+| 结构体/枚举 | `PascalCase` | `AppState`, `AppErrorCode`, `TranslationManager` |
+| 函数/方法 | `snake_case` | `list_artifacts_for_document()`, `toggle_favorite()` |
+| 常量 | `SCREAMING_SNAKE_CASE` | `SEARCH_DEBOUNCE_MS`（前端）、错误码序列化 |
+| IPC Command | `snake_case` | `#[tauri::command] list_recent_documents` |
+| DTO 字段 | `snake_case`（Rust），`camelCase`（JSON 序列化） | `#[serde(rename_all = "camelCase")]` |
+
+#### TypeScript
+
+| 元素 | 风格 | 示例 |
+|------|------|------|
+| 组件 | `PascalCase` 函数组件 + named export | `export const Sidebar = () => {}` |
+| 文件名 | `PascalCase.tsx`（组件）/ `camelCase.ts`（工具） | `Sidebar.tsx`, `ipc-client.ts` |
+| 类型/接口 | `PascalCase` + `Dto` 后缀 | `DocumentSnapshot`, `AISummaryDto`, `TranslationJobDto` |
+| Hook | `use` 前缀 | `useDocumentStore`, `useChatStore` |
+| 函数 | `camelCase` | `handleOpenLocalPdf`, `loadRecentDocuments` |
+| 常量 | `SCREAMING_SNAKE_CASE` 或 `PascalCase` | `PAGE_SIZE`, `SEARCH_DEBOUNCE_MS` |
+| IPC 命令名 | `snake_case` 字符串 | `"list_recent_documents"`, `"request_translation"` |
+
+#### Python
+
+| 元素 | 风格 | 示例 |
+|------|------|------|
+| 模块/文件 | `snake_case` | `core.py`, `server.py` |
+| 函数 | `snake_case` | `detect_reference_pages()` |
+| 类 | `PascalCase` | `TranslationWorker` |
+| 配置变量 | 模块级 `SCREAMING_SNAKE_CASE` | `AG_CLAUDE_BASE_URL` |
+
+### 代码风格
+
+#### Rust
+
+- **注释语言**: 中文
+- `#![allow(dead_code)]` 用于开发阶段模块顶部
+- 每个模块文件开头有单行注释说明用途: `// 全局应用状态`
+- 文档注释使用 `///` + 中文描述
+- 模块组织: 每个 `mod.rs` 顶部注释说明职责，`pub mod` 声明子模块
+- 使用 `parking_lot::Mutex` 替代 `std::sync::Mutex`
+
+#### TypeScript
+
+- **注释语言**: 中文
+- 严格模式: `"strict": true`
+- Target: ES2020, Module: ES2020, moduleResolution: bundler
+- JSX: `react-jsx`（无需 `import React`，但实际代码中仍使用显式 import）
+- 组件文件结构: 区块注释分隔 → 类型 → 常量 → 主组件 → 子组件
+  ```text
+  // ---------------------------------------------------------------------------
+  // 类型
+  // ---------------------------------------------------------------------------
+  ```
+
+#### CSS
+
+- 使用 Tailwind CSS v4 `@theme` 注册 CSS 变量为 utility token
+- 颜色系统: **Shiba Warm Palette**（琥珀金主色 `#D4924A`、暖象牙背景 `#FFFBF5`）
+- 支持 Light/Dark 两套配色（`@media (prefers-color-scheme: dark)`）
+- 组件类名通过 CSS 变量引用: `bg-[var(--color-bg)]`、`text-[var(--color-text)]`
+- 字体: `-apple-system` 系统字体栈 + `PingFang SC` 中文
+
+### Import 规则
+
+#### Rust
+
+```rust
+// 1. 标准库
+use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
+// 2. 第三方 crate
+use parking_lot::Mutex;
+use serde::Serialize;
+// 3. 本 crate 模块（使用 crate:: 前缀）
+use crate::{errors::AppError, storage::Storage};
+```
+
+#### TypeScript
+
+```typescript
+// 1. React
+import React, { useCallback, useEffect, useState } from 'react';
+// 2. 第三方库
+import { motion, AnimatePresence } from 'framer-motion';
+import { Settings, FileText } from 'lucide-react';
+// 3. Tauri API
+import { invoke } from '@tauri-apps/api/core';
+// 4. 本项目模块（相对路径）
+import { useDocumentStore } from '../../stores/useDocumentStore';
+import { ipcClient } from '../../lib/ipc-client';
+import type { DocumentSnapshot } from '../../shared/types';
+```
+
+- **Type-only import**: 使用 `import type { ... }` 语法
+
+### 状态管理
+
+- **前端**: Zustand store（4 个独立 store），通过 selector 订阅最小状态
+- **后端**: `AppState` 单例，`tauri::State<AppState>` 注入到 IPC Command
+- 全局状态字段使用 `Arc<Mutex<T>>` 保护并发访问
+
+### 异常处理
+
+#### Rust 统一错误模型
+
+```text
+AppErrorCode (31 个错误码, SCREAMING_SNAKE_CASE 序列化)
+  └── AppError { code, message, retryable, details? }
+        ├── From<rusqlite::Error>  → InternalError
+        ├── From<std::io::Error>  → InternalError
+        └── From<reqwest::Error>  → ProviderConnectionFailed (retryable: true)
+```
+
+- **所有 IPC Command 返回** `Result<T, AppError>`
+- 错误码与 TypeScript `AppErrorCode` 枚举一一对应，有单测保障
+- `AppError::with_detail()` 附加诊断信息（如 `cooldownUntil`, `retryAfterSeconds`）
+
+#### TypeScript 错误处理
+
+- IPC 调用使用 `try/catch`，`console.error('中文描述:', err)` 记录
+- 无全局错误边界（ErrorBoundary）
+
+### 日志规范
+
+#### Rust
+
+- 使用 `eprintln!()` 输出到 stderr（无结构化日志框架）
+- 关键路径: `eprintln!("Rastro 启动失败: {}", e)`
+
+#### TypeScript
+
+- `console.error('中文错误描述:', err)` — 所有 catch 块
+- `console.warn()` — 非致命警告
+- 无日志框架、无日志级别系统
+
+### 参数校验
+
+- **Rust**: 依赖类型系统 + serde 反序列化校验；无运行时 validator
+- **TypeScript**: 依赖 TypeScript 类型检查；无运行时 schema 校验（如 zod）
+- **IPC 契约**: Rust `#[serde(rename_all = "camelCase")]` 确保字段名与前端 TypeScript 接口对齐
+
+---
+
+## 测试与质量
+
+### 单元测试 (Rust)
+
+- 位置: 各模块内 `#[cfg(test)] mod tests`（内联测试）
+- 数据库测试: 使用 `Storage::new_memory()` in-memory SQLite
+- 当前: **70+ tests** 覆盖以下模块:
+
+| 模块 | 测试内容 |
+|------|---------|
+| `errors` | 31 错误码序列化一致性、AppError JSON 结构 |
+| `storage/documents` | CRUD + 过滤查询 + 收藏/软删除 |
+| `storage/document_summaries` | upsert / get / delete + UNIQUE 约束 |
+| `storage/mod` | 全表回归测试 |
+| `artifact_aggregator` | 4 源聚合、空文档、计数 |
+| `ipc/document` | IPC 错误序列化 + 产物列表 + 过滤 |
+| `ipc/translation` | 翻译请求错误路径 + 缓存删除 |
+| `ipc/ai` | 总结 CRUD IPC |
+| `ipc/zotero` | Zotero 未安装场景 |
+| `zotero_connector` | Zotero DB 读写集成 |
+| `translation_manager` | 输出模式标准化、job 注册表、缓存淘汰、引擎监控 |
+| `keychain` | Key 脱敏函数 |
+
+### 集成测试
+
+- **dev-dependency**: `axum 0.8` 用于 mock HTTP 服务器
+- Tauri `test` feature 启用 IPC Command 测试无需 GUI
+
+### 前端测试
+
+- **当前无测试**（`package.json` 的 `test` 脚本为 placeholder）
+
+---
+
+## 构建、测试与运行
 
 ### 前提条件
 
-- Node.js (推荐 18+)
+- Node.js 18+
 - Rust toolchain (edition 2021)
-- Python 3.12+ (翻译引擎)
-- macOS (Keychain 依赖 `security-framework`)
+- Python 3.12+
+- macOS（Keychain 依赖 `security-framework`）
 - `pdf2zh` 可执行文件（翻译功能依赖）
 
-### 开发启动
+### 常用命令
 
 ```bash
 # 前端 + Rust 后端联合启动
@@ -83,116 +521,121 @@ npm run dev
 
 # 翻译引擎（独立运行）
 python -m rastro_translation_engine --host 127.0.0.1 --port 8890
-```
 
-### 构建
+# Rust 测试
+cd src-tauri && cargo test
 
-```bash
-npm run tauri build    # 生成 .dmg (macOS)
-npm run build          # 仅前端构建
+# Rust 编译检查
+cd src-tauri && cargo check
+
+# 生产构建（macOS .dmg）
+npm run tauri build
+
+# 仅前端构建
+npm run build
+
+# 图标生成
+npm run icons:generate
 ```
 
 ### 环境变量
 
 | 变量 | 用途 | 默认值 |
-|------|------|-------|
+|------|------|--------|
 | `RASTRO_ENGINE_HOST` | 翻译引擎地址 | `127.0.0.1` |
 | `RASTRO_ENGINE_PORT` | 翻译引擎端口 | `8890` |
 | `RASTRO_ZOTERO_DB_PATH` | Zotero 数据库路径 | 自动检测 |
 | `RASTRO_ZOTERO_PROFILE_DIR` | Zotero profile 目录 | 自动检测 |
-| `AG_PDF2ZH_EXE` | pdf2zh 可执行文件路径 | Windows 默认路径 |
+| `AG_PDF2ZH_EXE` | pdf2zh 可执行文件路径 | 自动探测 |
 | `AG_CLAUDE_BASE_URL` | LLM API 基础 URL | 预设代理地址 |
 | `AG_CLAUDE_API_KEY` | LLM API Key | 预设值 |
 | `AG_CLAUDE_MODEL` | LLM 模型名称 | `Claude Sonnet 4.6` |
 
-## 测试策略
+---
 
-- **Rust 后端**：使用 `#[cfg(test)]` 内联单元测试 + Tauri `test` feature 的 IPC 集成测试
-  - `errors.rs`：错误码序列化一致性（19 个错误码对齐 TypeScript）
-  - `storage/mod.rs`：全 CRUD 回归测试（in-memory SQLite）
-  - `ipc/document.rs`：IPC Command 错误序列化验证
-  - `ipc/translation.rs`：翻译请求错误路径验证
-  - `ipc/zotero.rs`：Zotero 未安装场景验证
-  - `zotero_connector/mod.rs`：完整 Zotero DB 读写集成测试
-  - `translation_manager/mod.rs`：输出模式标准化验证
-  - `keychain/mod.rs`：Key 脱敏函数测试
-- **前端**：目前无测试（`package.json` 的 `test` 脚本为 placeholder）
-- **Python**：目前无测试
+## Git 工作流程
 
-```bash
-# 运行 Rust 测试
-cd src-tauri && cargo test
-```
+- **分支模型**: 单 `main` 分支
+- **远程仓库**: `origin` → `https://github.com/xkkabishou/rastro.git`
+- **Commit 风格**: Conventional Commits
+  - `feat(v2): S1 document workspace backend — migration, storage, IPC`
+  - `fix: 翻译引擎端口冲突时先尝试清理孤儿进程`
+  - `chore: 从 Git 索引中移除 Tauri 自动生成的 schemas`
+  - `docs: 同步 Challenge Report 修复状态`
+- **忽略规则** (.gitignore): `node_modules/`, `dist/`, `src-tauri/target/`, `src-tauri/gen/`, `__pycache__/`, `.venv/`, `.env*`, `tmp-*.png`
 
-## 编码规范
+---
 
-- **Rust**：serde rename `camelCase` 保持与前端 JSON 契约一致；错误统一走 `AppError` 模型；`#![allow(dead_code)]` 用于开发阶段
-- **TypeScript**：严格模式 (`strict: true`)；IPC 类型定义集中在 `src/shared/types.ts`，IPC 客户端封装在 `src/lib/ipc-client.ts`
-- **Python**：使用 `from __future__ import annotations` 延迟类型标注；配置通过模块级变量 + 环境变量注入
-- **IPC 契约**：Rust 端 DTO 与 TypeScript 类型一一对应，错误码使用 `SCREAMING_SNAKE_CASE`
+## 文档目录
 
-## 设计文档
+### 设计文档
 
-### `genesis/v1/` — 初始版本设计
+| 路径 | 版本 | 状态 | 内容 |
+|------|------|------|------|
+| `genesis/v1/01_PRD.md` | v1 | 已归档 | 产品需求：9 个用户故事 |
+| `genesis/v1/02_ARCHITECTURE_OVERVIEW.md` | v1 | 已归档 | C4 L1 架构，3 系统分解 |
+| `genesis/v1/03_ADR/` | v1 | 已归档 | 技术栈决策 + 多模型协作策略 |
+| `genesis/v1/04_SYSTEM_DESIGN/` | v1 | 已归档 | 3 个系统设计文档 |
+| `genesis/v1/07_CHALLENGE_REPORT.md` | v1 | 已归档 | 设计评审：12 个问题 |
+| `genesis/v2/01_PRD.md` | **v2** | **活跃** | 侧栏树形 + 翻译管理 + AI 总结（US-010~017） |
+| `genesis/v2/02_ARCHITECTURE_OVERVIEW.md` | **v2** | **活跃** | v2 架构总览 |
+| `genesis/v2/03_ADR/ADR_003_DOCUMENT_WORKSPACE.md` | **v2** | **活跃** | 文献工作空间 ADR |
+| `genesis/v2/04_SYSTEM_DESIGN/rust-backend-system.md` | **v2** | **活跃** | v2 后端设计（权威 IPC 契约源） |
+| `genesis/v2/05_TASKS.md` | **v2** | **活跃** | WBS 任务清单：4 Sprint × 33 + 4 INT |
+| `genesis/v2/06_CHANGELOG.md` | **v2** | **活跃** | 变更记录 |
+| `genesis/v2/07_CHALLENGE_REPORT.md` | **v2** | **活跃** | v2 设计评审 |
 
-| 文档 | 内容 |
+### 子模块 CLAUDE.md
+
+| 路径 | 内容 |
 |------|------|
-| `01_PRD.md` | 产品需求：9 个用户故事，10 维歧义扫描 |
-| `02_ARCHITECTURE_OVERVIEW.md` | C4 L1 上下文图，3 系统分解 |
-| `03_ADR/` | 技术栈决策 + 多模型协作策略 |
-| `04_SYSTEM_DESIGN/` | 前端 / Rust 后端 / 翻译引擎系统设计 |
-| `07_CHALLENGE_REPORT.md` | 设计评审：12 个问题 |
+| `src/CLAUDE.md` | 前端模块文档 |
+| `src-tauri/CLAUDE.md` | Rust 后端模块文档 |
+| `rastro_translation_engine/CLAUDE.md` | 翻译服务模块文档 |
+| `antigravity_translate/CLAUDE.md` | 翻译核心模块文档 |
 
-### `genesis/v2/` — 文档管理迭代（⬅ 当前活跃版本）
+### 文档存储规范
 
-| 文档 | 内容 |
-|------|------|
-| `01_PRD.md` | v2 PRD：侧栏树形重构 + 翻译管理 + AI 总结管理（US-010 ~ US-017） |
-| `02_ARCHITECTURE_OVERVIEW.md` | v2 架构总览 |
-| `04_SYSTEM_DESIGN/rust-backend-system.md` | v2 Rust 后端设计（新增 artifact_aggregator + document_summaries + 8 IPC）|
-| `05_TASKS.md` | WBS 任务清单：4 Sprint × 33 + 4 INT 任务 |
-| `06_CHANGELOG.md` | 变更记录 |
-| `07_CHALLENGE_REPORT.md` | v2 设计评审 |
+- **设计文档**: 统一存放在 `genesis/vN/` 目录，按版本隔离
+- **文档编号**: `00_MANIFEST` → `01_PRD` → `02_ARCHITECTURE` → `03_ADR` → `04_SYSTEM_DESIGN` → `05_TASKS` → `06_CHANGELOG` → `07_CHALLENGE_REPORT`
+- **ADR**: 存放在 `03_ADR/ADR_NNN_NAME.md`，带编号
+- **模块文档**: 各模块根目录下 `CLAUDE.md` 描述模块内部细节
+- **权威源**: IPC 命名以 `genesis/v2/04_SYSTEM_DESIGN/rust-backend-system.md` 为准
+- **无 `/docs` 目录**: 所有设计文档在 `genesis/`，无独立 docs 文件夹
 
-### 关键设计决策
-
-- **Tauri 2 而非 Electron**：<50MB 安装包，Rust 后端安全性，跨平台路径 macOS→Windows
-- **多 Provider 无锁定**：OpenAI/Claude/Gemini 可切换，显式 `match` 分支（无 trait 抽象）
-- **IPC 契约先行 (Wave 0)**：TypeScript types + Rust traits 先锁定接口，解锁前后端并行开发
-- **翻译引擎独立进程**：Python FastAPI 包装 PDFMathTranslate，通过 HTTP 解耦
-
-### 已知设计问题 (Challenge Report P0)
-
-1. **H1**: 前后端设计文档 IPC 命名不一致 → 以 `rust-backend-system.md` 为准
-2. **H2**: NotebookLM 后端缺少 IPC Command → 需明确前端自治还是后端中介
-3. **H3**: 翻译展示模型矛盾（文件切换 vs DOM 叠加）→ 已标准化为"翻译 PDF 文件切换"
-4. **H4**: Python 环境缺少错误码和引导 UI → 已补充 `PythonNotFound` 等错误码
-5. **H5**: 熔断器过严（原 10min 冷却）→ 已改为 30s/60s/180s 指数退避 + 手动重启
-
-## AI 使用指引
-
-1. **IPC 契约是核心**：修改任何 IPC 接口时必须同步更新 `src/shared/types.ts` 和对应的 Rust DTO
-2. **错误码对齐**：19 个 `AppErrorCode` 在 Rust 和 TypeScript 之间必须保持一致，有单测保障
-3. **翻译引擎是独立进程**：Rust 通过 HTTP 与 Python 翻译引擎通信，翻译引擎通过子进程调用 pdf2zh
-4. **macOS 专属**：Keychain 操作使用 `security-framework`，非 macOS 平台无法存储 API Key
-5. **状态管理**：前端使用 Zustand store（`useDocumentStore` / `useChatStore`），后端使用 `AppState` 单例
-6. **翻译缓存**：基于文档 SHA256 + Provider + 模型 + 语言参数生成 cache_key，命中缓存直接返回
+---
 
 ## v2 迭代进度
 
 | Sprint | 状态 | 完成情况 |
 |--------|------|----------|
-| **S1** 数据基石 | ✅ 完成 | 7/7 后端任务，70 tests passing（migration + storage + aggregator + 8 IPC） |
+| **S1** 数据基石 | ✅ 完成 | 7/7 后端任务，70 tests（migration + storage + aggregator + 8 IPC） |
 | **S2** 树形视图 | 🔜 待开始 | 0/9 前端任务（types + IPC client + sidebar + store + icons） |
 | **S3** 产物管理 | ⏳ 未开始 | 右键菜单 + 翻译管理 + AI 总结 UI |
 | **S4** 搜索优化 | ⏳ 未开始 | 搜索筛选 + 缓存管理 |
 
-## 变更记录 (Changelog)
+---
+
+## AI 使用指引
+
+1. **IPC 契约是核心**: 修改任何 IPC 接口时必须同步更新 `src/shared/types.ts` 和对应的 Rust DTO
+2. **错误码对齐**: 31 个 `AppErrorCode` 在 Rust 和 TypeScript 之间一一对应，有单测保障
+3. **翻译引擎是独立进程**: Rust 通过 HTTP 与 Python 翻译引擎通信
+4. **macOS 专属**: Keychain 操作使用 `security-framework`
+5. **状态管理**: 前端 Zustand store（4 个），后端 `AppState` 单例
+6. **翻译缓存**: SHA256 + Provider + Model + Language → `cache_key`
+7. **代码注释用中文**: 跨 Rust/TypeScript/CSS 均使用中文注释
+8. **设计文档路径**: v2 活跃设计在 `genesis/v2/`，v1 已归档在 `genesis/v1/`
+
+---
+
+## 变更记录
 
 | 日期 | 操作 | 说明 |
 |------|------|------|
 | 2026-03-12 | 初始化 | 首次全仓扫描，生成根级 + 4 个模块级 CLAUDE.md |
-| 2026-03-12 | 补扫 | 深度扫描 ai_integration/、translation_manager/ 子模块；补录 genesis/v1/ 设计文档 |
+| 2026-03-12 | 补扫 | 深度扫描子模块；补录 genesis/v1/ 设计文档 |
 | 2026-03-16 | Bug 修复 | 翻译引擎检测逻辑修复，解决全文翻译仅翻前几页问题 |
 | 2026-03-16 | v2 Genesis | 完成 v2 设计全流程：PRD → Architecture → System Design → Blueprint → Challenge |
 | 2026-03-16 | v2 S1 完成 | 后端数据层 + IPC 契约实现（7 任务，10 文件，70 tests） |
+| 2026-03-16 | CLAUDE.md 重写 | 基于实际代码分析重写，覆盖架构、规范、测试、文档全维度 |

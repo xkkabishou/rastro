@@ -5,6 +5,8 @@ import shibaLogoUrl from '../../assets/shiba/shiba-logo.png';
 import { open } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { DocumentTree } from './DocumentTree';
+import type { FlatNode } from './DocumentTree';
+import type { ContextMenuAction } from './DocumentContextMenu';
 import { useDocumentStore } from '../../stores/useDocumentStore';
 import { ipcClient } from '../../lib/ipc-client';
 import type { DocumentSnapshot, DocumentArtifactDto } from '../../shared/types';
@@ -133,6 +135,15 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: 
     }
   }, [openDocumentInViewer, setCurrentDocument, setPdfUrl, isMobile, onToggle]);
 
+  // 右键菜单操作处理 (T2.4.1 框架，实际绑定在 T2.4.2)
+  const handleContextMenuAction = useCallback(
+    (action: ContextMenuAction, node: FlatNode, doc: DocumentSnapshot) => {
+      console.log('[ContextMenu]', action, node.type, doc.documentId);
+      // T2.4.2 将在此处绑定实际操作
+    },
+    [],
+  );
+
   // 处理本地文件选择
   const handleOpenLocalPdf = async () => {
     const selected = await open({
@@ -214,6 +225,7 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, onOpenSettings }: 
                 activeDocumentId={currentDocument?.documentId}
                 onDocumentClick={handleDocumentClick}
                 onArtifactClick={handleArtifactClick}
+                onContextMenuAction={handleContextMenuAction}
                 emptyMessage={searchQuery ? '未找到匹配的文献' : '还没有最近打开的文档'}
               />
             )}
