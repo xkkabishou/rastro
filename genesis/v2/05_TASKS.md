@@ -231,7 +231,7 @@ graph TD
 
 ### Phase 1: Foundation — 类型与 IPC 客户端 (S1)
 
-- [ ] **T2.1.1** [REQ-010]: v2 DTO 类型定义
+- [x] **T2.1.1** [REQ-010]: v2 DTO 类型定义
   - **描述**: 在 `src/shared/types.ts` 中新增 v2 类型：`DocumentArtifactDto`, `AISummaryDto`, `DocumentFilter`, `CacheStatsDto`, `ArtifactKind` 枚举
   - **输入**: PRD §6.3 DTO 类型定义 + T1.2.2~T1.2.4 产出的 IPC Command 签名
   - **输出**: 更新后的 `src/shared/types.ts`，包含所有 v2 新增类型定义，同时更新 `DocumentSnapshot` 增加 `hasSummary`, `isFavorite`, `artifactCount` 字段
@@ -244,7 +244,7 @@ graph TD
   - **依赖**: T1.2.2, T1.2.3, T1.2.4
   - **优先级**: P0
 
-- [ ] **T2.1.2** [REQ-010]: IPC Client v2 方法
+- [x] **T2.1.2** [REQ-010]: IPC Client v2 方法
   - **描述**: 在 `src/lib/ipc-client.ts` 中新增 v2 IPC 调用方法：`listDocumentArtifacts()`, `deleteTranslationCache()`, `getDocumentSummary()`, `saveDocumentSummary()`, `deleteDocumentSummary()`, `removeRecentDocument()`, `revealInFinder()`, `toggleDocumentFavorite()`, `getCacheStats()`, `clearAllTranslationCache()`
   - **输入**: T2.1.1 产出的类型定义
   - **输出**: 更新后的 `src/lib/ipc-client.ts`，10 个新增方法 + 2 个修改方法参数签名
@@ -259,7 +259,7 @@ graph TD
 
 ### Phase 2: Core — 树形视图组件 (S2)
 
-- [ ] **T2.2.1** [REQ-010]: DocumentTree 主组件 — 虚拟化树形列表
+- [x] **T2.2.1** [REQ-010]: DocumentTree 主组件 — 虚拟化树形列表
   - **描述**: 实现 `src/components/sidebar/DocumentTree.tsx`，使用 `@tanstack/react-virtual` 的虚拟化 + ADR-003 的扁平化策略，将文档列表渲染为可展开/折叠的树形视图
   - **输入**: T2.1.2 产出的 `listDocumentArtifacts()` IPC 方法 + ADR-003 的 `FlatNode` 扁平化设计
   - **输出**: `src/components/sidebar/DocumentTree.tsx` — 接收 `DocumentSnapshot[]` 和展开状态，渲染虚拟化的文档+产物列表
@@ -275,7 +275,7 @@ graph TD
   - **依赖**: T2.1.2
   - **优先级**: P0
 
-- [ ] **T2.2.2** [REQ-010, REQ-014]: DocumentNode 一级节点组件
+- [x] **T2.2.2** [REQ-010, REQ-014]: DocumentNode 一级节点组件
   - **描述**: 实现 `src/components/sidebar/DocumentNode.tsx`，渲染文献一级节点：标题、作者、来源标签（本地/Zotero）、状态 icon 聚合、展开/折叠箭头
   - **输入**: T2.2.1 产出的 `DocumentTree` 组件框架 + `DocumentSnapshot` 类型
   - **输出**: `src/components/sidebar/DocumentNode.tsx` — 显示文献标题、元信息、状态 icon (🌐📝🧠)
@@ -291,7 +291,7 @@ graph TD
   - **依赖**: T2.2.1
   - **优先级**: P0
 
-- [ ] **T2.2.3** [REQ-010]: ArtifactNode 二级节点组件
+- [x] **T2.2.3** [REQ-010]: ArtifactNode 二级节点组件
   - **描述**: 实现 `src/components/sidebar/ArtifactNode.tsx`，渲染产物二级节点：icon + 产物名称 + 元信息（provider/日期/大小）
   - **输入**: T2.2.1 产出的 `DocumentTree` 组件框架 + `DocumentArtifactDto` 类型
   - **输出**: `src/components/sidebar/ArtifactNode.tsx` — 按 `kind` 渲染不同 icon（📄🌐📝🧠），点击触发对应操作（切换 PDF/显示总结）
@@ -307,7 +307,7 @@ graph TD
   - **依赖**: T2.2.1
   - **优先级**: P0
 
-- [ ] **T2.2.4** [REQ-010]: Sidebar 容器组件重构
+- [x] **T2.2.4** [REQ-010]: Sidebar 容器组件重构
   - **描述**: 重构 `src/components/sidebar/Sidebar.tsx`，移除 v1 双 Tab 设计（删除 `ZoteroList.tsx`），整合 `DocumentTree` 为统一的文献列表容器
   - **输入**: T2.2.2 产出的 `DocumentNode` + T2.2.3 产出的 `ArtifactNode` + 现有 `Sidebar.tsx`
   - **输出**: 重构后的 `src/components/sidebar/Sidebar.tsx` — 容器布局（搜索框 + Chips + DocumentTree + 底栏操作），`ZoteroList.tsx` 标记为废弃/删除
@@ -321,7 +321,7 @@ graph TD
   - **依赖**: T2.2.2, T2.2.3
   - **优先级**: P0
 
-- [ ] **T2.2.5** [REQ-010]: DocumentStore 扩展 — 产物列表与展开状态
+- [x] **T2.2.5** [REQ-010]: DocumentStore 扩展 — 产物列表与展开状态
   - **描述**: 在 `src/stores/useDocumentStore.ts` 中新增：`artifactsByDocId: Record<string, DocumentArtifactDto[]>`, `expandedDocIds: Set<string>`, `toggleExpand(docId)`, `loadArtifacts(docId)`, `searchQuery`, `activeFilter`
   - **输入**: T2.2.4 产出的 Sidebar 重构 + T2.1.2 产出的 IPC Client 方法
   - **输出**: 扩展后的 `useDocumentStore.ts`，管理展开状态、产物缓存、搜索和筛选状态
@@ -339,7 +339,7 @@ graph TD
 
 ### Phase 3: Enhancement — 状态可视化与翻译切换 (S2)
 
-- [ ] **T2.3.1** [REQ-014]: 文档状态 Icon 组件
+- [x] **T2.3.1** [REQ-014]: 文档状态 Icon 组件
   - **描述**: 实现状态 icon 聚合渲染逻辑：🌐（已翻译）📝（有总结）🧠（有 NotebookLM 产物）⟳（翻译中动画），嵌入到 `DocumentNode` 中
   - **输入**: T2.2.5 产出的 DocumentStore（`artifactsByDocId` 缓存）+ `DocumentSnapshot` 的 `cachedTranslation`、`hasSummary`、`artifactCount` 字段
   - **输出**: 状态 icon 渲染逻辑集成到 `DocumentNode.tsx`，包含翻译中的旋转动画
@@ -355,7 +355,7 @@ graph TD
   - **依赖**: T2.2.5
   - **优先级**: P0
 
-- [ ] **T2.3.2** [REQ-012]: 翻译 PDF 切换分段控件
+- [x] **T2.3.2** [REQ-012]: 翻译 PDF 切换分段控件
   - **描述**: 在 `src/components/pdf-viewer/TranslationSwitch.tsx` 中增加工具栏分段控件 `[原文 | 译文]`，有翻译时显示，点击切换 PDF 源；保留 Option 键快捷方式兼容
   - **输入**: T2.2.5 产出的 DocumentStore（选中文档的翻译状态）+ 现有 `TranslationSwitch.tsx`
   - **输出**: 增强后的 `TranslationSwitch.tsx` — 工具栏显示分段控件（SegmentedControl），选中状态高亮，与侧栏点击互联同步
