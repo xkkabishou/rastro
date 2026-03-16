@@ -158,8 +158,7 @@ export const DocumentTree: React.FC<DocumentTreeProps> = ({
   return (
     <div
       ref={parentRef}
-      className="flex-1 overflow-y-auto"
-      style={{ contain: 'strict' }}
+      className="flex-1 overflow-y-auto h-full"
     >
       <div
         style={{
