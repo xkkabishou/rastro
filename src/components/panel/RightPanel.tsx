@@ -13,9 +13,14 @@ interface RightPanelProps {
   onToggle: () => void;
   activeTab?: PanelTab;
   onTabChange?: (tab: PanelTab) => void;
+  /** 外部控制宽度（桌面端拖拽调整） */
+  width?: number;
+  /** 拖拽中禁用 spring 动画 */
+  isResizing?: boolean;
 }
 
-export const RightPanel = ({ isOpen, onToggle, activeTab: controlledTab, onTabChange }: RightPanelProps) => {
+export const RightPanel = ({ isOpen, onToggle, activeTab: controlledTab, onTabChange, width, isResizing }: RightPanelProps) => {
+  const effectiveWidth = width ?? 360;
   const [internalTab, setInternalTab] = useState<PanelTab>('chat');
   const activeTab = controlledTab ?? internalTab;
   const setActiveTab = onTabChange ?? setInternalTab;
@@ -25,9 +30,12 @@ export const RightPanel = ({ isOpen, onToggle, activeTab: controlledTab, onTabCh
       {isOpen && (
         <motion.aside
           initial={{ width: 0, opacity: 0 }}
-          animate={{ width: 360, opacity: 1 }}
+          animate={{ width: effectiveWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          transition={isResizing
+            ? { duration: 0 }
+            : { type: "spring", stiffness: 300, damping: 30 }
+          }
           className="h-full border-l border-[var(--color-border)] bg-[var(--color-bg)]/95 backdrop-blur-xl overflow-hidden flex flex-col shadow-[-4px_0_24px_-12px_rgba(0,0,0,0.05)]"
         >
           {/* Tab 栏 */}

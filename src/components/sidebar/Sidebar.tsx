@@ -29,13 +29,19 @@ interface SidebarProps {
   isOpen: boolean;
   isMobile?: boolean;
   onToggle: () => void;
+  /** 外部控制宽度（桌面端拖拽调整） */
+  width?: number;
+  /** 拖拽中禁用 spring 动画 */
+  isResizing?: boolean;
 }
 
 // ---------------------------------------------------------------------------
 // 主组件
 // ---------------------------------------------------------------------------
 
-export const Sidebar = ({ isOpen, isMobile = false, onToggle }: SidebarProps) => {
+export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing }: SidebarProps) => {
+  // 桌面端使用外部传入宽度，移动端固定 280px
+  const effectiveWidth = isMobile ? 280 : (width ?? 280);
   const [isLoadingRecent, setIsLoadingRecent] = useState(false);
   const setCurrentDocument = useDocumentStore((s) => s.setCurrentDocument);
   const setPdfUrl = useDocumentStore((s) => s.setPdfUrl);
@@ -437,10 +443,13 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle }: SidebarProps) =>
         {isOpen && (
           <motion.aside
             key="sidebar"
-            initial={{ width: 0, opacity: 0, x: isMobile ? -280 : 0 }}
-            animate={{ width: 280, opacity: 1, x: 0 }}
-            exit={{ width: 0, opacity: 0, x: isMobile ? -280 : 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            initial={{ width: 0, opacity: 0, x: isMobile ? -effectiveWidth : 0 }}
+            animate={{ width: effectiveWidth, opacity: 1, x: 0 }}
+            exit={{ width: 0, opacity: 0, x: isMobile ? -effectiveWidth : 0 }}
+            transition={isResizing
+              ? { duration: 0 }
+              : { type: "spring", stiffness: 300, damping: 30 }
+            }
             className={`h-full border-r border-[var(--color-border)] bg-[var(--color-bg)]/90 backdrop-blur-xl overflow-hidden flex flex-col pt-8 ${isMobile ? 'absolute left-0 top-0 bottom-0 z-30' : 'relative'}`}
           >
             {/* 头部 */}

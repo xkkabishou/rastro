@@ -467,4 +467,14 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  /* 拖拽分隔线时全局样式 */
+  .is-resizing {
+    cursor: col-resize !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+  }
+  .is-resizing * {
+    cursor: col-resize !important;
+  }
 }
