@@ -376,7 +376,7 @@ graph TD
 
 ### Phase 4: 产物管理功能 (S3)
 
-- [ ] **T2.4.1** [REQ-015]: DocumentContextMenu 右键菜单组件
+- [x] **T2.4.1** [REQ-015]: DocumentContextMenu 右键菜单组件
   - **描述**: 实现 `src/components/sidebar/DocumentContextMenu.tsx`，根据节点类型（一级/二级）和节点状态动态生成菜单项
   - **输入**: T2.2.4 产出的 Sidebar 组件 + PRD §5.3 右键菜单设计
   - **输出**: `DocumentContextMenu.tsx` — 使用 Radix UI ContextMenu，一级节点菜单（翻译全文/生成AI总结/Finder显示/移除/收藏）+ 二级节点菜单（查看详情/重操作/删除）
@@ -395,7 +395,7 @@ graph TD
   - **依赖**: T2.2.4
   - **优先级**: P1
 
-- [ ] **T2.4.2** [REQ-015]: 右键菜单操作逻辑绑定
+- [x] **T2.4.2** [REQ-015]: 右键菜单操作逻辑绑定
   - **描述**: 为菜单项绑定实际操作：调用 `requestTranslation()`、`generateSummary()`、`revealInFinder()`、`removeRecentDocument()`、`toggleDocumentFavorite()` 等 IPC 方法，并在操作完成后刷新侧栏状态
   - **输入**: T2.4.1 产出的 `DocumentContextMenu` + T2.1.2 产出的 IPC Client 方法
   - **输出**: 完整绑定的右键菜单操作 + 确认对话框（删除/移除操作需二次确认）
@@ -411,7 +411,7 @@ graph TD
   - **依赖**: T2.4.1
   - **优先级**: P1
 
-- [ ] **T2.4.3** [REQ-011]: TranslationPanel 翻译管理面板
+- [x] **T2.4.3** [REQ-011]: TranslationPanel 翻译管理面板
   - **描述**: 新增 `src/components/pdf-viewer/TranslationPanel.tsx`，显示翻译详情（provider/model/翻译时间/文件大小）+ 重新翻译/删除翻译操作按钮
   - **输入**: T1.2.2 产出的 `deleteTranslationCache()` + `listDocumentArtifacts()` IPC 方法 + `TranslationJobDto` 类型
   - **输出**: `TranslationPanel.tsx` — 信息卡片 + "重新翻译"按钮（可选更换 provider/model）+ "删除翻译"按钮（二次确认）
@@ -430,7 +430,7 @@ graph TD
   - **依赖**: T1.2.2
   - **优先级**: P0
 
-- [ ] **T2.4.4** [REQ-011]: 翻译删除与重新翻译流程集成
+- [x] **T2.4.4** [REQ-011]: 翻译删除与重新翻译流程集成
   - **描述**: 将 `TranslationPanel` 的操作与 `DocumentStore` 和侧栏状态联动：删除翻译后自动移除产物子项、更新状态 icon；重新翻译时显示进度
   - **输入**: T2.4.3 产出的 `TranslationPanel` + T2.2.5 产出的 `DocumentStore`
   - **输出**: 完整的翻译产物生命周期管理流程，状态自动同步
@@ -446,7 +446,7 @@ graph TD
   - **依赖**: T2.4.3
   - **优先级**: P0
 
-- [ ] **T2.4.5** [REQ-013]: SummaryPanel 增强 — 持久化加载
+- [x] **T2.4.5** [REQ-013]: SummaryPanel 增强 — 持久化加载
   - **描述**: 增强 `src/components/summary/SummaryPanel.tsx`，优先加载已保存的总结（调用 `getDocumentSummary()`）；总结生成完成后自动调用 `saveDocumentSummary()` 持久化
   - **输入**: T1.2.3 产出的 `getDocumentSummary()`/`saveDocumentSummary()` IPC 方法 + 现有 `SummaryPanel.tsx` 的流式渲染逻辑
   - **输出**: 增强后的 `SummaryPanel.tsx` — 打开文档时检查已保存总结并直接渲染 Markdown；新生成的总结自动持久化
@@ -462,7 +462,7 @@ graph TD
   - **依赖**: T1.2.3
   - **优先级**: P0
 
-- [ ] **T2.4.6** [REQ-013]: 总结重新生成与右键集成
+- [x] **T2.4.6** [REQ-013]: 总结重新生成与右键集成
   - **描述**: 在 AI 总结子项的右键菜单中绑定 "重新生成" 操作：弹出确认框（提示消耗 API 额度），确认后调用 `generateSummary()` 重新生成并替换旧总结
   - **输入**: T2.4.5 产出的 `SummaryPanel` + T2.4.1 产出的 `DocumentContextMenu`
   - **输出**: 完整的总结重新生成流程 + "导出为 Markdown" 操作（将总结内容写入文件并通过系统对话框保存）
@@ -480,7 +480,7 @@ graph TD
 
 ### Phase 5: 搜索与缓存管理 (S4)
 
-- [ ] **T2.5.1** [REQ-016]: SearchBar 搜索组件
+- [x] **T2.5.1** [REQ-016]: SearchBar 搜索组件
   - **描述**: 实现 `src/components/sidebar/SearchBar.tsx`，带 300ms 防抖的搜索输入框，搜索文献标题和文件名
   - **输入**: T2.2.4 产出的 Sidebar 布局 + T2.2.5 产出的 DocumentStore（`searchQuery` 状态）
   - **输出**: `SearchBar.tsx` — 带 placeholder "🔍 搜索文献..."、300ms 防抖、清空按钮，更新 DocumentStore 的 `searchQuery`
@@ -493,7 +493,7 @@ graph TD
   - **依赖**: T2.2.4
   - **优先级**: P1
 
-- [ ] **T2.5.2** [REQ-016]: GroupChips 分组筛选组件
+- [x] **T2.5.2** [REQ-016]: GroupChips 分组筛选组件
   - **描述**: 实现 `src/components/sidebar/GroupChips.tsx`，水平排列的 Chips：`全部` / `已翻译` / `有总结` / `收藏`，点击切换过滤条件
   - **输入**: T2.5.1 产出的 SearchBar + T2.2.5 产出的 DocumentStore（`activeFilter` 状态）
   - **输出**: `GroupChips.tsx` — Chip 组件带选中高亮，更新 DocumentStore 的 `activeFilter`
@@ -509,7 +509,7 @@ graph TD
   - **依赖**: T2.5.1
   - **优先级**: P1
 
-- [ ] **T2.5.3** [REQ-016]: list_recent_documents 前端调用适配
+- [x] **T2.5.3** [REQ-016]: list_recent_documents 前端调用适配
   - **描述**: 修改前端对 `list_recent_documents` 的调用，传入 `query` 和 `filter` 参数（与 SearchBar + GroupChips 联动）
   - **输入**: T2.1.2 产出的修改后 IPC 方法 + T2.5.2 产出的 GroupChips
   - **输出**: 更新后的文档列表加载逻辑，支持搜索和筛选参数

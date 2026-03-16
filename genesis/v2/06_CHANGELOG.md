@@ -9,6 +9,55 @@
 
 ---
 
+## 2026-03-16 - S4 搜索优化 P1 完成 ✅
+
+- [DONE] T2.5.1: `src/components/sidebar/SearchBar.tsx` — 300ms 防抖 + 清空按钮
+- [DONE] T2.5.2: `src/components/sidebar/GroupChips.tsx` — 全部/已翻译/有总结/收藏 Chip 筛选
+- [DONE] T2.5.3: `Sidebar.tsx` loadRecentDocuments 搜索/筛选参数适配（Wave 6 已实现）
+- [ADD] `globals.css` no-scrollbar 工具类
+- **Commits**: `21717bf`
+- **P2 延后**: T1.3.1~T1.3.3 + T2.5.4（缓存统计/清理/收藏/Finder 显示）
+
+---
+
+## 2026-03-16 - Bug Fix: pdf-text-extractor ReadableStream 崩溃 🐛→✅
+
+- [FIX] `src/lib/pdf-text-extractor.ts` — getTextContent() 在 Tauri WebView 崩溃
+  - 根因：pdfjs getTextContent() 内部调用 streamTextContent()，依赖 ReadableStream；Tauri WebView 的 ReadableStream 实现存在但残缺
+  - 三层修复：① ensureReadableStream() 最小化 polyfill ② PDFWorker fake worker ③ ArrayBuffer 预加载
+- **Commits**: `cda8e7d`, `21717bf`, `6dca1d6`
+
+---
+
+## 2026-03-16 - S3 产物管理完成 ✅
+
+- [DONE] T2.4.1: `src/components/sidebar/DocumentContextMenu.tsx` — 动态右键菜单
+- [DONE] T2.4.2: `Sidebar.tsx` handleContextMenuAction — 右键菜单完整操作分发
+- [DONE] T2.4.3: `src/components/pdf-viewer/TranslationPanel.tsx` — 翻译信息卡片
+- [DONE] T2.4.4: 翻译删除/重翻流程与侧栏状态联动
+- [DONE] T2.4.5: `SummaryPanel.tsx` 持久化增强 — 自动保存/加载已有总结
+- [DONE] T2.4.6: 总结重新生成 + 导出为 Markdown + 右键集成
+- [ADD] `useDocumentStore.refreshDocumentSnapshot()` — 操作后刷新文档状态
+- **Commits**: `40a10d1`, `890a8ea`
+
+---
+
+## 2026-03-16 - S2 前端树形视图完成 ✅
+
+- [DONE] T2.1.1: `src/shared/types.ts` v2 DTO 类型定义
+- [DONE] T2.1.2: `src/lib/ipc-client.ts` v2 IPC 方法
+- [DONE] T2.2.1: `src/components/sidebar/DocumentTree.tsx` — 虚拟化树形列表
+- [DONE] T2.2.2: `src/components/sidebar/DocumentNode.tsx` — 文献一级节点
+- [DONE] T2.2.3: `src/components/sidebar/ArtifactNode.tsx` — 产物二级节点
+- [DONE] T2.2.4: `Sidebar.tsx` 容器重构 — 统一树形列表
+- [DONE] T2.2.5: `useDocumentStore.ts` 扩展 — 产物缓存/展开状态/搜索/筛选
+- [DONE] T2.3.1: 文档状态 Icon 聚合 (🌐📝🧠⟳)
+- [DONE] T2.3.2: TranslationSwitch 分段控件增强
+- [FIX] `0e9a569` — DocumentTree contain:strict 导致侧栏列表不可见
+- **Commits**: `a5ca595`, `f1aaeed`, `0e9a569`
+
+---
+
 ## 2026-03-16 - S1 后端完成 ✅
 
 - [DONE] T1.1.1: `src-tauri/migrations/v2_document_workspace.sql` — document_summaries + notebooklm_artifacts 表 + documents 扩展
