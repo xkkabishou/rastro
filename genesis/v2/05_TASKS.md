@@ -14,7 +14,7 @@
 | S1 | 数据基石 | 后端数据层 + 新 IPC 契约 + 前端类型 | ① migration 执行成功 ② `list_document_artifacts` 返回聚合数据 ③ 新 DTO 类型编译通过 | 2-3d |
 | S2 | 树形视图 | 侧栏重写 + 状态可视化 + 翻译切换 | ① 侧栏渲染树形列表、展开/折叠流畅 ② 产物子项可点击切换 PDF ③ 工具栏分段控件工作 ④ 状态 icon 正确显示 | 3-4d |
 | S3 | 产物管理 | 翻译管理 + AI 总结持久化 + 右键菜单 | ① 右键菜单弹出且操作生效 ② 翻译可删除/重新翻译 ③ AI 总结持久化存储并在树中可见 | 3-4d |
-| S4 | 搜索优化 | 搜索筛选 + 缓存管理 + 收尾打磨 | ① 搜索和分组 Chips 过滤正常 ② 设置页显示缓存统计 ③ 全部 P0 验收标准通过 | 2-3d |
+| S4 | 搜索优化 ✅ | 搜索筛选 + 缓存管理 + 收尾打磨 | ① 搜索和分组 Chips 过滤正常 ② 设置页显示缓存统计 ③ 全部 P0 验收标准通过 | 2-3d |
 
 ---
 
@@ -184,7 +184,7 @@ graph TD
 
 ### Phase 3: Polish — 辅助功能 IPC (S4)
 
-- [ ] **T1.3.1** [REQ-017]: 缓存统计与清理 IPC Commands
+- [x] **T1.3.1** [REQ-017]: 缓存统计与清理 IPC Commands
   - **描述**: 在 `ipc/settings.rs` 中注册 `get_cache_stats`, `clear_all_translation_cache`
   - **输入**: 现有 `translation_manager` 的 `artifact_index` 模块
   - **输出**: 新增 2 个 `#[tauri::command]`，`get_cache_stats` 返回 `CacheStatsDto`（总字节数/翻译字节数/总结数/文档数），`clear_all_translation_cache` 删除所有翻译缓存文件
@@ -199,7 +199,7 @@ graph TD
   - **依赖**: T1.2.2
   - **优先级**: P2
 
-- [ ] **T1.3.2** [REQ-015]: Finder 显示 IPC Command
+- [x] **T1.3.2** [REQ-015]: Finder 显示 IPC Command
   - **描述**: 实现 `reveal_in_finder` Command，调用 macOS `open -R <filePath>` 在 Finder 中高亮显示文件
   - **输入**: 文件路径字符串
   - **输出**: `#[tauri::command] reveal_in_finder(file_path)` — 打开 Finder 并选中目标文件
@@ -212,7 +212,7 @@ graph TD
   - **依赖**: T1.2.4
   - **优先级**: P1
 
-- [ ] **T1.3.3** [REQ-015, REQ-016]: 收藏功能 IPC Command
+- [x] **T1.3.3** [REQ-015, REQ-016]: 收藏功能 IPC Command
   - **描述**: 实现 `toggle_document_favorite` Command，调用 `documents.rs` 的 `toggle_favorite()` 方法
   - **输入**: T1.1.3 产出的 `toggle_favorite()` 方法
   - **输出**: `#[tauri::command] toggle_document_favorite(doc_id, favorite)` → `{ updated: boolean }`
@@ -542,7 +542,7 @@ graph TD
 
 ## 🎯 集成验证任务
 
-- [ ] **INT-S1** [MILESTONE]: S1 集成验证 — 数据基石
+- [x] **INT-S1** [MILESTONE]: S1 集成验证 — 数据基石
   - **描述**: 验证 S1 退出标准，确认数据层和 IPC 契约全部就绪
   - **输入**: S1 所有任务的产出（T1.1.1~T1.2.4, T2.1.1~T2.1.2）
   - **输出**: 集成验证报告（通过/失败 + Bug 清单）
@@ -554,7 +554,7 @@ graph TD
   - **估时**: 3h
   - **依赖**: T2.1.2
 
-- [ ] **INT-S2** [MILESTONE]: S2 集成验证 — 树形视图
+- [x] **INT-S2** [MILESTONE]: S2 集成验证 — 树形视图
   - **描述**: 验证 S2 退出标准，确认侧栏树形视图完整可用
   - **输入**: S2 所有任务的产出（T2.2.1~T2.3.2）
   - **输出**: 集成验证报告（通过/失败 + Bug 清单）
@@ -566,7 +566,7 @@ graph TD
   - **估时**: 3h
   - **依赖**: T2.3.2
 
-- [ ] **INT-S3** [MILESTONE]: S3 集成验证 — 产物管理
+- [x] **INT-S3** [MILESTONE]: S3 集成验证 — 产物管理
   - **描述**: 验证 S3 退出标准，确认产物全生命周期管理可用
   - **输入**: S3 所有任务的产出（T2.4.1~T2.4.6）
   - **输出**: 集成验证报告（通过/失败 + Bug 清单）
@@ -578,7 +578,7 @@ graph TD
   - **估时**: 3h
   - **依赖**: T2.4.6
 
-- [ ] **INT-S4** [MILESTONE]: S4 集成验证 — 搜索优化
+- [x] **INT-S4** [MILESTONE]: S4 集成验证 — 搜索优化
   - **描述**: 验证 S4 退出标准，确认搜索筛选和缓存管理功能完整
   - **输入**: S4 所有任务的产出（T2.5.1~T2.5.4, T1.3.1~T1.3.3）
   - **输出**: 集成验证报告（通过/失败 + Bug 清单）+ 全部 P0 需求验收确认

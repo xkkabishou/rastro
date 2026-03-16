@@ -610,9 +610,9 @@ npm run icons:generate
 | Sprint | 状态 | 完成情况 |
 |--------|------|----------|
 | **S1** 数据基石 | ✅ 完成 | 7/7 后端任务，70 tests（migration + storage + aggregator + 8 IPC） |
-| **S2** 树形视图 | 🔜 待开始 | 0/9 前端任务（types + IPC client + sidebar + store + icons） |
-| **S3** 产物管理 | ⏳ 未开始 | 右键菜单 + 翻译管理 + AI 总结 UI |
-| **S4** 搜索优化 | ⏳ 未开始 | 搜索筛选 + 缓存管理 |
+| **S2** 树形视图 | ✅ 完成 | 9/9 前端任务（types + IPC client + sidebar + store + icons） |
+| **S3** 产物管理 | ✅ 完成 | 右键菜单 + 翻译管理 + AI 总结 UI |
+| **S4** 搜索优化 | ✅ 完成 | 搜索筛选 + 缓存管理 + 缓存统计 IPC |
 
 ---
 

@@ -70,6 +70,9 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             ipc::settings::fetch_available_models,
             // F. 使用统计 (1 个)
             ipc::settings::get_usage_stats,
+            // G. 缓存统计与清理 (2 个)
+            ipc::settings::get_cache_stats,
+            ipc::settings::clear_all_translation_cache,
             // G. Zotero 集成 (3 个)
             ipc::zotero::detect_zotero_library,
             ipc::zotero::fetch_zotero_items,

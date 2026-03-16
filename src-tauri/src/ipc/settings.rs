@@ -479,6 +479,100 @@ pub fn get_usage_stats(
     })
 }
 
+// --- G. 缓存统计与清理 (2 个) ---
+
+/// 缓存统计 DTO
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheStatsDto {
+    pub total_bytes: u64,
+    pub translation_bytes: u64,
+    pub summary_count: u32,
+    pub document_count: u32,
+}
+
+/// 清理全部翻译缓存结果
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClearCacheResult {
+    pub freed_bytes: u64,
+}
+
+/// 获取缓存统计：翻译产物总字节数、总结数量、文档数量
+#[tauri::command]
+pub fn get_cache_stats(
+    state: State<'_, AppState>,
+) -> Result<CacheStatsDto, crate::errors::AppError> {
+    let connection = state.storage.connection();
+
+    // 翻译产物总字节数
+    let translation_bytes: u64 = connection.query_row(
+        "SELECT COALESCE(SUM(file_size_bytes), 0) FROM translation_artifacts",
+        [],
+        |row| row.get(0),
+    )?;
+
+    // AI 总结数量
+    let summary_count: u32 = connection.query_row(
+        "SELECT COUNT(*) FROM document_summaries",
+        [],
+        |row| row.get(0),
+    )?;
+
+    // 活跃文档数量（未软删除）
+    let document_count: u32 = connection.query_row(
+        "SELECT COUNT(*) FROM documents WHERE is_deleted = 0",
+        [],
+        |row| row.get(0),
+    )?;
+
+    Ok(CacheStatsDto {
+        total_bytes: translation_bytes,
+        translation_bytes,
+        summary_count,
+        document_count,
+    })
+}
+
+/// 清理所有翻译缓存：删除文件 + 数据库记录
+#[tauri::command]
+pub fn clear_all_translation_cache(
+    state: State<'_, AppState>,
+) -> Result<ClearCacheResult, crate::errors::AppError> {
+    let connection = state.storage.connection();
+    let transaction = connection.unchecked_transaction()?;
+
+    // 查询所有翻译产物文件路径和大小
+    let artifacts: Vec<(String, u64)> = {
+        let mut statement = transaction.prepare(
+            "SELECT file_path, file_size_bytes FROM translation_artifacts",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>("file_path")?,
+                row.get::<_, u64>("file_size_bytes")?,
+            ))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+
+    let mut freed_bytes: u64 = 0;
+    for (file_path, size) in &artifacts {
+        freed_bytes += size;
+        let path = std::path::Path::new(file_path);
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    // 删除数据库记录
+    transaction.execute("DELETE FROM translation_artifacts", [])?;
+    transaction.execute("DELETE FROM translation_jobs", [])?;
+    transaction.commit()?;
+
+    Ok(ClearCacheResult { freed_bytes })
+}
+
 fn build_provider_config_dto(
     state: &State<'_, AppState>,
     record: provider_settings::ProviderSettingRecord,
