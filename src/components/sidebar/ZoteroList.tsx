@@ -65,20 +65,9 @@ function buildTree(list: ZoteroCollectionDto[]): CollectionTreeNode[] {
   return roots;
 }
 
-/** Zotero 风格的文献命名：作者 (年份) 标题 */
+/** 文献条目显示标题 */
 function zoteroItemLabel(item: ZoteroItemDto): string {
-  const parts: string[] = [];
-  if (item.authors?.length) {
-    const surname = item.authors[0].split(' ').pop() || item.authors[0];
-    if (item.authors.length > 1) {
-      parts.push(`${surname} 等`);
-    } else {
-      parts.push(surname);
-    }
-  }
-  if (item.year) parts.push(`(${item.year})`);
-  parts.push(item.title);
-  return parts.join(' ');
+  return item.title;
 }
 
 /* 柔和的文件夹色板 */
