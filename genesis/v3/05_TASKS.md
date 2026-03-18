@@ -267,7 +267,7 @@ graph TD
 
 ---
 
-- [ ] **T3.2.1** [REQ-304]: TitleTranslationTooltip 组件
+- [x] **T3.2.1** [REQ-303]: TitleTranslationTooltip 组件
   - **描述**: 新增 `src/components/sidebar/TitleTranslationTooltip.tsx`，毛玻璃风格 tooltip 组件。通过 framer-motion `AnimatePresence` 实现淡入淡出。接收翻译文本 prop，定位跟随 hover 的条目
   - **输入**: T3.1.1 产出的 `get_title_translation` IPC command；`NotePopup.tsx` 的毛玻璃样式参考
   - **输出**: `src/components/sidebar/TitleTranslationTooltip.tsx` [NEW] — 接收 `translatedTitle`、`anchorElement` props

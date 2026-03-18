@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText, BookOpen, Loader2, AlertCircle,
@@ -14,6 +14,7 @@ import type {
   PagedZoteroItemsDto, DocumentArtifactDto, DocumentSnapshot,
 } from '../../shared/types';
 import { artifactIcon } from './ArtifactNode';
+import { TitleTranslationTooltip } from './TitleTranslationTooltip';
 
 /* ======================================================================== */
 /* 常量                                                                     */
@@ -462,6 +463,52 @@ const ItemFolder: React.FC<ItemFolderProps> = ({
   const label = useMemo(() => zoteroItemLabel(item), [item]);
   const hasContent = expandedData && !expandedData.isLoading && expandedData.artifacts.length > 0;
 
+  // --- T3.2.2: 标题翻译 Tooltip ---
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [tooltipState, setTooltipState] = useState<{
+    visible: boolean;
+    translatedTitle: string | null;
+    loading: boolean;
+    x: number;
+    y: number;
+  }>({ visible: false, translatedTitle: null, loading: false, x: 0, y: 0 });
+
+  const handleItemMouseEnter = useCallback((e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = rect.left + 20;
+    const y = rect.bottom;
+
+    // 启动 300ms 延迟
+    hoverTimerRef.current = setTimeout(async () => {
+      setTooltipState(prev => ({ ...prev, visible: true, loading: true, x, y }));
+      try {
+        const result = await ipcClient.getTitleTranslation(item.title);
+        setTooltipState(prev => ({
+          ...prev,
+          translatedTitle: result.translatedTitle,
+          loading: false,
+        }));
+      } catch {
+        setTooltipState(prev => ({ ...prev, loading: false }));
+      }
+    }, 300);
+  }, [item.title]);
+
+  const handleItemMouseLeave = useCallback(() => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setTooltipState({ visible: false, translatedTitle: null, loading: false, x: 0, y: 0 });
+  }, []);
+
+  // 组件卸载时清除 timer
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    };
+  }, []);
+
   return (
     <div>
       {/* 文献行 — 可展开 */}
@@ -477,8 +524,14 @@ const ItemFolder: React.FC<ItemFolderProps> = ({
           opacity: item.pdfPath ? 1 : 0.4,
         }}
         disabled={!item.pdfPath}
-        onMouseEnter={e => { if (!isExpanded && item.pdfPath) e.currentTarget.style.background = 'var(--color-hover)'; }}
-        onMouseLeave={e => { e.currentTarget.style.background = isExpanded ? 'color-mix(in srgb, var(--color-primary) 5%, transparent)' : 'transparent'; }}
+        onMouseEnter={e => {
+          handleItemMouseEnter(e);
+          if (!isExpanded && item.pdfPath) e.currentTarget.style.background = 'var(--color-hover)';
+        }}
+        onMouseLeave={e => {
+          handleItemMouseLeave();
+          e.currentTarget.style.background = isExpanded ? 'color-mix(in srgb, var(--color-primary) 5%, transparent)' : 'transparent';
+        }}
       >
         {/* 展开箭头 */}
         <span style={{
@@ -588,6 +641,15 @@ const ItemFolder: React.FC<ItemFolderProps> = ({
           </div>
         </div>
       </div>
+
+      {/* T3.2.2: 标题翻译 Tooltip */}
+      <TitleTranslationTooltip
+        translatedTitle={tooltipState.translatedTitle}
+        visible={tooltipState.visible}
+        anchorX={tooltipState.x}
+        anchorY={tooltipState.y}
+        loading={tooltipState.loading}
+      />
     </div>
   );
 };
