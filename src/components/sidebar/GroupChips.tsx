@@ -59,7 +59,7 @@ export function GroupChips() {
 
   return (
     <div className="px-3 pb-2 shrink-0">
-      <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+      <div className="flex gap-1.5">
         {FILTER_CHIPS.map((chip, index) => {
           const isActive = index === activeIndex || (activeIndex === -1 && index === 0);
           return (
@@ -67,7 +67,7 @@ export function GroupChips() {
               key={chip.label}
               onClick={() => handleClick(chip)}
               className={`
-                shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium
+                flex-1 py-1 rounded-full text-[11px] font-medium text-center
                 transition-all duration-150 cursor-pointer select-none
                 ${
                   isActive
