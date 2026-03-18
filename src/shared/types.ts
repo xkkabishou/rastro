@@ -604,8 +604,25 @@ export interface ZoteroStatusDto {
   statusMessage: string;
 }
 
+/** Zotero 文件夹（collection） */
+export interface ZoteroCollectionDto {
+  collectionId: number;
+  key: string;
+  name: string;
+  parentCollectionId: number | null;
+  itemCount: number;
+}
+
 /** fetch_zotero_items 请求 */
 export interface FetchZoteroItemsInput {
+  query?: string;
+  offset?: number;
+  limit?: number;
+}
+
+/** fetch_zotero_collection_items 请求 */
+export interface FetchZoteroCollectionItemsInput {
+  collectionId?: number | null;
   query?: string;
   offset?: number;
   limit?: number;
@@ -860,6 +877,8 @@ export const IPC_COMMANDS = {
   // G. Zotero 集成
   DETECT_ZOTERO_LIBRARY: "detect_zotero_library",
   FETCH_ZOTERO_ITEMS: "fetch_zotero_items",
+  FETCH_ZOTERO_COLLECTIONS: "fetch_zotero_collections",
+  FETCH_ZOTERO_COLLECTION_ITEMS: "fetch_zotero_collection_items",
   OPEN_ZOTERO_ATTACHMENT: "open_zotero_attachment",
   // V2: 文档工作空间
   LIST_DOCUMENT_ARTIFACTS: "list_document_artifacts",

@@ -1,4 +1,4 @@
-// G. Zotero 集成 Command (3 个)
+// G. Zotero 集成 Command (5 个)
 // 对应 rust-backend-system.md Section 7.3 G
 use serde::Serialize;
 use tauri::State;
@@ -20,6 +20,17 @@ pub struct ZoteroStatusDto {
     pub database_path: Option<String>,
     pub item_count: Option<u32>,
     pub status_message: String,
+}
+
+/// Zotero 文件夹（collection）
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZoteroCollectionDto {
+    pub collection_id: i64,
+    pub key: String,
+    pub name: String,
+    pub parent_collection_id: Option<i64>,
+    pub item_count: u32,
 }
 
 /// 分页 Zotero 文献列表
@@ -84,24 +95,45 @@ pub fn fetch_zotero_items(
         limit.unwrap_or(DEFAULT_PAGE_LIMIT),
     )?;
 
-    Ok(PagedZoteroItemsDto {
-        items: page
-            .items
-            .into_iter()
-            .map(|item| ZoteroItemDto {
-                item_key: item.item_key,
-                title: item.title,
-                authors: item.authors,
-                year: item.year,
-                publication_title: item.publication_title,
-                pdf_path: item.pdf_path,
-                date_added: item.date_added,
-            })
-            .collect(),
-        total: page.total,
-        offset: page.offset,
-        limit: page.limit,
-    })
+    Ok(items_page_to_dto(page))
+}
+
+/// 获取 Zotero 所有 collections（文件夹树）
+#[tauri::command]
+pub fn fetch_zotero_collections() -> Result<Vec<ZoteroCollectionDto>, crate::errors::AppError> {
+    let connector = ZoteroConnector::detect()?;
+    let collections = connector.fetch_collections()?;
+
+    Ok(collections
+        .into_iter()
+        .map(|c| ZoteroCollectionDto {
+            collection_id: c.collection_id,
+            key: c.key,
+            name: c.name,
+            parent_collection_id: c.parent_collection_id,
+            item_count: c.item_count,
+        })
+        .collect())
+}
+
+/// 获取指定 collection 下的文献列表（分页）
+/// collection_id 为 None 时返回未分类文献
+#[tauri::command]
+pub fn fetch_zotero_collection_items(
+    collection_id: Option<i64>,
+    query: Option<String>,
+    offset: Option<u32>,
+    limit: Option<u32>,
+) -> Result<PagedZoteroItemsDto, crate::errors::AppError> {
+    let connector = ZoteroConnector::detect()?;
+    let page = connector.fetch_items_in_collection(
+        collection_id,
+        query.as_deref(),
+        offset.unwrap_or(0),
+        limit.unwrap_or(DEFAULT_PAGE_LIMIT),
+    )?;
+
+    Ok(items_page_to_dto(page))
 }
 
 /// 解析对应 PDF 路径后复用 open_document 逻辑
@@ -120,6 +152,29 @@ pub fn open_zotero_attachment(
         Some(attachment.parent_item_key),
     )
 }
+
+/// 辅助：将内部 ZoteroItemsPage 转为 DTO
+fn items_page_to_dto(page: crate::zotero_connector::ZoteroItemsPage) -> PagedZoteroItemsDto {
+    PagedZoteroItemsDto {
+        items: page
+            .items
+            .into_iter()
+            .map(|item| ZoteroItemDto {
+                item_key: item.item_key,
+                title: item.title,
+                authors: item.authors,
+                year: item.year,
+                publication_title: item.publication_title,
+                pdf_path: item.pdf_path,
+                date_added: item.date_added,
+            })
+            .collect(),
+        total: page.total,
+        offset: page.offset,
+        limit: page.limit,
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

@@ -13,6 +13,15 @@ const MAX_PAGE_LIMIT: u32 = 200;
 const PDF_CONTENT_TYPE: &str = "application/pdf";
 
 #[derive(Debug, Clone)]
+pub struct ZoteroCollection {
+    pub collection_id: i64,
+    pub key: String,
+    pub name: String,
+    pub parent_collection_id: Option<i64>,
+    pub item_count: u32,
+}
+
+#[derive(Debug, Clone)]
 pub struct ZoteroItemRecord {
     pub item_key: String,
     pub title: String,
@@ -94,14 +103,128 @@ impl ZoteroConnector {
         let connection = self.open_connection()?;
         connection
             .query_row(
-                "SELECT COUNT(DISTINCT parentItemID)
-                 FROM itemAttachments
-                 WHERE parentItemID IS NOT NULL
-                   AND LOWER(COALESCE(contentType, '')) = ?1",
+                "SELECT COUNT(DISTINCT ia.parentItemID)
+                 FROM itemAttachments ia
+                 WHERE ia.parentItemID IS NOT NULL
+                   AND LOWER(COALESCE(ia.contentType, '')) = ?1
+                   AND NOT EXISTS (
+                       SELECT 1 FROM deletedItems di WHERE di.itemID = ia.parentItemID
+                   )",
                 params![PDF_CONTENT_TYPE],
                 |row| row.get(0),
             )
             .map_err(map_sqlite_error)
+    }
+
+    /// 获取所有 Zotero collections（含每个 collection 的文献数量）
+    pub fn fetch_collections(&self) -> Result<Vec<ZoteroCollection>, AppError> {
+        let connection = self.open_connection()?;
+        let mut statement = connection
+            .prepare(
+                "SELECT
+                     c.collectionID,
+                     c.key,
+                     c.collectionName,
+                     c.parentCollectionID,
+                     (
+                         SELECT COUNT(*)
+                         FROM collectionItems ci
+                         JOIN items i ON i.itemID = ci.itemID
+                         WHERE ci.collectionID = c.collectionID
+                           AND EXISTS (
+                               SELECT 1 FROM itemAttachments ia
+                               WHERE ia.parentItemID = i.itemID
+                                 AND LOWER(COALESCE(ia.contentType, '')) = ?1
+                           )
+                           AND NOT EXISTS (
+                               SELECT 1 FROM deletedItems di WHERE di.itemID = i.itemID
+                           )
+                     ) AS itemCount
+                 FROM collections c
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM deletedCollections dc WHERE dc.collectionID = c.collectionID
+                 )
+                 ORDER BY c.collectionName ASC",
+            )
+            .map_err(map_sqlite_error)?;
+
+        let rows = statement
+            .query_map(params![PDF_CONTENT_TYPE], |row| {
+                Ok(ZoteroCollection {
+                    collection_id: row.get(0)?,
+                    key: row.get(1)?,
+                    name: row.get(2)?,
+                    parent_collection_id: row.get(3)?,
+                    item_count: row.get(4)?,
+                })
+            })
+            .map_err(map_sqlite_error)?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(map_sqlite_error)
+    }
+
+    /// 获取指定 collection 下的文献列表（分页）
+    /// collection_id 为 None 时返回不属于任何 collection 的文献
+    pub fn fetch_items_in_collection(
+        &self,
+        collection_id: Option<i64>,
+        query: Option<&str>,
+        offset: u32,
+        limit: u32,
+    ) -> Result<ZoteroItemsPage, AppError> {
+        let limit = limit.clamp(1, MAX_PAGE_LIMIT);
+        let (query_value, like_query) = normalize_query(query);
+        let connection = self.open_connection()?;
+
+        let (total, rows) = if let Some(cid) = collection_id {
+            let total = query_total_in_collection(&connection, cid, &query_value, &like_query)?;
+            let rows = query_page_in_collection(&connection, cid, &query_value, &like_query, offset, limit)?;
+            (total, rows)
+        } else {
+            let total = query_total_uncategorized(&connection, &query_value, &like_query)?;
+            let rows = query_page_uncategorized(&connection, &query_value, &like_query, offset, limit)?;
+            (total, rows)
+        };
+
+        if rows.is_empty() {
+            return Ok(ZoteroItemsPage {
+                items: Vec::new(),
+                total,
+                offset,
+                limit,
+            });
+        }
+
+        let item_ids: Vec<i64> = rows.iter().map(|r| r.item_id).collect();
+        let authors_map = batch_fetch_authors(&connection, &item_ids)?;
+        let attachments_map = batch_fetch_first_attachments(&connection, &item_ids)?;
+
+        let mut items = Vec::with_capacity(rows.len());
+        for row in rows {
+            let authors = authors_map.get(&row.item_id).cloned().unwrap_or_default();
+            let pdf_path = attachments_map
+                .get(&row.item_id)
+                .and_then(|attachment| self.resolve_attachment_reference(attachment).ok())
+                .map(|path| path.to_string_lossy().into_owned());
+
+            items.push(ZoteroItemRecord {
+                item_key: row.item_key,
+                title: row.title,
+                authors,
+                year: extract_year(row.raw_year.as_deref()),
+                publication_title: row.publication_title,
+                pdf_path,
+                date_added: row.date_added,
+            });
+        }
+
+        Ok(ZoteroItemsPage {
+            items,
+            total,
+            offset,
+            limit,
+        })
     }
 
     pub fn fetch_items(
@@ -180,12 +303,13 @@ impl ZoteroConnector {
     }
 
     fn open_connection(&self) -> Result<Connection, AppError> {
-        match self.open_connection_with_flags(false) {
+        // Zotero 运行时几乎总是持有 WAL 锁，优先使用 immutable 模式
+        // 避免简单验证查询通过后复杂查询因锁超时的问题
+        match self.open_connection_with_flags(true) {
             Ok(connection) => Ok(connection),
-            Err(error) if is_locked_sqlite_error(&error) => self
-                .open_connection_with_flags(true)
+            Err(_) => self
+                .open_connection_with_flags(false)
                 .map_err(map_sqlite_error),
-            Err(error) => Err(map_sqlite_error(error)),
         }
     }
 
@@ -651,6 +775,9 @@ fn item_filter_sql() -> &'static str {
          WHERE ia.parentItemID = i.itemID
            AND LOWER(COALESCE(ia.contentType, '')) = 'application/pdf'
      )
+     AND NOT EXISTS (
+         SELECT 1 FROM deletedItems di WHERE di.itemID = i.itemID
+     )
      AND (
          ?1 = ''
          OR LOWER(COALESCE((
@@ -689,6 +816,227 @@ fn item_filter_sql() -> &'static str {
                AND LOWER(TRIM(COALESCE(c.firstName || ' ', '') || COALESCE(c.lastName, ''))) LIKE ?2
          )
      )"
+}
+
+/// collection 内文献过滤 SQL 片段（带 PDF 附件 + 未删除 + 搜索条件）
+fn collection_item_filter_sql() -> &'static str {
+    "AND EXISTS (
+         SELECT 1
+         FROM itemAttachments ia
+         WHERE ia.parentItemID = i.itemID
+           AND LOWER(COALESCE(ia.contentType, '')) = 'application/pdf'
+     )
+     AND NOT EXISTS (
+         SELECT 1 FROM deletedItems di WHERE di.itemID = i.itemID
+     )
+     AND (
+         ?2 = ''
+         OR LOWER(COALESCE((
+             SELECT idv.value
+             FROM itemData id
+             JOIN fieldsCombined f ON f.fieldID = id.fieldID
+             JOIN itemDataValues idv ON idv.valueID = id.valueID
+             WHERE id.itemID = i.itemID
+               AND f.fieldName = 'title'
+             LIMIT 1
+         ), '')) LIKE ?3
+     )"
+}
+
+/// collection 内文献总数
+fn query_total_in_collection(
+    connection: &Connection,
+    collection_id: i64,
+    query: &str,
+    like_query: &str,
+) -> Result<u32, AppError> {
+    let sql = format!(
+        "SELECT COUNT(*) FROM collectionItems ci
+         JOIN items i ON i.itemID = ci.itemID
+         WHERE ci.collectionID = ?1
+         {}",
+        collection_item_filter_sql()
+    );
+    connection
+        .query_row(&sql, params![collection_id, query, like_query], |row| row.get(0))
+        .map_err(map_sqlite_error)
+}
+
+/// collection 内文献分页查询
+fn query_page_in_collection(
+    connection: &Connection,
+    collection_id: i64,
+    query: &str,
+    like_query: &str,
+    offset: u32,
+    limit: u32,
+) -> Result<Vec<PageRow>, AppError> {
+    let sql = format!(
+        "SELECT
+             i.itemID,
+             i.key,
+             i.dateAdded,
+             COALESCE((
+                 SELECT idv.value
+                 FROM itemData id
+                 JOIN fieldsCombined f ON f.fieldID = id.fieldID
+                 JOIN itemDataValues idv ON idv.valueID = id.valueID
+                 WHERE id.itemID = i.itemID
+                   AND f.fieldName = 'title'
+                 LIMIT 1
+             ), 'Untitled') AS title,
+             (
+                 SELECT idv.value
+                 FROM itemData id
+                 JOIN fieldsCombined f ON f.fieldID = id.fieldID
+                 JOIN itemDataValues idv ON idv.valueID = id.valueID
+                 WHERE id.itemID = i.itemID
+                   AND f.fieldName = 'publicationTitle'
+                 LIMIT 1
+             ) AS publicationTitle,
+             (
+                 SELECT idv.value
+                 FROM itemData id
+                 JOIN fieldsCombined f ON f.fieldID = id.fieldID
+                 JOIN itemDataValues idv ON idv.valueID = id.valueID
+                 WHERE id.itemID = i.itemID
+                   AND f.fieldName IN ('date', 'year')
+                 ORDER BY CASE WHEN f.fieldName = 'year' THEN 0 ELSE 1 END
+                 LIMIT 1
+             ) AS rawYear
+         FROM collectionItems ci
+         JOIN items i ON i.itemID = ci.itemID
+         WHERE ci.collectionID = ?1
+         {}
+         ORDER BY ci.orderIndex ASC, i.dateAdded DESC
+         LIMIT ?4 OFFSET ?5",
+        collection_item_filter_sql()
+    );
+
+    let mut statement = connection.prepare(&sql).map_err(map_sqlite_error)?;
+    let rows = statement
+        .query_map(params![collection_id, query, like_query, limit, offset], |row| {
+            Ok(PageRow {
+                item_id: row.get(0)?,
+                item_key: row.get(1)?,
+                date_added: row.get(2)?,
+                title: row.get(3)?,
+                publication_title: row.get(4)?,
+                raw_year: row.get(5)?,
+            })
+        })
+        .map_err(map_sqlite_error)?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(map_sqlite_error)
+}
+
+/// 未分类文献（不属于任何 collection）的过滤 SQL
+fn uncategorized_filter_sql() -> String {
+    format!(
+        "WHERE NOT EXISTS (
+             SELECT 1 FROM collectionItems ci WHERE ci.itemID = i.itemID
+         )
+         AND EXISTS (
+             SELECT 1
+             FROM itemAttachments ia
+             WHERE ia.parentItemID = i.itemID
+               AND LOWER(COALESCE(ia.contentType, '')) = 'application/pdf'
+         )
+         AND NOT EXISTS (
+             SELECT 1 FROM deletedItems di WHERE di.itemID = i.itemID
+         )
+         AND (
+             ?1 = ''
+             OR LOWER(COALESCE((
+                 SELECT idv.value
+                 FROM itemData id
+                 JOIN fieldsCombined f ON f.fieldID = id.fieldID
+                 JOIN itemDataValues idv ON idv.valueID = id.valueID
+                 WHERE id.itemID = i.itemID
+                   AND f.fieldName = 'title'
+                 LIMIT 1
+             ), '')) LIKE ?2
+         )"
+    )
+}
+
+/// 未分类文献总数
+fn query_total_uncategorized(
+    connection: &Connection,
+    query: &str,
+    like_query: &str,
+) -> Result<u32, AppError> {
+    let sql = format!("SELECT COUNT(*) FROM items i {}", uncategorized_filter_sql());
+    connection
+        .query_row(&sql, params![query, like_query], |row| row.get(0))
+        .map_err(map_sqlite_error)
+}
+
+/// 未分类文献分页查询
+fn query_page_uncategorized(
+    connection: &Connection,
+    query: &str,
+    like_query: &str,
+    offset: u32,
+    limit: u32,
+) -> Result<Vec<PageRow>, AppError> {
+    let sql = format!(
+        "SELECT
+             i.itemID,
+             i.key,
+             i.dateAdded,
+             COALESCE((
+                 SELECT idv.value
+                 FROM itemData id
+                 JOIN fieldsCombined f ON f.fieldID = id.fieldID
+                 JOIN itemDataValues idv ON idv.valueID = id.valueID
+                 WHERE id.itemID = i.itemID
+                   AND f.fieldName = 'title'
+                 LIMIT 1
+             ), 'Untitled') AS title,
+             (
+                 SELECT idv.value
+                 FROM itemData id
+                 JOIN fieldsCombined f ON f.fieldID = id.fieldID
+                 JOIN itemDataValues idv ON idv.valueID = id.valueID
+                 WHERE id.itemID = i.itemID
+                   AND f.fieldName = 'publicationTitle'
+                 LIMIT 1
+             ) AS publicationTitle,
+             (
+                 SELECT idv.value
+                 FROM itemData id
+                 JOIN fieldsCombined f ON f.fieldID = id.fieldID
+                 JOIN itemDataValues idv ON idv.valueID = id.valueID
+                 WHERE id.itemID = i.itemID
+                   AND f.fieldName IN ('date', 'year')
+                 ORDER BY CASE WHEN f.fieldName = 'year' THEN 0 ELSE 1 END
+                 LIMIT 1
+             ) AS rawYear
+         FROM items i
+         {}
+         ORDER BY i.dateAdded DESC
+         LIMIT ?3 OFFSET ?4",
+        uncategorized_filter_sql()
+    );
+
+    let mut statement = connection.prepare(&sql).map_err(map_sqlite_error)?;
+    let rows = statement
+        .query_map(params![query, like_query, limit, offset], |row| {
+            Ok(PageRow {
+                item_id: row.get(0)?,
+                item_key: row.get(1)?,
+                date_added: row.get(2)?,
+                title: row.get(3)?,
+                publication_title: row.get(4)?,
+                raw_year: row.get(5)?,
+            })
+        })
+        .map_err(map_sqlite_error)?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(map_sqlite_error)
 }
 
 fn map_sqlite_error(error: rusqlite::Error) -> AppError {

@@ -90,9 +90,11 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             ipc::settings::get_custom_prompt,
             ipc::settings::save_custom_prompt,
             ipc::settings::reset_custom_prompt,
-            // G. Zotero 集成 (3 个)
+            // G. Zotero 集成 (5 个)
             ipc::zotero::detect_zotero_library,
             ipc::zotero::fetch_zotero_items,
+            ipc::zotero::fetch_zotero_collections,
+            ipc::zotero::fetch_zotero_collection_items,
             ipc::zotero::open_zotero_attachment,
             // H. NotebookLM 集成 (10 个)
             ipc::notebooklm::notebooklm_get_status,

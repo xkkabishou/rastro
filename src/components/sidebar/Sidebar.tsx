@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, FolderOpen, AlertTriangle } from 'lucide-react';
+import { Menu, FolderOpen, AlertTriangle, BookOpen, FileText } from 'lucide-react';
 import shibaLogoUrl from '../../assets/shiba/shiba-logo.png';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
@@ -15,6 +15,7 @@ import { useSummaryStore } from '../../stores/useSummaryStore';
 import { ipcClient } from '../../lib/ipc-client';
 import { extractPdfText, DEFAULT_SUMMARY_SOURCE_PAGES, DEFAULT_SUMMARY_SOURCE_CHARS } from '../../lib/pdf-text-extractor';
 import type { DocumentSnapshot, DocumentArtifactDto } from '../../shared/types';
+import { ZoteroList } from './ZoteroList';
 
 // ---------------------------------------------------------------------------
 // 常量
@@ -43,6 +44,7 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
   // 桌面端使用外部传入宽度，移动端固定 280px
   const effectiveWidth = isMobile ? 280 : (width ?? 280);
   const [isLoadingRecent, setIsLoadingRecent] = useState(false);
+  const [activeTab, setActiveTab] = useState<'documents' | 'zotero'>('documents');
   const setCurrentDocument = useDocumentStore((s) => s.setCurrentDocument);
   const setPdfUrl = useDocumentStore((s) => s.setPdfUrl);
   const currentDocument = useDocumentStore((s) => s.currentDocument);
@@ -466,38 +468,78 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
               </button>
             </div>
 
-            {/* 搜索栏 + 分组筛选 */}
-            <SearchBar />
-            <GroupChips />
-
-            {/* 打开文件按钮 */}
+            {/* Tab 切换：文档 / Zotero */}
             <div className="px-3 pb-2 shrink-0">
-              <button
-                onClick={handleOpenLocalPdf}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[var(--color-primary)] text-white text-xs font-medium shadow-sm hover:opacity-90 active:scale-[0.98] transition-all"
-              >
-                <FolderOpen size={14} />
-                打开本地 PDF
-              </button>
+              <div className="flex gap-1 p-0.5 rounded-lg bg-[var(--color-bg-tertiary)]">
+                <button
+                  onClick={() => setActiveTab('documents')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${
+                    activeTab === 'documents'
+                      ? 'bg-[var(--color-bg)] text-[var(--color-text)] shadow-sm'
+                      : 'text-[var(--color-text-quaternary)] hover:text-[var(--color-text-secondary)]'
+                  }`}
+                >
+                  <FileText size={12} />
+                  文档
+                </button>
+                <button
+                  onClick={() => setActiveTab('zotero')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${
+                    activeTab === 'zotero'
+                      ? 'bg-[var(--color-bg)] text-[var(--color-text)] shadow-sm'
+                      : 'text-[var(--color-text-quaternary)] hover:text-[var(--color-text-secondary)]'
+                  }`}
+                >
+                  <BookOpen size={12} />
+                  Zotero
+                </button>
+              </div>
             </div>
 
-            {/* 文档树 */}
-            <div className="flex-1 overflow-hidden border-t border-[var(--color-separator)] px-2 pt-1">
-              {isLoadingRecent ? (
-                <div className="flex items-center justify-center h-full text-xs text-[var(--color-text-quaternary)]">
-                  加载中...
+            {/* 文档 Tab 内容 */}
+            {activeTab === 'documents' && (
+              <>
+                {/* 搜索栏 + 分组筛选 */}
+                <SearchBar />
+                <GroupChips />
+
+                {/* 打开文件按钮 */}
+                <div className="px-3 pb-2 shrink-0">
+                  <button
+                    onClick={handleOpenLocalPdf}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[var(--color-primary)] text-white text-xs font-medium shadow-sm hover:opacity-90 active:scale-[0.98] transition-all"
+                  >
+                    <FolderOpen size={14} />
+                    打开本地 PDF
+                  </button>
                 </div>
-              ) : (
-                <DocumentTree
-                  documents={recentDocuments}
-                  activeDocumentId={currentDocument?.documentId}
-                  onDocumentClick={handleDocumentClick}
-                  onArtifactClick={handleArtifactClick}
-                  onContextMenuAction={handleContextMenuAction}
-                  emptyMessage={searchQuery ? '未找到匹配的文献' : '还没有最近打开的文档'}
-                />
-              )}
-            </div>
+
+                {/* 文档树 */}
+                <div className="flex-1 overflow-hidden border-t border-[var(--color-separator)] px-2 pt-1">
+                  {isLoadingRecent ? (
+                    <div className="flex items-center justify-center h-full text-xs text-[var(--color-text-quaternary)]">
+                      加载中...
+                    </div>
+                  ) : (
+                    <DocumentTree
+                      documents={recentDocuments}
+                      activeDocumentId={currentDocument?.documentId}
+                      onDocumentClick={handleDocumentClick}
+                      onArtifactClick={handleArtifactClick}
+                      onContextMenuAction={handleContextMenuAction}
+                      emptyMessage={searchQuery ? '未找到匹配的文献' : '还没有最近打开的文档'}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Zotero Tab 内容 */}
+            {activeTab === 'zotero' && (
+              <div className="flex-1 overflow-hidden border-t border-[var(--color-separator)]">
+                <ZoteroList />
+              </div>
+            )}
 
           </motion.aside>
         )}

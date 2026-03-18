@@ -56,7 +56,9 @@ import {
   UsageStatsDto,
   // G. Zotero
   ZoteroStatusDto,
+  ZoteroCollectionDto,
   FetchZoteroItemsInput,
+  FetchZoteroCollectionItemsInput,
   PagedZoteroItemsDto,
   OpenZoteroAttachmentInput,
   // V2: 文档工作空间
@@ -289,9 +291,17 @@ export const ipcClient = {
   detectZoteroLibrary: () =>
     safeInvoke<ZoteroStatusDto>(IPC_COMMANDS.DETECT_ZOTERO_LIBRARY),
 
-  /** 获取 Zotero 文献条目 */
+  /** 获取 Zotero 文献条目（全部，分页） */
   fetchZoteroItems: (input?: FetchZoteroItemsInput) =>
     safeInvoke<PagedZoteroItemsDto>(IPC_COMMANDS.FETCH_ZOTERO_ITEMS, input ? { ...input } : {}),
+
+  /** 获取 Zotero 所有 collections（文件夹树） */
+  fetchZoteroCollections: () =>
+    safeInvoke<ZoteroCollectionDto[]>(IPC_COMMANDS.FETCH_ZOTERO_COLLECTIONS),
+
+  /** 获取指定 collection 下的文献（分页），collectionId 为 null 时返回未分类文献 */
+  fetchZoteroCollectionItems: (input: FetchZoteroCollectionItemsInput) =>
+    safeInvoke<PagedZoteroItemsDto>(IPC_COMMANDS.FETCH_ZOTERO_COLLECTION_ITEMS, { ...input }),
 
   /** 打开 Zotero 附件 */
   openZoteroAttachment: (itemKey: string) =>
