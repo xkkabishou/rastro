@@ -1,513 +1,449 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Search, FileText, BookOpen, Loader2, AlertCircle,
-  RefreshCw, ChevronRight, ChevronDown, FolderOpen, Folder, FolderMinus,
+  FileText, BookOpen, Loader2, AlertCircle,
+  RefreshCw, ChevronRight, FolderOpen, Folder, FolderMinus,
+  Library, Hash,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { ipcClient } from '../../lib/ipc-client';
 import { useDocumentStore } from '../../stores/useDocumentStore';
 import type { ZoteroItemDto, ZoteroStatusDto, ZoteroCollectionDto, PagedZoteroItemsDto } from '../../shared/types';
 
-// ---------------------------------------------------------------------------
-// 常量
-// ---------------------------------------------------------------------------
+/* ======================================================================== */
+/* 常量                                                                     */
+/* ======================================================================== */
 
-/** 首次展开加载数量 */
 const INITIAL_LOAD = 20;
-
-/** 加载更多每批数量 */
 const LOAD_MORE_SIZE = 30;
 
-// ---------------------------------------------------------------------------
-// 辅助类型
-// ---------------------------------------------------------------------------
+/* ======================================================================== */
+/* 辅助类型                                                                 */
+/* ======================================================================== */
 
-/** collection 树节点 */
 interface CollectionTreeNode {
   collection: ZoteroCollectionDto;
   children: CollectionTreeNode[];
 }
 
-/** 展开的 collection 数据缓存 */
-interface ExpandedCollectionData {
+interface ExpandedData {
   items: ZoteroItemDto[];
   total: number;
   isLoading: boolean;
   isLoadingMore: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// 辅助函数
-// ---------------------------------------------------------------------------
+/* ======================================================================== */
+/* 辅助函数                                                                 */
+/* ======================================================================== */
 
-/** 将扁平 collections 列表构建为树形结构 */
-function buildCollectionTree(collections: ZoteroCollectionDto[]): CollectionTreeNode[] {
-  const nodeMap = new Map<number, CollectionTreeNode>();
+function buildTree(list: ZoteroCollectionDto[]): CollectionTreeNode[] {
+  const map = new Map<number, CollectionTreeNode>();
   const roots: CollectionTreeNode[] = [];
-
-  for (const c of collections) {
-    nodeMap.set(c.collectionId, { collection: c, children: [] });
-  }
-
-  for (const c of collections) {
-    const node = nodeMap.get(c.collectionId)!;
+  for (const c of list) map.set(c.collectionId, { collection: c, children: [] });
+  for (const c of list) {
+    const n = map.get(c.collectionId)!;
     if (c.parentCollectionId != null) {
-      const parent = nodeMap.get(c.parentCollectionId);
-      if (parent) {
-        parent.children.push(node);
-        continue;
-      }
+      const p = map.get(c.parentCollectionId);
+      if (p) { p.children.push(n); continue; }
     }
-    roots.push(node);
+    roots.push(n);
   }
-
   return roots;
 }
 
-// ---------------------------------------------------------------------------
-// 主组件
-// ---------------------------------------------------------------------------
+/* 柔和的文件夹色板 */
+const FOLDER_COLORS = [
+  { bg: '#FFF3E0', icon: '#F57C00', bar: '#FFB74D' },
+  { bg: '#E8F5E9', icon: '#388E3C', bar: '#81C784' },
+  { bg: '#E3F2FD', icon: '#1976D2', bar: '#64B5F6' },
+  { bg: '#F3E5F5', icon: '#7B1FA2', bar: '#BA68C8' },
+  { bg: '#FFF8E1', icon: '#F9A825', bar: '#FFD54F' },
+  { bg: '#E0F7FA', icon: '#00838F', bar: '#4DD0E1' },
+  { bg: '#FCE4EC', icon: '#C62828', bar: '#EF9A9A' },
+  { bg: '#EFEBE9', icon: '#4E342E', bar: '#A1887F' },
+];
 
-/**
- * Zotero 文献列表
- *
- * 树形内联展开：点击文件夹 → 在原地展开文献列表
- */
+/* ======================================================================== */
+/* ZoteroList                                                                */
+/* ======================================================================== */
+
 export const ZoteroList: React.FC = () => {
   const [status, setStatus] = useState<ZoteroStatusDto | null>(null);
   const [collections, setCollections] = useState<CollectionTreeNode[]>([]);
-  const [uncategorizedCount, setUncategorizedCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const [uncatCount, setUncatCount] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // 展开状态：key = collectionId（null 代表"未分类"）
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  // 每个展开 collection 的文献数据缓存
-  const [collectionData, setCollectionData] = useState<Map<string, ExpandedCollectionData>>(new Map());
+  const [cache, setCache] = useState<Map<string, ExpandedData>>(new Map());
+  const [refreshing, setRefreshing] = useState(false);
 
-  const setCurrentDocument = useDocumentStore((s) => s.setCurrentDocument);
-  const setPdfUrl = useDocumentStore((s) => s.setPdfUrl);
+  const setCurrentDocument = useDocumentStore(s => s.setCurrentDocument);
+  const setPdfUrl = useDocumentStore(s => s.setPdfUrl);
 
-  // 探测 Zotero 状态
-  const detectZotero = useCallback(async () => {
+  const detect = useCallback(async () => {
+    try { setLoading(true); setError(null); const s = await ipcClient.detectZoteroLibrary(); setStatus(s); return s.detected; }
+    catch { setStatus({ detected: false, statusMessage: '无法连接' }); setError('探测失败'); return false; }
+    finally { setLoading(false); }
+  }, []);
+
+  const loadCols = useCallback(async () => {
     try {
-      setIsLoading(true);
-      setError(null);
-      const zoteroStatus = await ipcClient.detectZoteroLibrary();
-      setStatus(zoteroStatus);
-      return zoteroStatus.detected;
-    } catch (err) {
-      console.error('探测 Zotero 失败:', err);
-      setStatus({ detected: false, statusMessage: '无法连接 Zotero' });
-      setError('Zotero 探测失败，请确认 Zotero 已安装');
-      return false;
-    } finally {
-      setIsLoading(false);
+      const raw = await ipcClient.fetchZoteroCollections();
+      setCollections(buildTree(raw));
+      const uc = await ipcClient.fetchZoteroCollectionItems({ collectionId: null, offset: 0, limit: 1 });
+      setUncatCount(uc.total);
+    } catch { setError('加载文件夹失败'); }
+  }, []);
+
+  useEffect(() => { (async () => { if (await detect()) await loadCols(); })(); }, [detect, loadCols]);
+
+  const loadItems = useCallback(async (cid: number | null, offset = 0) => {
+    const k = cid === null ? '_uc' : String(cid);
+    setCache(p => { const m = new Map(p); const e = m.get(k); m.set(k, { items: e?.items ?? [], total: e?.total ?? 0, isLoading: offset === 0, isLoadingMore: offset > 0 }); return m; });
+    try {
+      const r: PagedZoteroItemsDto = await ipcClient.fetchZoteroCollectionItems({ collectionId: cid, offset, limit: offset === 0 ? INITIAL_LOAD : LOAD_MORE_SIZE });
+      setCache(p => { const m = new Map(p); const e = m.get(k); m.set(k, { items: offset === 0 ? r.items : [...(e?.items ?? []), ...r.items], total: r.total, isLoading: false, isLoadingMore: false }); return m; });
+    } catch {
+      setCache(p => { const m = new Map(p); const e = m.get(k); m.set(k, { items: e?.items ?? [], total: e?.total ?? 0, isLoading: false, isLoadingMore: false }); return m; });
     }
   }, []);
 
-  // 加载 collections 树
-  const loadCollections = useCallback(async () => {
-    try {
-      const rawCollections = await ipcClient.fetchZoteroCollections();
-      const tree = buildCollectionTree(rawCollections);
-      setCollections(tree);
+  const toggle = useCallback((cid: number | null) => {
+    const k = cid === null ? '_uc' : String(cid);
+    setExpandedIds(p => { const s = new Set(p); if (s.has(k)) s.delete(k); else { s.add(k); if (!cache.has(k)) loadItems(cid, 0); } return s; });
+  }, [cache, loadItems]);
 
-      // 获取未分类文献数
-      const uncategorized = await ipcClient.fetchZoteroCollectionItems({
-        collectionId: null, offset: 0, limit: 1,
-      });
-      setUncategorizedCount(uncategorized.total);
-    } catch (err) {
-      console.error('加载 Zotero collections 失败:', err);
-      setError('加载文件夹结构失败');
-    }
-  }, []);
-
-  // 初始化
-  useEffect(() => {
-    (async () => {
-      const detected = await detectZotero();
-      if (detected) {
-        await loadCollections();
-      }
-    })();
-  }, [detectZotero, loadCollections]);
-
-  // collection key：数字 ID 或 "uncategorized"
-  const getKey = (collectionId: number | null) =>
-    collectionId === null ? 'uncategorized' : String(collectionId);
-
-  // 加载某个 collection 的文献
-  const loadCollectionItems = useCallback(async (collectionId: number | null, offset = 0) => {
-    const key = collectionId === null ? 'uncategorized' : String(collectionId);
-
-    setCollectionData((prev) => {
-      const next = new Map(prev);
-      const existing = next.get(key);
-      next.set(key, {
-        items: existing?.items ?? [],
-        total: existing?.total ?? 0,
-        isLoading: offset === 0,
-        isLoadingMore: offset > 0,
-      });
-      return next;
-    });
-
-    try {
-      const result: PagedZoteroItemsDto = await ipcClient.fetchZoteroCollectionItems({
-        collectionId,
-        offset,
-        limit: offset === 0 ? INITIAL_LOAD : LOAD_MORE_SIZE,
-      });
-
-      setCollectionData((prev) => {
-        const next = new Map(prev);
-        const existing = next.get(key);
-        const items = offset === 0
-          ? result.items
-          : [...(existing?.items ?? []), ...result.items];
-        next.set(key, {
-          items,
-          total: result.total,
-          isLoading: false,
-          isLoadingMore: false,
-        });
-        return next;
-      });
-    } catch (err) {
-      console.error('加载文献失败:', err);
-      setCollectionData((prev) => {
-        const next = new Map(prev);
-        const existing = next.get(key);
-        next.set(key, {
-          items: existing?.items ?? [],
-          total: existing?.total ?? 0,
-          isLoading: false,
-          isLoadingMore: false,
-        });
-        return next;
-      });
-    }
-  }, []);
-
-  // 切换展开/折叠
-  const toggleCollection = useCallback((collectionId: number | null) => {
-    const key = collectionId === null ? 'uncategorized' : String(collectionId);
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-        // 首次展开时加载文献
-        if (!collectionData.has(key)) {
-          loadCollectionItems(collectionId, 0);
-        }
-      }
-      return next;
-    });
-  }, [collectionData, loadCollectionItems]);
-
-  // 点击打开文献 PDF
-  const handleOpenItem = useCallback(async (item: ZoteroItemDto) => {
+  const openItem = useCallback(async (item: ZoteroItemDto) => {
     if (!item.pdfPath) return;
-    try {
-      const doc = await ipcClient.openZoteroAttachment(item.itemKey);
-      setCurrentDocument(doc);
-      const assetUrl = convertFileSrc(doc.filePath);
-      setPdfUrl(assetUrl);
-    } catch (err) {
-      console.error('打开 Zotero 附件失败:', err);
-    }
+    try { const doc = await ipcClient.openZoteroAttachment(item.itemKey); setCurrentDocument(doc); setPdfUrl(convertFileSrc(doc.filePath)); }
+    catch (e) { console.error('打开附件失败:', e); }
   }, [setCurrentDocument, setPdfUrl]);
 
-  // -------------------------------------------------------------------------
-  // Zotero 未检测到
-  // -------------------------------------------------------------------------
+  const refresh = useCallback(async () => {
+    setRefreshing(true); setCache(new Map()); setExpandedIds(new Set());
+    await detect(); await loadCols(); setRefreshing(false);
+  }, [detect, loadCols]);
 
-  if (!isLoading && status && !status.detected) {
+  const totalItems = status?.itemCount ?? 0;
+  const colCount = collections.length + (uncatCount > 0 ? 1 : 0);
+
+  /* --- 未检测到 --- */
+  if (!loading && status && !status.detected) {
     return (
-      <div className="flex flex-col items-center justify-center p-6 text-center gap-3">
-        <div className="w-12 h-12 rounded-2xl bg-[var(--color-bg-tertiary)] flex items-center justify-center">
-          <BookOpen size={24} className="text-[var(--color-text-quaternary)]" />
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center', gap: 12 }}>
+        <div style={{ width: 48, height: 48, borderRadius: 14, background: 'var(--color-bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <BookOpen size={22} color="var(--color-text-quaternary)" />
         </div>
         <div>
-          <p className="text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-            未检测到 Zotero
-          </p>
-          <p className="text-[10px] text-[var(--color-text-quaternary)] leading-relaxed">
-            {status.statusMessage || '请确认 Zotero 已安装并至少运行过一次'}
-          </p>
+          <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>未检测到 Zotero</p>
+          <p style={{ fontSize: 12, color: 'var(--color-text-quaternary)', margin: 0 }}>{status.statusMessage || '请确认已安装并运行过一次'}</p>
         </div>
         <button
-          onClick={detectZotero}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--color-primary)] hover:bg-[var(--color-selected)] transition-colors"
+          onClick={detect}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 8%, transparent)', border: 'none', cursor: 'pointer' }}
         >
-          <RefreshCw size={12} />
-          重新检测
+          <RefreshCw size={13} /> 重新检测
         </button>
       </div>
     );
   }
 
-  // -------------------------------------------------------------------------
-  // 正常渲染
-  // -------------------------------------------------------------------------
-
+  /* --- 正常 --- */
   return (
-    <div className="flex flex-col h-full">
-      {/* 顶部 */}
-      <div className="px-3 py-2 shrink-0 flex items-center justify-between">
-        <span className="text-[10px] text-[var(--color-text-quaternary)]">
-          {status?.itemCount != null ? `共 ${status.itemCount} 篇文献` : ''}
-        </span>
-        <button
-          onClick={async () => {
-            setCollectionData(new Map());
-            setExpandedIds(new Set());
-            await detectZotero();
-            await loadCollections();
-          }}
-          className="p-1 rounded-md hover:bg-[var(--color-hover)] transition-colors"
-          title="刷新"
-        >
-          <RefreshCw size={12} className="text-[var(--color-text-quaternary)]" />
-        </button>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+
+      {/* ====== 统计头部卡片 ====== */}
+      <div style={{ padding: '12px 12px 8px', flexShrink: 0 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '10px 12px',
+          borderRadius: 10,
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 6%, transparent), color-mix(in srgb, var(--color-primary) 12%, transparent))',
+        }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: 'color-mix(in srgb, var(--color-primary) 15%, transparent)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Library size={18} color="var(--color-primary)" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text)', lineHeight: 1.1 }}>
+              {totalItems}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 2 }}>
+              篇文献 · {colCount} 个文件夹
+            </div>
+          </div>
+          <button
+            onClick={refresh} disabled={refreshing}
+            style={{
+              width: 28, height: 28, borderRadius: 8, border: 'none',
+              background: 'color-mix(in srgb, var(--color-primary) 10%, transparent)',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <RefreshCw size={13} color="var(--color-primary)" className={refreshing ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
-      {/* 树形列表 */}
-      <div className="flex-1 overflow-y-auto">
-        {isLoading ? (
-          <div className="flex items-center justify-center gap-2 p-6">
-            <Loader2 size={16} className="text-[var(--color-text-quaternary)] animate-spin" />
-            <span className="text-xs text-[var(--color-text-quaternary)]">加载中...</span>
+      {/* ====== 分隔标签 ====== */}
+      <div style={{ padding: '4px 14px 6px', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Hash size={11} color="var(--color-text-quaternary)" />
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-quaternary)', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+          文件夹
+        </span>
+      </div>
+
+      {/* ====== 树形列表 ====== */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 12px' }}>
+        {loading ? (
+          /* 骨架屏 */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '0 4px' }}>
+            {[...Array(5)].map((_, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 8, background: 'var(--color-bg-tertiary)' }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8 }} className="animate-pulse" />
+                <div style={{ flex: 1 }}>
+                  <div style={{ height: 12, width: 60 + i * 15, borderRadius: 4, background: 'var(--color-border)' }} className="animate-pulse" />
+                  <div style={{ height: 8, width: 30, borderRadius: 4, background: 'var(--color-border)', marginTop: 6 }} className="animate-pulse" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
-          <div className="pb-4">
-            {/* Collection 树 */}
-            {collections.map((node) => (
-              <CollectionFolder
-                key={node.collection.collectionId}
-                node={node}
-                depth={0}
-                expandedIds={expandedIds}
-                collectionData={collectionData}
-                onToggle={toggleCollection}
-                onLoadMore={loadCollectionItems}
-                onOpenItem={handleOpenItem}
-              />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {collections.map((n, i) => (
+              <FolderNode key={n.collection.collectionId} node={n} depth={0} colorIdx={i}
+                expandedIds={expandedIds} cache={cache}
+                onToggle={toggle} onLoadMore={loadItems} onOpen={openItem} />
             ))}
-
-            {/* 未分类 */}
-            {uncategorizedCount > 0 && (
-              <CollectionFolder
-                key="uncategorized"
-                node={null}
-                uncategorizedCount={uncategorizedCount}
-                depth={0}
-                expandedIds={expandedIds}
-                collectionData={collectionData}
-                onToggle={toggleCollection}
-                onLoadMore={loadCollectionItems}
-                onOpenItem={handleOpenItem}
-              />
+            {uncatCount > 0 && (
+              <FolderNode node={null} uncatCount={uncatCount} depth={0} colorIdx={collections.length}
+                expandedIds={expandedIds} cache={cache}
+                onToggle={toggle} onLoadMore={loadItems} onOpen={openItem} />
             )}
           </div>
         )}
       </div>
 
-      {/* 错误提示 */}
-      {error && (
-        <div className="px-3 py-2 shrink-0 border-t border-[var(--color-border)]">
-          <div className="flex items-center gap-1.5 text-xs text-[var(--color-destructive)]">
-            <AlertCircle size={12} />
-            <span>{error}</span>
-          </div>
-        </div>
-      )}
+      {/* 错误 */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+            style={{ padding: '6px 14px', flexShrink: 0, borderTop: '1px solid var(--color-border)', overflow: 'hidden' }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-destructive)' }}>
+              <AlertCircle size={13} />{error}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
-// ---------------------------------------------------------------------------
-// 子组件：文件夹节点（可内联展开文献列表）
-// ---------------------------------------------------------------------------
+/* ======================================================================== */
+/* FolderNode                                                                */
+/* ======================================================================== */
 
-interface CollectionFolderProps {
-  node: CollectionTreeNode | null; // null = 未分类
-  uncategorizedCount?: number;
+interface FolderNodeProps {
+  node: CollectionTreeNode | null;
+  uncatCount?: number;
   depth: number;
+  colorIdx: number;
   expandedIds: Set<string>;
-  collectionData: Map<string, ExpandedCollectionData>;
-  onToggle: (collectionId: number | null) => void;
-  onLoadMore: (collectionId: number | null, offset: number) => void;
-  onOpenItem: (item: ZoteroItemDto) => void;
+  cache: Map<string, ExpandedData>;
+  onToggle: (id: number | null) => void;
+  onLoadMore: (id: number | null, offset: number) => void;
+  onOpen: (item: ZoteroItemDto) => void;
 }
 
-const CollectionFolder: React.FC<CollectionFolderProps> = ({
-  node, uncategorizedCount, depth,
-  expandedIds, collectionData,
-  onToggle, onLoadMore, onOpenItem,
+const FolderNode: React.FC<FolderNodeProps> = ({
+  node, uncatCount, depth, colorIdx, expandedIds, cache, onToggle, onLoadMore, onOpen,
 }) => {
-  const isUncategorized = node === null;
-  const collectionId = isUncategorized ? null : node.collection.collectionId;
-  const key = isUncategorized ? 'uncategorized' : String(collectionId);
-  const name = isUncategorized ? '未分类' : node.collection.name;
-  const itemCount = isUncategorized ? (uncategorizedCount ?? 0) : node.collection.itemCount;
-  const hasChildren = !isUncategorized && node.children.length > 0;
-  const isExpanded = expandedIds.has(key);
-  const data = collectionData.get(key);
-  const loadedCount = data?.items.length ?? 0;
-  const totalCount = data?.total ?? itemCount;
-  const hasMoreItems = loadedCount < totalCount;
+  const isUncat = node === null;
+  const cid = isUncat ? null : node.collection.collectionId;
+  const key = isUncat ? '_uc' : String(cid);
+  const name = isUncat ? '未分类' : node.collection.name;
+  const count = isUncat ? (uncatCount ?? 0) : node.collection.itemCount;
+  const hasKids = !isUncat && node.children.length > 0;
+  const open = expandedIds.has(key);
+  const d = cache.get(key);
+  const loaded = d?.items.length ?? 0;
+  const total = d?.total ?? count;
+  const hasMore = loaded < total;
+
+  const color = FOLDER_COLORS[colorIdx % FOLDER_COLORS.length];
+  const pl = depth * 16;
+  const isRoot = depth === 0;
 
   return (
-    <div>
+    <div style={{ marginLeft: pl }}>
       {/* 文件夹行 */}
       <button
-        onClick={() => onToggle(collectionId)}
-        className="w-full flex items-center gap-1.5 py-1.5 pr-2 hover:bg-[var(--color-hover)] rounded-lg transition-colors group"
-        style={{ paddingLeft: `${12 + depth * 14}px` }}
+        onClick={() => onToggle(cid)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          width: '100%',
+          padding: isRoot ? '8px 10px' : '6px 10px',
+          borderRadius: 10,
+          border: 'none',
+          background: open ? color.bg : 'transparent',
+          cursor: 'pointer',
+          transition: 'background 150ms, transform 100ms',
+        }}
+        onMouseEnter={e => { if (!open) e.currentTarget.style.background = 'var(--color-hover)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = open ? color.bg : 'transparent'; }}
       >
-        {/* 展开箭头 */}
-        <span className="w-4 h-4 flex items-center justify-center shrink-0">
-          {isExpanded ? (
-            <ChevronDown size={12} className="text-[var(--color-text-tertiary)]" />
-          ) : (
-            <ChevronRight size={12} className="text-[var(--color-text-tertiary)]" />
-          )}
-        </span>
+        {/* 彩色图标容器 */}
+        <div style={{
+          width: isRoot ? 32 : 26,
+          height: isRoot ? 32 : 26,
+          borderRadius: isRoot ? 8 : 6,
+          background: open ? color.icon : 'var(--color-bg-tertiary)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'background 200ms, transform 150ms',
+          flexShrink: 0,
+          transform: open ? 'scale(1.02)' : 'scale(1)',
+        }}>
+          {isUncat
+            ? <FolderMinus size={isRoot ? 16 : 13} color={open ? '#fff' : 'var(--color-text-quaternary)'} />
+            : open
+              ? <FolderOpen size={isRoot ? 16 : 13} color="#fff" />
+              : <Folder size={isRoot ? 16 : 13} color="var(--color-text-quaternary)" />
+          }
+        </div>
 
-        {/* 文件夹图标 */}
-        {isUncategorized ? (
-          <FolderMinus size={14} className="text-[var(--color-text-quaternary)] shrink-0" />
-        ) : isExpanded ? (
-          <FolderOpen size={14} className="text-[var(--color-primary)] shrink-0" />
-        ) : (
-          <Folder size={14} className="text-[var(--color-text-quaternary)] shrink-0 group-hover:text-[var(--color-primary)]" />
-        )}
+        {/* 名称 + 计数 */}
+        <div style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
+          <div style={{
+            fontSize: isRoot ? 13 : 12,
+            fontWeight: open ? 600 : 500,
+            color: open ? color.icon : 'var(--color-text)',
+            lineHeight: 1.2,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            transition: 'color 150ms',
+          }}>
+            {name}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--color-text-quaternary)', lineHeight: 1.2, marginTop: 1 }}>
+            {count} 篇
+          </div>
+        </div>
 
-        {/* 名称 */}
-        <span className="text-xs text-[var(--color-text-secondary)] truncate flex-1 text-left">
-          {name}
-        </span>
-
-        {/* 数量 badge */}
-        <span className="text-[10px] text-[var(--color-text-quaternary)] tabular-nums shrink-0 bg-[var(--color-bg-tertiary)] px-1.5 py-0.5 rounded-full">
-          {itemCount}
+        {/* 箭头 */}
+        <span style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 18, height: 18, flexShrink: 0,
+          transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+          transition: 'transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+        }}>
+          <ChevronRight size={14} color={open ? color.icon : 'var(--color-text-quaternary)'} />
         </span>
       </button>
 
-      {/* 展开内容 */}
-      {isExpanded && (
-        <div>
-          {/* 子文件夹 */}
-          {hasChildren && node.children.map((child) => (
-            <CollectionFolder
-              key={child.collection.collectionId}
-              node={child}
-              depth={depth + 1}
-              expandedIds={expandedIds}
-              collectionData={collectionData}
-              onToggle={onToggle}
-              onLoadMore={onLoadMore}
-              onOpenItem={onOpenItem}
-            />
-          ))}
+      {/* 展开区域 */}
+      <div style={{
+        display: 'grid',
+        gridTemplateRows: open ? '1fr' : '0fr',
+        transition: 'grid-template-rows 250ms cubic-bezier(0.4, 0, 0.2, 1)',
+      }}>
+        <div style={{ overflow: 'hidden' }}>
+          <div style={{ paddingLeft: isRoot ? 12 : 8, paddingTop: 2, paddingBottom: open ? 4 : 0 }}>
+            {/* 子文件夹 */}
+            {hasKids && node.children.map((c, i) => (
+              <FolderNode key={c.collection.collectionId} node={c} depth={depth + 1} colorIdx={colorIdx}
+                expandedIds={expandedIds} cache={cache}
+                onToggle={onToggle} onLoadMore={onLoadMore} onOpen={onOpen} />
+            ))}
 
-          {/* 文献列表 */}
-          {data?.isLoading ? (
-            <div
-              className="flex items-center gap-1.5 py-2 text-xs text-[var(--color-text-quaternary)]"
-              style={{ paddingLeft: `${28 + depth * 14}px` }}
-            >
-              <Loader2 size={12} className="animate-spin" />
-              加载中...
-            </div>
-          ) : (
-            <>
-              {data?.items.map((item) => (
-                <InlineItemRow
-                  key={item.itemKey}
-                  item={item}
-                  depth={depth}
-                  onClick={() => onOpenItem(item)}
-                />
-              ))}
+            {/* 骨架 */}
+            {d?.isLoading && [...Array(Math.min(count, 4))].map((_, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px' }}>
+                <div style={{ width: 14, height: 14, borderRadius: 3, background: 'var(--color-bg-tertiary)' }} className="animate-pulse" />
+                <div style={{ height: 10, borderRadius: 3, background: 'var(--color-bg-tertiary)', flex: 1, maxWidth: 140 + i * 20 }} className="animate-pulse" />
+              </div>
+            ))}
 
-              {/* 加载更多 */}
-              {hasMoreItems && loadedCount > 0 && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onLoadMore(collectionId, loadedCount);
-                  }}
-                  disabled={data?.isLoadingMore}
-                  className="flex items-center gap-1.5 py-1.5 text-[11px] text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] transition-colors"
-                  style={{ paddingLeft: `${28 + depth * 14}px` }}
-                >
-                  {data?.isLoadingMore ? (
-                    <>
-                      <Loader2 size={10} className="animate-spin" />
-                      加载中...
-                    </>
-                  ) : (
-                    `加载更多 (${loadedCount}/${totalCount})`
-                  )}
-                </button>
-              )}
-            </>
-          )}
+            {/* 文献列表 */}
+            {!d?.isLoading && d?.items.map(item => (
+              <ItemRow key={item.itemKey} item={item} accentColor={color.icon} onClick={() => onOpen(item)} />
+            ))}
+
+            {/* 加载更多 */}
+            {hasMore && loaded > 0 && !d?.isLoading && (
+              <button
+                onClick={e => { e.stopPropagation(); onLoadMore(cid, loaded); }}
+                disabled={d?.isLoadingMore}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  width: '100%', padding: '6px 8px',
+                  fontSize: 12, fontWeight: 500, color: color.icon,
+                  background: 'transparent', border: `1px dashed ${color.bar}`,
+                  borderRadius: 6, cursor: 'pointer',
+                  marginTop: 4,
+                }}
+              >
+                {d?.isLoadingMore
+                  ? <><Loader2 size={12} className="animate-spin" />加载中...</>
+                  : `加载更多 (${loaded}/${total})`}
+              </button>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
 
-// ---------------------------------------------------------------------------
-// 子组件：文献条目行（内联文件夹下方的紧凑版）
-// ---------------------------------------------------------------------------
+/* ======================================================================== */
+/* ItemRow                                                                   */
+/* ======================================================================== */
 
-const InlineItemRow: React.FC<{
-  item: ZoteroItemDto;
-  depth: number;
-  onClick: () => void;
-}> = ({ item, depth, onClick }) => {
-  // 格式化作者（第一作者 + 年份）
-  const meta = useMemo(() => {
-    const parts: string[] = [];
+const ItemRow: React.FC<{ item: ZoteroItemDto; accentColor: string; onClick: () => void }> = ({ item, accentColor, onClick }) => {
+  const sub = useMemo(() => {
+    const p: string[] = [];
     if (item.authors?.length) {
-      parts.push(item.authors[0].split(' ').pop() || item.authors[0]);
-      if (item.authors.length > 1) parts[0] += ' 等';
+      const a = item.authors[0].split(' ').pop() || item.authors[0];
+      p.push(item.authors.length > 1 ? `${a} 等` : a);
     }
-    if (item.year) parts.push(String(item.year));
-    return parts.join(', ') || '';
+    if (item.year) p.push(String(item.year));
+    return p.join(' · ');
   }, [item.authors, item.year]);
 
   return (
     <button
       onClick={onClick}
       disabled={!item.pdfPath}
-      className={`w-full flex items-start gap-2 py-1.5 pr-2 rounded-lg transition-colors group text-left ${
-        item.pdfPath
-          ? 'hover:bg-[var(--color-hover)] cursor-pointer'
-          : 'opacity-40 cursor-not-allowed'
-      }`}
-      style={{ paddingLeft: `${28 + depth * 14}px` }}
+      style={{
+        display: 'flex', alignItems: 'flex-start', gap: 8,
+        width: '100%', padding: '6px 8px',
+        borderRadius: 6, border: 'none',
+        background: 'transparent', cursor: item.pdfPath ? 'pointer' : 'not-allowed',
+        opacity: item.pdfPath ? 1 : 0.35,
+        textAlign: 'left',
+        transition: 'background 100ms',
+      }}
+      onMouseEnter={e => { if (item.pdfPath) e.currentTarget.style.background = 'var(--color-hover)'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
     >
-      <FileText
-        size={13}
-        className="text-[var(--color-text-quaternary)] group-hover:text-[var(--color-primary)] shrink-0 mt-0.5"
-      />
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] leading-tight text-[var(--color-text)] line-clamp-2">
+      <FileText size={14} color={accentColor} style={{ flexShrink: 0, marginTop: 1, opacity: 0.7 }} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{
+          fontSize: 12, lineHeight: 1.35,
+          color: 'var(--color-text)',
+          overflow: 'hidden', textOverflow: 'ellipsis',
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+        }}>
           {item.title}
-        </p>
-        {meta && (
-          <p className="text-[10px] text-[var(--color-text-quaternary)] mt-0.5 truncate">
-            {meta}
-          </p>
+        </div>
+        {sub && (
+          <div style={{ fontSize: 11, color: 'var(--color-text-quaternary)', marginTop: 2 }}>
+            {sub}
+          </div>
         )}
       </div>
     </button>
