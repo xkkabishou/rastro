@@ -10,6 +10,17 @@ const PROVIDER_BRANDS: Record<ProviderId, { name: string; color: string; icon: s
   gemini: { name: 'Gemini', color: '#4285F4', icon: '🔵', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
 };
 
+/**
+ * IPC 方法覆盖 — 让 ProviderCard 可被翻译配置等不同场景复用
+ * 不传则使用默认的主 AI IPC
+ */
+export interface ProviderCardIpcOverrides {
+  /** 更新 Provider 配置（base_url、model） */
+  updateConfig?: (provider: ProviderId, baseUrl?: string, model?: string) => Promise<unknown>;
+  /** 拉取可用模型列表（不传则使用默认 IPC） */
+  fetchModels?: (provider: ProviderId) => Promise<{ models: ModelInfo[] }>;
+}
+
 interface ProviderCardProps {
   config: ProviderConfigDto;
   onSaveKey: (provider: ProviderId, apiKey: string) => Promise<void>;
@@ -17,6 +28,8 @@ interface ProviderCardProps {
   onSetActive: (provider: ProviderId, model: string) => Promise<void>;
   onTestConnection: (provider: ProviderId) => Promise<ProviderConnectivityDto>;
   onConfigUpdate?: () => Promise<void>;
+  /** 可选：覆盖内部 IPC 调用以支持翻译配置等不同场景 */
+  ipcOverrides?: ProviderCardIpcOverrides;
 }
 
 /** 单个 Provider 配置卡片 */
@@ -27,6 +40,7 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
   onSetActive,
   onTestConnection,
   onConfigUpdate,
+  ipcOverrides,
 }) => {
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [showKey, setShowKey] = useState(false);
@@ -48,6 +62,23 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
   const [isSavingModel, setIsSavingModel] = useState(false);
 
   const brand = PROVIDER_BRANDS[config.provider];
+
+  // 统一的 updateConfig 入口：优先使用 override，否则用默认 IPC
+  const doUpdateConfig = useCallback(async (provider: ProviderId, baseUrl?: string, model?: string) => {
+    if (ipcOverrides?.updateConfig) {
+      await ipcOverrides.updateConfig(provider, baseUrl, model);
+    } else {
+      await ipcClient.updateProviderConfig({ provider, baseUrl, model });
+    }
+  }, [ipcOverrides]);
+
+  // 统一的 fetchModels 入口
+  const doFetchModels = useCallback(async (provider: ProviderId) => {
+    if (ipcOverrides?.fetchModels) {
+      return ipcOverrides.fetchModels(provider);
+    }
+    return ipcClient.fetchAvailableModels(provider);
+  }, [ipcOverrides]);
 
   useEffect(() => {
     setBaseUrlInput(config.baseUrl || '');
@@ -74,10 +105,7 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
   const handleSaveBaseUrl = useCallback(async () => {
     setIsSavingBaseUrl(true);
     try {
-      await ipcClient.updateProviderConfig({
-        provider: config.provider,
-        baseUrl: baseUrlInput.trim() || undefined,
-      });
+      await doUpdateConfig(config.provider, baseUrlInput.trim() || undefined);
       setIsEditingBaseUrl(false);
       onConfigUpdate?.();
     } catch (err) {
@@ -85,13 +113,13 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
     } finally {
       setIsSavingBaseUrl(false);
     }
-  }, [baseUrlInput, config.provider, onConfigUpdate]);
+  }, [baseUrlInput, config.provider, doUpdateConfig, onConfigUpdate]);
 
   // 拉取模型列表
   const handleFetchModels = useCallback(async () => {
     setIsFetchingModels(true);
     try {
-      const result = await ipcClient.fetchAvailableModels(config.provider);
+      const result = await doFetchModels(config.provider);
       setAvailableModels(result.models);
       setShowModelDropdown(true);
     } catch (err) {
@@ -99,7 +127,7 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
     } finally {
       setIsFetchingModels(false);
     }
-  }, [config.provider]);
+  }, [config.provider, doFetchModels]);
 
   // 选择模型
   const handleSelectModel = useCallback(async (modelId: string) => {
@@ -107,26 +135,20 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
     setShowModelDropdown(false);
     try {
       setIsSavingModel(true);
-      await ipcClient.updateProviderConfig({
-        provider: config.provider,
-        model: modelId,
-      });
+      await doUpdateConfig(config.provider, undefined, modelId);
       onConfigUpdate?.();
     } catch (err) {
       console.error('更新模型失败:', err);
     } finally {
       setIsSavingModel(false);
     }
-  }, [config.provider, onConfigUpdate]);
+  }, [config.provider, doUpdateConfig, onConfigUpdate]);
 
   const handleSaveModel = useCallback(async () => {
     if (!modelInput.trim()) return;
     try {
       setIsSavingModel(true);
-      await ipcClient.updateProviderConfig({
-        provider: config.provider,
-        model: modelInput.trim(),
-      });
+      await doUpdateConfig(config.provider, undefined, modelInput.trim());
       setShowModelDropdown(false);
       onConfigUpdate?.();
     } catch (err) {
@@ -134,7 +156,7 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
     } finally {
       setIsSavingModel(false);
     }
-  }, [config.provider, modelInput, onConfigUpdate]);
+  }, [config.provider, modelInput, doUpdateConfig, onConfigUpdate]);
 
   // 测试连接
   const handleTest = useCallback(async () => {

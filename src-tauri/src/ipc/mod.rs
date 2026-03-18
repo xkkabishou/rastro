@@ -6,4 +6,5 @@ pub mod document;
 pub mod notebooklm;
 pub mod settings;
 pub mod translation;
+pub mod translation_settings;
 pub mod zotero;

@@ -775,6 +775,33 @@ export interface DeleteCacheResult {
   freedBytes: number;
 }
 
+// ---------------------------------------------------------------------------
+// J. 翻译 Provider 配置（ADR-301 独立配置）
+// ---------------------------------------------------------------------------
+
+/** 翻译 Provider 配置 DTO（对齐 translation_settings.rs::TranslationProviderConfigDto） */
+export interface TranslationProviderConfigDto {
+  provider: ProviderId;
+  model: string;
+  baseUrl?: string;
+  isActive: boolean;
+  maskedKey?: string;
+}
+
+/** 翻译 Provider 连接测试结果 */
+export interface TranslationConnectivityDto {
+  provider: ProviderId;
+  model: string;
+  success: boolean;
+  latencyMs?: number;
+  error?: string;
+}
+
+/** translate_text 返回值 */
+export interface TranslateTextResult {
+  translated: string;
+}
+
 /** 删除 AI 总结结果（对齐 ai.rs::DeleteSummaryResult） */
 export interface DeleteSummaryResult {
   deleted: boolean;
@@ -901,6 +928,13 @@ export const IPC_COMMANDS = {
   DELETE_ANNOTATION: "delete_annotation",
   LIST_ANNOTATIONS: "list_annotations",
   LIST_ANNOTATIONS_BY_PAGE: "list_annotations_by_page",
+  // J. 翻译 Provider 配置
+  LIST_TRANSLATION_PROVIDER_CONFIGS: "list_translation_provider_configs",
+  SAVE_TRANSLATION_PROVIDER_KEY: "save_translation_provider_key",
+  SET_ACTIVE_TRANSLATION_PROVIDER: "set_active_translation_provider",
+  UPDATE_TRANSLATION_PROVIDER_CONFIG: "update_translation_provider_config",
+  TEST_TRANSLATION_CONNECTION: "test_translation_connection",
+  TRANSLATE_TEXT: "translate_text",
 } as const;
 
 /** Tauri Event 名称常量 */

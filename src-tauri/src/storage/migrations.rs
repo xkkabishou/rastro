@@ -17,6 +17,8 @@ const DOCUMENT_WORKSPACE_SQL: &str = include_str!("../../migrations/v2_document_
 const PROVIDER_MASKED_KEY_SQL: &str = include_str!("../../migrations/004_provider_masked_key.sql");
 const CUSTOM_PROMPTS_SQL: &str = include_str!("../../migrations/005_custom_prompts.sql");
 const ANNOTATIONS_SQL: &str = include_str!("../../migrations/006_annotations.sql");
+const ADD_TRANSLATION_TABLES_SQL: &str =
+    include_str!("../../migrations/007_add_translation_tables.sql");
 
 struct Migration {
     version: i64,
@@ -54,6 +56,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 6,
         name: "annotations",
         sql: ANNOTATIONS_SQL,
+    },
+    Migration {
+        version: 7,
+        name: "add_translation_tables",
+        sql: ADD_TRANSLATION_TABLES_SQL,
     },
 ];
 
@@ -116,7 +123,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 6);
+        assert_eq!(current_version(&connection).unwrap(), 7);
         assert_eq!(
             table_exists(&connection, "documents"),
             true,
@@ -159,6 +166,14 @@ mod tests {
             table_exists(&connection, "annotations"),
             "annotations should exist after migration"
         );
+        assert!(
+            table_exists(&connection, "translation_provider_settings"),
+            "translation_provider_settings should exist after migration"
+        );
+        assert!(
+            table_exists(&connection, "title_translations"),
+            "title_translations should exist after migration"
+        );
     }
 
     #[test]
@@ -168,10 +183,10 @@ mod tests {
         run(&connection).unwrap();
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 6);
+        assert_eq!(current_version(&connection).unwrap(), 7);
         assert_eq!(
             migration_row_count(&connection),
-            6,
+            7,
             "latest migrations should only be recorded once"
         );
     }
@@ -183,7 +198,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 6);
+        assert_eq!(current_version(&connection).unwrap(), 7);
         assert_eq!(
             provider_setting_count(&connection),
             3,

@@ -114,6 +114,13 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             ipc::annotations::delete_annotation,
             ipc::annotations::list_annotations,
             ipc::annotations::list_annotations_by_page,
+            // J. 翻译 Provider 配置与翻译 (6 个)
+            ipc::translation_settings::list_translation_provider_configs,
+            ipc::translation_settings::save_translation_provider_key,
+            ipc::translation_settings::set_active_translation_provider,
+            ipc::translation_settings::update_translation_provider_config,
+            ipc::translation_settings::test_translation_connection,
+            ipc::translation_settings::translate_text,
         ])
         .run(tauri::generate_context!())?;
     Ok(())

@@ -79,6 +79,10 @@ import {
   UpdateAnnotationInput,
   AnnotationDto,
   DeleteAnnotationResult,
+  // J. 翻译 Provider 配置
+  TranslationProviderConfigDto,
+  TranslationConnectivityDto,
+  TranslateTextResult,
   // Event Payloads
   AiStreamChunkPayload,
   AiStreamFinishedPayload,
@@ -392,6 +396,34 @@ export const ipcClient = {
   /** 获取文档指定页标注 */
   listAnnotationsByPage: (documentId: string, pageNumber: number) =>
     safeInvoke<AnnotationDto[]>(IPC_COMMANDS.LIST_ANNOTATIONS_BY_PAGE, { documentId, pageNumber }),
+
+  // =========================================================================
+  // J. 翻译 Provider 配置与翻译
+  // =========================================================================
+
+  /** 列出所有翻译 Provider 配置 */
+  listTranslationProviderConfigs: () =>
+    safeInvoke<TranslationProviderConfigDto[]>(IPC_COMMANDS.LIST_TRANSLATION_PROVIDER_CONFIGS),
+
+  /** 保存翻译 Provider API Key */
+  saveTranslationProviderKey: (provider: string, apiKey: string) =>
+    safeInvoke<TranslationProviderConfigDto>(IPC_COMMANDS.SAVE_TRANSLATION_PROVIDER_KEY, { provider, apiKey }),
+
+  /** 设置活跃翻译 Provider */
+  setActiveTranslationProvider: (provider: string, model: string) =>
+    safeInvoke<TranslationProviderConfigDto>(IPC_COMMANDS.SET_ACTIVE_TRANSLATION_PROVIDER, { provider, model }),
+
+  /** 更新翻译 Provider 配置 */
+  updateTranslationProviderConfig: (provider: string, baseUrl?: string, model?: string) =>
+    safeInvoke<TranslationProviderConfigDto>(IPC_COMMANDS.UPDATE_TRANSLATION_PROVIDER_CONFIG, { provider, baseUrl, model }),
+
+  /** 测试翻译 Provider 连接 */
+  testTranslationConnection: (provider: string) =>
+    safeInvoke<TranslationConnectivityDto>(IPC_COMMANDS.TEST_TRANSLATION_CONNECTION, { provider }),
+
+  /** 翻译文本 */
+  translateText: (text: string) =>
+    safeInvoke<TranslateTextResult>(IPC_COMMANDS.TRANSLATE_TEXT, { text }),
 };
 
 // ---------------------------------------------------------------------------

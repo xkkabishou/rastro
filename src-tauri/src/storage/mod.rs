@@ -8,8 +8,10 @@ pub mod documents;
 pub mod migration;
 pub mod migrations;
 pub mod provider_settings;
+pub mod title_translations;
 pub mod translation_artifacts;
 pub mod translation_jobs;
+pub mod translation_provider_settings;
 pub mod usage_events;
 
 use std::{path::Path, sync::Arc};
