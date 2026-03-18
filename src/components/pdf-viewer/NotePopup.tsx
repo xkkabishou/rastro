@@ -78,9 +78,9 @@ export const NotePopup: React.FC = () => {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: -4 }}
           transition={{ duration: 0.15 }}
-          className="fixed z-[200] w-72 rounded-xl backdrop-blur-2xl backdrop-saturate-150 border border-white/30 dark:border-white/10 shadow-xl"
+          className="fixed z-[200] w-72 rounded-xl backdrop-blur-xl backdrop-saturate-150 border border-white/30 dark:border-white/10 shadow-xl"
           style={{
-            backgroundColor: 'rgba(255, 251, 245, 0.38)',
+            backgroundColor: 'rgba(255, 240, 200, 0.35)',
             ...(notePopupAnchor
               ? (() => {
                   const popupH = 220;

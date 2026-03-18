@@ -999,10 +999,10 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
         const placement = containerRect.bottom - anchorRect.bottom > 56 ? 'below' : 'above';
         setSelectionPopup({
           text,
-          x: anchorRect.right - containerRect.left,
+          x: anchorRect.right,
           y: placement === 'above'
-            ? anchorRect.top - containerRect.top - 8
-            : anchorRect.bottom - containerRect.top + 8,
+            ? anchorRect.top - 8
+            : anchorRect.bottom + 8,
           placement,
         });
       });
@@ -1168,28 +1168,6 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
         ref={containerRef}
         className="flex-1 overflow-hidden relative"
       >
-        {/* 毛玻璃选词菜单 — 选中文字后弹出（引用到对话 + 翻译） */}
-        <SelectionPopupMenu
-          visible={!!selectionPopup}
-          x={selectionPopup?.x ?? 0}
-          y={selectionPopup?.y ?? 0}
-          placement={selectionPopup?.placement ?? 'below'}
-          selectedText={selectionPopup?.text ?? ''}
-          onQuote={handleQuoteToChat}
-          onTranslate={handleTranslateClick}
-        />
-
-        {/* 翻译结果气泡 */}
-        {translationBubble && (
-          <TranslationBubble
-            text={translationBubble.text}
-            x={translationBubble.x}
-            y={translationBubble.y}
-            placement={translationBubble.placement}
-            onClose={() => setTranslationBubble(null)}
-          />
-        )}
-
         {/* 拖拽覆盖层 */}
         {isDragging && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-[var(--color-primary)]/5 border-2 border-dashed border-[var(--color-primary)] rounded-lg m-4 transition-all">
@@ -1283,6 +1261,28 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
 
       {/* 笔记编辑弹窗 */}
       <NotePopup />
+
+      {/* 毛玻璃选词菜单 — fixed 定位，与 NotePopup 同级确保毛玻璃效果一致 */}
+      <SelectionPopupMenu
+        visible={!!selectionPopup}
+        x={selectionPopup?.x ?? 0}
+        y={selectionPopup?.y ?? 0}
+        placement={selectionPopup?.placement ?? 'below'}
+        selectedText={selectionPopup?.text ?? ''}
+        onQuote={handleQuoteToChat}
+        onTranslate={handleTranslateClick}
+      />
+
+      {/* 翻译结果气泡 */}
+      {translationBubble && (
+        <TranslationBubble
+          text={translationBubble.text}
+          x={translationBubble.x}
+          y={translationBubble.y}
+          placement={translationBubble.placement}
+          onClose={() => setTranslationBubble(null)}
+        />
+      )}
     </div>
   );
 };

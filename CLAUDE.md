@@ -386,6 +386,49 @@ antigravity-paper/
 - 组件类名通过 CSS 变量引用: `bg-[var(--color-bg)]`、`text-[var(--color-text)]`
 - 字体: `-apple-system` 系统字体栈 + `PingFang SC` 中文
 
+#### 毛玻璃浮窗设计语言（Frosted Glass Popups）
+
+所有 PDF 阅读区的浮窗组件（NotePopup、SelectionPopupMenu、TranslationBubble 等）**必须**使用统一的毛玻璃配方。
+本规范经过大量调试确定，请勿随意修改参数值。
+
+**外壳样式（必须完全一致）**:
+
+```tsx
+// Tailwind 类名
+className="fixed z-[200] rounded-xl backdrop-blur-xl backdrop-saturate-150 border border-white/30 dark:border-white/10 shadow-xl"
+
+// 内联样式
+style={{ backgroundColor: 'rgba(255, 240, 200, 0.35)' }}
+```
+
+**参数说明**:
+
+| 属性 | 值 | 设计意图 |
+|------|------|---------|
+| `backgroundColor` | `rgba(255, 240, 200, 0.35)` | 暖黄色调(R255 G240 B200) + 35% 透明度，在任何背景上保持一致暖色 |
+| `backdrop-blur-xl` | 24px 模糊 | 比 2xl(40px) 更少模糊，让背景细节可见，增强透明感 |
+| `backdrop-saturate-150` | 1.5倍饱和度 | 增强模糊后的暖色调 |
+| `border-white/30` | 白色 30% 边框 | 营造微微发光的边缘，增强泛黄光泽感 |
+| `shadow-xl` | 多层阴影 | 浮起感 |
+| `z-[200]` | z-index 200 | 浮于所有页面内容之上 |
+
+**内部元素颜色规则（必须使用设计系统暖色变量，禁止冷色）**:
+
+| 用途 | ✅ 正确 | ❌ 禁止 |
+|------|---------|---------|
+| 按钮 hover | `hover:bg-[var(--color-hover)]` | `hover:bg-white/40`, `hover:bg-black/10` |
+| 分隔线 | `bg-[var(--color-separator)]` | `bg-black/10`, `bg-gray-200` |
+| 标题栏 border | `border-[var(--color-border-secondary)]` | `border-black/5` |
+| 关闭按钮 hover | `hover:bg-[var(--color-hover)]` | `hover:bg-black/10` |
+| 文字颜色 | `text-[var(--color-text-secondary)]` | `text-gray-500` |
+
+**新增浮窗组件时**：复制 NotePopup.tsx 的外壳样式和内部颜色规则，保持像素级一致。
+
+**注意事项**:
+- 不要使用 `.glass-panel` CSS 类（它的 `--color-bg-overlay: 0.85` 透明度太高，会丧失毛玻璃效果）
+- `backdrop-blur-2xl`（40px）模糊过强，会使白色背景区域看起来完全不透明
+- 背景色透明度 < 0.25 时暖黄色调不明显；> 0.40 时透明感不足；0.35 是最佳平衡点
+
 ### Import 规则
 
 #### Rust

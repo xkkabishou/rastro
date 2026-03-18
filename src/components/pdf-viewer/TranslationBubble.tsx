@@ -17,9 +17,9 @@ const MAX_TEXT_LENGTH = 2000;
 export interface TranslationBubbleProps {
   /** 待翻译的文本 */
   text: string;
-  /** 相对于容器的 x 坐标（px） */
+  /** viewport 坐标 x（px） */
   x: number;
-  /** 相对于容器的 y 坐标（px） */
+  /** viewport 坐标 y（px） */
   y: number;
   /** 弹出方向 */
   placement: 'above' | 'below';
@@ -34,10 +34,7 @@ export interface TranslationBubbleProps {
 /**
  * 翻译结果气泡 — 调用 translate_text IPC 并展示翻译结果
  *
- * 包含三种状态：
- * 1. loading（spinner 旋转）
- * 2. 翻译成功（展示中文翻译文本）
- * 3. 错误态（友好提示）
+ * 样式 100% 对齐 NotePopup（glass-panel + 暖金色设计变量）
  */
 export const TranslationBubble: React.FC<TranslationBubbleProps> = ({
   text,
@@ -109,9 +106,9 @@ export const TranslationBubble: React.FC<TranslationBubbleProps> = ({
     <AnimatePresence>
       <motion.div
         ref={bubbleRef}
-        className="absolute z-[101] w-80 max-w-[90vw] rounded-xl backdrop-blur-2xl backdrop-saturate-150 border border-white/30 dark:border-white/10 shadow-xl"
+        className="fixed z-[200] w-80 max-w-[90vw] rounded-xl backdrop-blur-xl backdrop-saturate-150 border border-white/30 dark:border-white/10 shadow-xl"
         style={{
-          backgroundColor: 'rgba(255, 251, 245, 0.38)',
+          backgroundColor: 'rgba(255, 240, 200, 0.35)',
           left: x,
           top: placement === 'below' ? y + 8 : y,
           transform: placement === 'above'
@@ -123,17 +120,17 @@ export const TranslationBubble: React.FC<TranslationBubbleProps> = ({
         exit={{ opacity: 0, scale: 0.9, y: placement === 'above' ? 4 : -4 }}
         transition={{ duration: 0.15 }}
       >
-        {/* 标题栏 */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-black/5 dark:border-white/10">
-          <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
+        {/* 标题栏 — 样式对齐 NotePopup 标题行 */}
+        <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border-secondary)]">
+          <span className="text-xs text-[var(--color-text-secondary)]">
             翻译结果
           </span>
           <button
             type="button"
             onClick={onClose}
-            className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-[var(--color-text-tertiary)] transition-colors"
+            className="p-1 rounded hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)] transition-colors"
           >
-            <X size={13} />
+            <X size={14} />
           </button>
         </div>
 
@@ -141,7 +138,7 @@ export const TranslationBubble: React.FC<TranslationBubbleProps> = ({
         <div className="px-3 py-2.5 min-h-[40px] max-h-[200px] overflow-y-auto">
           {/* Loading 态 */}
           {status === 'loading' && (
-            <div className="flex items-center gap-2 text-[var(--color-text-secondary)]">
+            <div className="flex items-center gap-2 text-[var(--color-text-tertiary)]">
               <Loader2 size={14} className="animate-spin" />
               <span className="text-xs">正在翻译...</span>
             </div>
