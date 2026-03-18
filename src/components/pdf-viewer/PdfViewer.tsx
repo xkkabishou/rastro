@@ -10,6 +10,8 @@ import { PdfToolbar } from './PdfToolbar';
 import { AnnotationOverlay } from './AnnotationOverlay';
 import { AnnotationContextMenu, useAnnotationContextMenu } from './AnnotationContextMenu';
 import { NotePopup } from './NotePopup';
+import { SelectionPopupMenu } from './SelectionPopupMenu';
+import { TranslationBubble } from './TranslationBubble';
 import { ipcClient } from '../../lib/ipc-client';
 import { useDocumentStore } from '../../stores/useDocumentStore';
 import { useAnnotationStore } from '../../stores/useAnnotationStore';
@@ -341,6 +343,13 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [translationError, setTranslationError] = useState<string | null>(null);
   const [selectionPopup, setSelectionPopup] = useState<{
+    text: string;
+    x: number;
+    y: number;
+    placement: 'above' | 'below';
+  } | null>(null);
+  // 划词翻译气泡状态
+  const [translationBubble, setTranslationBubble] = useState<{
     text: string;
     x: number;
     y: number;
@@ -1044,9 +1053,10 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     };
 
     const handleMouseDown = (e: MouseEvent) => {
-      // 点击引用按钮本身时不清除
-      if ((e.target as HTMLElement)?.closest('.quote-popup-btn')) return;
+      // 点击浮窗菜单或翻译气泡本身时不清除
+      if ((e.target as HTMLElement)?.closest('.selection-popup-menu')) return;
       setSelectionPopup(null);
+      setTranslationBubble(null);
     };
 
     document.addEventListener('selectionchange', updateSelectionPopup);
@@ -1079,8 +1089,22 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       useChatStore.getState().setContextQuote(text);
     });
     setSelectionPopup(null);
+    setTranslationBubble(null);
     window.getSelection()?.removeAllRanges();
   }, []);
+
+  // 划词翻译回调
+  const handleTranslateClick = useCallback((text: string) => {
+    if (!selectionPopup) return;
+    setTranslationBubble({
+      text,
+      x: selectionPopup.x,
+      y: selectionPopup.placement === 'below'
+        ? selectionPopup.y + 40
+        : selectionPopup.y - 8,
+      placement: selectionPopup.placement,
+    });
+  }, [selectionPopup]);
 
   // 标注右键菜单回调
   const handleAnnotationContextMenu = useCallback((annotation: import('../../shared/types').AnnotationDto, event: React.MouseEvent) => {
@@ -1144,24 +1168,26 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
         ref={containerRef}
         className="flex-1 overflow-hidden relative"
       >
-        {/* 浮动引用按钮 — 选中文字后弹出 */}
-        {selectionPopup && (
-          <button
-            className="quote-popup-btn absolute z-[100] flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-primary)] text-white text-xs font-medium shadow-lg hover:opacity-90 transition-opacity whitespace-nowrap"
-            style={{
-              left: selectionPopup.x,
-              top: selectionPopup.y,
-              transform: selectionPopup.placement === 'above'
-                ? 'translate(-100%, -100%)'
-                : 'translate(-100%, 0)',
-            }}
-            onClick={() => handleQuoteToChat(selectionPopup.text)}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            引用到对话
-          </button>
+        {/* 毛玻璃选词菜单 — 选中文字后弹出（引用到对话 + 翻译） */}
+        <SelectionPopupMenu
+          visible={!!selectionPopup}
+          x={selectionPopup?.x ?? 0}
+          y={selectionPopup?.y ?? 0}
+          placement={selectionPopup?.placement ?? 'below'}
+          selectedText={selectionPopup?.text ?? ''}
+          onQuote={handleQuoteToChat}
+          onTranslate={handleTranslateClick}
+        />
+
+        {/* 翻译结果气泡 */}
+        {translationBubble && (
+          <TranslationBubble
+            text={translationBubble.text}
+            x={translationBubble.x}
+            y={translationBubble.y}
+            placement={translationBubble.placement}
+            onClose={() => setTranslationBubble(null)}
+          />
         )}
 
         {/* 拖拽覆盖层 */}

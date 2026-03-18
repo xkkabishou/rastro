@@ -36,29 +36,29 @@
 
 > **注意**: 此部分由 `/genesis`、`/blueprint` 和 `/forge` 自动维护。
 
-- **最新架构版本**: `genesis/v2`
-- **活动任务清单**: `genesis/v2/05_TASKS.md`
-- **待办任务数**: 37 (33 任务 + 4 INT)
-- **最近一次更新**: `2026-03-16`
+- **最新架构版本**: `genesis/v3`
+- **活动任务清单**: `genesis/v3/05_TASKS.md`
+- **最近一次更新**: `2026-03-18`
 
 ### v1 历史 (已冻结)
 
 v1 共 42 个任务，已完成 30 个。详见 `genesis/v1/05_TASKS.md`。
 
-### 🌊 v2 Wave 1 ✅ — 数据基石 (S1)
-T1.1.1, T1.1.2, T1.1.3, T1.2.1, T1.2.2, T1.2.3, T1.2.4, T2.1.1, T2.1.2
+### ✅ v2 交付状态 (已冻结)
 
-### 🌊 v2 Wave 2-3 ✅ — 前端基础 (S2)
-T2.2.1, T2.2.4, T2.2.5
+- S1-S4 全部完成（33 个任务 + 4 个 INT 验证）
 
-### 🌊 v2 Wave 4 ✅ — 组件提取与状态增强 (S2)
-T2.2.2, T2.2.3, T2.3.1, T2.3.2
+### 🆕 v3 当前阶段
 
-### 🌊 v2 Wave 5 ✅ — S3 产物管理 (入口任务)
-T2.4.1, T2.4.3, T2.4.5
+- **主题**: 轻量级翻译功能（划词翻译 + 文献标题翻译 + 翻译 API 独立配置）
+- **状态**: PRD + 架构概览 + 任务清单已完成，等待 /forge 执行
+- **总任务数**: 12 + 3 INT = 15
 
-### 🌊 v2 Wave 6 ✅ — S3 操作绑定
-T2.4.2, T2.4.4, T2.4.6
+### 🌊 Wave 1 ✅ — 翻译基座 (S1 前置任务)
+T1.1.1, T1.1.2, T1.2.1, T1.2.2, T1.3.1
+
+### 🌊 Wave 2 — 划词翻译 (S2 前端组件)
+T2.1.1, T2.1.2, T2.1.3
 
 ---
 
@@ -68,29 +68,38 @@ T2.4.2, T2.4.4, T2.4.6
 
 ```text
 antigravity-paper/
-├── genesis/v1/                  # 架构文档（当前版本）
-│   ├── 00_MANIFEST.md
-│   ├── 01_PRD.md
-│   ├── 02_ARCHITECTURE_OVERVIEW.md
-│   ├── 03_ADR/
-│   │   ├── ADR_001_TECH_STACK.md
-│   │   └── ADR_002_MULTI_MODEL_COLLABORATION.md
-│   ├── 04_SYSTEM_DESIGN/         # 已完成 3 个系统设计
-│   │   ├── frontend-system.md
-│   │   ├── rust-backend-system.md
-│   │   └── translation-engine-system.md
-│   ├── 05_TASKS.md               # WBS 任务清单 (42 个任务)
-│   ├── 06_CHANGELOG.md
-│   └── 07_CHALLENGE_REPORT.md    # 质疑报告
+├── genesis/
+│   ├── v1/                      # 历史架构文档（冻结）
+│   ├── v2/                      # v2 架构文档（冻结）
+│   └── v3/                      # 当前架构文档（轻量级翻译功能）
+│       ├── 00_MANIFEST.md
+│       ├── 01_PRD.md
+│       ├── 02_ARCHITECTURE_OVERVIEW.md
+│       └── 06_CHANGELOG.md
 ├── .agent/
-│   ├── skills/                   # Agent Skills
-│   │   ├── frontend-design/      # 前端美学指导
-│   │   ├── ui-ux-pro-max/        # UI/UX 设计智能
-│   │   └── ...                   # 其他 skills
-│   └── workflows/                # 工作流
-├── src-tauri/                    # Rust 后端 (待创建)
-├── src/                          # React 前端 (待创建)
-└── README.md
+│   ├── rules/                   # agents.md / 恢复锚点
+│   └── workflows/               # genesis / blueprint / forge / change 等工作流
+├── src/                         # React 19 前端
+│   ├── components/
+│   ├── layouts/
+│   ├── lib/
+│   ├── shared/
+│   ├── stores/
+│   └── styles/
+├── src-tauri/                   # Tauri 2 + Rust 后端
+│   ├── migrations/
+│   ├── capabilities/
+│   └── src/
+│       ├── ai_integration/
+│       ├── ipc/
+│       ├── keychain/
+│       ├── notebooklm_manager/
+│       ├── storage/
+│       ├── translation_manager/
+│       └── zotero_connector/
+├── rastro_translation_engine/   # PDF 翻译 HTTP 服务
+├── antigravity_translate/       # PDF 翻译核心
+└── rastro_notebooklm_engine/    # NotebookLM 本地代理
 ```
 
 ---
@@ -99,12 +108,14 @@ antigravity-paper/
 
 > **注意**: 此部分由 `/genesis` 维护。
 
-- **架构总览**: `genesis/v2/02_ARCHITECTURE_OVERVIEW.md`
-- **ADR**: 架构决策见 `genesis/v2/03_ADR/`
-- **frontend-system**: 源码 `src/` → 设计 `genesis/v2/04_SYSTEM_DESIGN/frontend-system.md`
-- **rust-backend-system**: 源码 `src-tauri/` → 设计 `genesis/v2/04_SYSTEM_DESIGN/rust-backend-system.md`
-- **translation-engine-system**: PDFMathTranslate → 设计 `genesis/v2/04_SYSTEM_DESIGN/translation-engine-system.md`
-- **任务清单**: `genesis/v2/05_TASKS.md`
+- **项目总览**: `CLAUDE.md`
+- **v3 架构总览**: `genesis/v3/02_ARCHITECTURE_OVERVIEW.md`（轻量级翻译功能）
+- **v3 PRD**: `genesis/v3/01_PRD.md`
+- **v2 架构总览**: `genesis/v2/02_ARCHITECTURE_OVERVIEW.md`（已冻结）
+- **ADR**: 架构决策见 `genesis/v2/03_ADR/` + v3 内联 ADR-301/302
+- **详细设计**: 待 `/design-system` 执行后更新 (将填充 `genesis/v3/04_SYSTEM_DESIGN/`)
+- **任务清单**: 待 `/blueprint` 执行后更新 (将生成 `genesis/v3/05_TASKS.md`)
+- **v2 任务清单**: `genesis/v2/05_TASKS.md`（33 个任务 + 4 个 INT，全部完成）
 
 ---
 
@@ -139,28 +150,31 @@ antigravity-paper/
 
 ### 技术栈决策
 - 框架: Tauri 2.0 (Rust 后端 + Web 前端)
-- 前端: React 18 + TypeScript + Vite
+- 前端: React 19 + TypeScript + Vite
 - PDF 渲染: pdf.js
-- PDF 翻译: PDFMathTranslate (Python 3.12)
+- PDF 翻译: rastro_translation_engine + antigravity_translate + pdf2zh (Python 3.12+)
 - 存储: SQLite (rusqlite) + macOS Keychain
-- 设计 Skills: frontend-design + ui-ux-pro-max
+- 设计系统: Tailwind CSS v4 + Radix Themes + framer-motion
 
 ### 系统边界
-- frontend-system: React UI、PDF 渲染、聊天面板、NotebookLM WebView、设置页
-- rust-backend-system: Tauri IPC、AI API 客户端、翻译进程管理、SQLite 存储、Zotero 集成
-- translation-engine-system: PDFMathTranslate Python 服务（布局保留翻译）
+- frontend-system: React UI、文档树、PDF 阅读器、聊天/总结/设置面板、搜索与筛选
+- rust-backend-system: Tauri IPC、AI 集成、文档/产物存储、翻译任务管理、Zotero、Keychain
+- translation-engine-system: rastro_translation_engine 服务 + antigravity_translate 核心，负责 PDF 翻译与产物生成
+- notebooklm-service: rastro_notebooklm_engine 本地代理服务
 
 ### 活跃 ADR
 - ADR-001: 技术栈选择 — Tauri 2.0 + React + PDFMathTranslate (Accepted)
 - ADR-002: 多模型协作策略 — Claude+Gemini 前端 / Codex 后端 / 5 波次执行 (Accepted)
 - ADR-003: 文档工作空间架构 — 统一产物模型 + 虚拟化树形视图 (Accepted)
+- ADR-301: 翻译配置与主 AI 配置隔离 — 独立表 + 独立 Keychain 前缀 (Accepted)
+- ADR-302: 标题翻译时机 — Zotero 同步后异步触发，非 hover 时实时翻译 (Accepted)
 
 ### 当前任务状态
-- 任务清单: genesis/v2/05_TASKS.md
-- 总任务数: 33, P0: 21, P1: 8, P2: 4
-- Sprint 数: 4 (S1-S4)
-- Wave 1 建议: T1.1.1, T1.1.2, T1.1.3, T1.2.1, T1.2.2, T1.2.3, T1.2.4, T2.1.1, T2.1.2
-- 最近更新: 2026-03-16
+- 任务清单: genesis/v3/05_TASKS.md
+- 总任务数: 12 + 3 INT, P0: 11, P1: 1
+- Sprint 数: 3 (S1 翻译基座 / S2 划词翻译 / S3 标题翻译)
+- Wave 1 建议: T1.1.1, T1.1.2, T1.2.1, T1.2.2, T1.3.1
+- 最近更新: 2026-03-18
 
 <!-- AUTO:END -->
 

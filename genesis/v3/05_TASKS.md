@@ -169,7 +169,7 @@ graph TD
 
 ---
 
-- [ ] **T2.1.1** [REQ-302]: SelectionPopupMenu 毛玻璃浮窗组件
+- [x] **T2.1.1** [REQ-302]: SelectionPopupMenu 毛玻璃浮窗组件
   - **描述**: 新增 `src/components/pdf-viewer/SelectionPopupMenu.tsx`，替代现有 `PdfViewer.tsx` 中的单按钮浮窗（L1147-1165 的 `quote-popup-btn`）。毛玻璃样式参考 `NotePopup.tsx`（`backdrop-blur-2xl backdrop-saturate-150` + `rgba(255,251,245,0.38)` 背景 + `border-white/30` 边框）。包含两个按钮：「引用到对话」和「翻译」。使用 framer-motion 入场动画（`opacity: 0→1, scale: 0.9→1, y: -4→0`, 150ms）
   - **输入**: 现有 `PdfViewer.tsx` 的 `selectionPopupPosition` 状态和 `selectedText` 数据；`NotePopup.tsx` 的毛玻璃样式参考
   - **输出**: `src/components/pdf-viewer/SelectionPopupMenu.tsx` [NEW] — 接收 `position`、`selectedText`、`onQuote`、`onTranslate` props
@@ -183,7 +183,7 @@ graph TD
 
 ---
 
-- [ ] **T2.1.2** [REQ-301]: TranslationBubble 翻译结果气泡组件
+- [x] **T2.1.2** [REQ-301]: TranslationBubble 翻译结果气泡组件
   - **描述**: 新增 `src/components/pdf-viewer/TranslationBubble.tsx`，在选词浮窗下方/上方显示翻译结果。同样使用毛玻璃风格。包含 loading 态（spinner）、翻译结果文本展示、错误态（"请先配置翻译 API" / "翻译失败"）。超长文本（>2000 字符）截断并提示"已截断"
   - **输入**: `translate_text` IPC command 的返回结果；`SelectionPopupMenu` 的位置信息
   - **输出**: `src/components/pdf-viewer/TranslationBubble.tsx` [NEW] — 接收 `text`、`position`、`onClose` props，内部调用 `invoke("translate_text")`
@@ -197,7 +197,7 @@ graph TD
 
 ---
 
-- [ ] **T2.1.3** [REQ-301, REQ-302]: PdfViewer 集成
+- [x] **T2.1.3** [REQ-301, REQ-302]: PdfViewer 集成
   - **描述**: 修改 `src/components/pdf-viewer/PdfViewer.tsx`，将现有 `quote-popup-btn` 单按钮逻辑替换为 `SelectionPopupMenu` 组件。保留原有「引用到对话」功能的 `handleCitationClick` 逻辑，新增翻译按钮的 `handleTranslateClick` 逻辑，控制 `TranslationBubble` 的显示/隐藏
   - **输入**: T2.1.1 产出的 `SelectionPopupMenu` 组件；T2.1.2 产出的 `TranslationBubble` 组件；现有 `PdfViewer.tsx` 的 selection 状态管理逻辑
   - **输出**: `src/components/pdf-viewer/PdfViewer.tsx` [MODIFY] — 替换 L1147-1165 的浮窗渲染逻辑，引入 `SelectionPopupMenu` 和 `TranslationBubble`
