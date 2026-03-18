@@ -41,6 +41,14 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
                 );
             });
 
+            // T3.1.2: 启动时后台缓存补全任务（不阻塞主线程）
+            let bg_state = state.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(err) = background_fill_title_cache(bg_state).await {
+                    eprintln!("标题翻译缓存补全任务失败: {}", err);
+                }
+            });
+
             app.manage(state);
             Ok(())
         })
@@ -127,4 +135,214 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
         ])
         .run(tauri::generate_context!())?;
     Ok(())
+}
+
+/// T3.1.2: 后台标题翻译缓存补全
+/// 启动时自动检测 Zotero → 收集所有文献标题 → 查缓存缺失 → 过滤英文 → 串行翻译
+async fn background_fill_title_cache(
+    state: app_state::AppState,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use std::str::FromStr;
+
+    // 延迟 3 秒启动，等待应用初始化和 UI 加载完成
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+    // 1. 检查翻译 API 是否已配置
+    let active_record = {
+        let connection = state.storage.connection();
+        storage::translation_provider_settings::get_active(&connection)?
+    };
+    let active_record = match active_record {
+        Some(r) => r,
+        None => {
+            eprintln!("[标题缓存补全] 翻译 API 未配置，跳过");
+            return Ok(());
+        }
+    };
+    let provider = models::ProviderId::from_str(&active_record.provider)?;
+
+    // 验证 API Key 是否存在
+    let config = match ipc::translation_settings::resolve_translation_runtime_config(
+        &state, provider,
+    ) {
+        Ok(c) => c,
+        Err(_) => {
+            eprintln!("[标题缓存补全] 翻译 API Key 未配置，跳过");
+            return Ok(());
+        }
+    };
+
+    // 2. 检测 Zotero
+    let connector = match zotero_connector::ZoteroConnector::detect() {
+        Ok(c) => c,
+        Err(_) => {
+            eprintln!("[标题缓存补全] Zotero 未检测到，跳过");
+            return Ok(());
+        }
+    };
+
+    // 3. 分页获取所有 Zotero 文献标题
+    let mut all_titles: Vec<String> = Vec::new();
+    let mut offset = 0u32;
+    let page_limit = 200u32;
+    loop {
+        let page = connector.fetch_items(None, offset, page_limit)?;
+        for item in &page.items {
+            if !item.title.is_empty() && item.title != "Untitled" {
+                all_titles.push(item.title.clone());
+            }
+        }
+        offset += page_limit;
+        if offset >= page.total {
+            break;
+        }
+    }
+
+    if all_titles.is_empty() {
+        eprintln!("[标题缓存补全] 无文献标题，跳过");
+        return Ok(());
+    }
+
+    // 4. 查缓存缺失
+    let hashes: Vec<String> = all_titles
+        .iter()
+        .map(|t| storage::title_translations::hash_title(t))
+        .collect();
+    let cached = {
+        let connection = state.storage.connection();
+        storage::title_translations::batch_get(&connection, &hashes)?
+    };
+    let cached_set: std::collections::HashSet<String> =
+        cached.into_iter().map(|r| r.title_hash).collect();
+
+    let uncached: Vec<&String> = all_titles
+        .iter()
+        .zip(hashes.iter())
+        .filter(|(_, hash)| !cached_set.contains(hash.as_str()))
+        .map(|(title, _)| title)
+        .collect();
+
+    // 5. 过滤英文标题
+    let english_uncached: Vec<&String> = uncached
+        .into_iter()
+        .filter(|t| is_likely_english(t))
+        .collect();
+
+    if english_uncached.is_empty() {
+        eprintln!(
+            "[标题缓存补全] 完成：{} 个标题全部已有缓存或非英文",
+            all_titles.len()
+        );
+        return Ok(());
+    }
+
+    eprintln!(
+        "[标题缓存补全] 开始翻译 {} 个英文标题（共 {} 个文献）",
+        english_uncached.len(),
+        all_titles.len()
+    );
+
+    // 6. 串行限速翻译（1 req/s）
+    let client = reqwest::Client::new();
+    let mut success_count = 0usize;
+    let mut fail_count = 0usize;
+
+    for (i, title) in english_uncached.iter().enumerate() {
+        // 限速
+        if i > 0 {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+
+        let prompt = format!(
+            "请将以下英文论文标题翻译为中文，只输出翻译结果，不要解释：\n\n{}",
+            title
+        );
+
+        let request = ipc::translation_settings::build_translation_chat_request(
+            &client, &config, &prompt,
+        );
+        let response = match request
+            .timeout(std::time::Duration::from_secs(30))
+            .send()
+            .await
+        {
+            Ok(resp) => resp,
+            Err(err) => {
+                eprintln!("[标题缓存补全] 请求失败 ({}): {}", title, err);
+                fail_count += 1;
+                continue;
+            }
+        };
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            eprintln!(
+                "[标题缓存补全] API 错误 ({}): {} - {}",
+                title, status, body
+            );
+            fail_count += 1;
+            // 如果连续失败 3 次以上，提前退出避免浪费资源
+            if fail_count >= 3 && success_count == 0 {
+                eprintln!("[标题缓存补全] 连续失败 3 次，提前终止");
+                break;
+            }
+            continue;
+        }
+
+        let body: serde_json::Value = match response.json().await {
+            Ok(v) => v,
+            Err(err) => {
+                eprintln!(
+                    "[标题缓存补全] 响应解析失败 ({}): {}",
+                    title, err
+                );
+                fail_count += 1;
+                continue;
+            }
+        };
+
+        if let Some(translated) =
+            ipc::translation_settings::extract_chat_response_text(provider, &body)
+        {
+            let translated = translated.trim().to_string();
+            if !translated.is_empty() {
+                let hash = storage::title_translations::hash_title(title);
+                let now = chrono::Utc::now().to_rfc3339();
+                let connection = state.storage.connection();
+                if let Err(err) = storage::title_translations::insert(
+                    &connection,
+                    &hash,
+                    title,
+                    &translated,
+                    config.provider.as_str(),
+                    &config.model,
+                    &now,
+                ) {
+                    eprintln!(
+                        "[标题缓存补全] 缓存写入失败 ({}): {}",
+                        title, err
+                    );
+                } else {
+                    success_count += 1;
+                }
+            }
+        }
+    }
+
+    eprintln!(
+        "[标题缓存补全] 完成：成功 {} 个，失败 {} 个",
+        success_count, fail_count
+    );
+    Ok(())
+}
+
+/// 简单判断标题是否为英文（ASCII 字母占比 ≥ 50%）
+fn is_likely_english(text: &str) -> bool {
+    if text.is_empty() {
+        return false;
+    }
+    let total_chars = text.chars().count();
+    let ascii_alpha_count = text.chars().filter(|c| c.is_ascii_alphabetic()).count();
+    ascii_alpha_count as f64 / total_chars as f64 >= 0.5
 }

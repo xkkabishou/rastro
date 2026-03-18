@@ -284,7 +284,7 @@ pub(crate) struct TranslationRuntimeConfig {
 
 /// 解析翻译 Provider 的运行时配置（独立于主 AI 配置）
 pub(crate) fn resolve_translation_runtime_config(
-    state: &State<'_, AppState>,
+    state: &AppState,
     provider: ProviderId,
 ) -> Result<TranslationRuntimeConfig, AppError> {
     let record = {
