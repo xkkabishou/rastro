@@ -151,6 +151,14 @@ export const DocumentNode: React.FC<DocumentNodeProps> = React.memo(
               e.stopPropagation();
               onToggle(doc.documentId);
             }}
+            onMouseEnter={() => {
+              // 鼠标进入箭头区域时，清除翻译 hover timer 并隐藏 tooltip
+              if (hoverTimerRef.current) {
+                clearTimeout(hoverTimerRef.current);
+                hoverTimerRef.current = null;
+              }
+              setTooltipState({ visible: false, translatedTitle: null, loading: false, x: 0, y: 0 });
+            }}
             className="w-5 h-5 flex items-center justify-center shrink-0 rounded hover:bg-[var(--color-bg-tertiary)] transition-transform"
             aria-label={expanded ? '折叠' : '展开'}
           >

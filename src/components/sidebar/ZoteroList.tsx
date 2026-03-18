@@ -601,12 +601,22 @@ const ItemFolder: React.FC<ItemFolderProps> = ({
         }}
       >
         {/* 展开箭头 */}
-        <span style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 14, height: 14, flexShrink: 0,
-          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-          transition: 'transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
-        }}>
+        <span
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 14, height: 14, flexShrink: 0,
+            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+          }}
+          onMouseEnter={() => {
+            // 鼠标进入箭头区域时，清除翻译 hover timer 并隐藏 tooltip
+            if (hoverTimerRef.current) {
+              clearTimeout(hoverTimerRef.current);
+              hoverTimerRef.current = null;
+            }
+            setTooltipState({ visible: false, translatedTitle: null, loading: false, x: 0, y: 0 });
+          }}
+        >
           <ChevronRight size={11} strokeWidth={2} color={isExpanded ? accentColor : 'var(--color-text-quaternary)'} />
         </span>
 
