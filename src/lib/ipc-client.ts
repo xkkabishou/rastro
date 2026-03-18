@@ -83,6 +83,9 @@ import {
   TranslationProviderConfigDto,
   TranslationConnectivityDto,
   TranslateTextResult,
+  // K. 标题翻译缓存
+  TitleTranslationDto,
+  BatchTranslateTitlesResult,
   // Event Payloads
   AiStreamChunkPayload,
   AiStreamFinishedPayload,
@@ -424,6 +427,18 @@ export const ipcClient = {
   /** 翻译文本 */
   translateText: (text: string) =>
     safeInvoke<TranslateTextResult>(IPC_COMMANDS.TRANSLATE_TEXT, { text }),
+
+  // =========================================================================
+  // K. 标题翻译缓存
+  // =========================================================================
+
+  /** 查询单个标题的缓存翻译 */
+  getTitleTranslation: (title: string) =>
+    safeInvoke<TitleTranslationDto>(IPC_COMMANDS.GET_TITLE_TRANSLATION, { title }),
+
+  /** 批量翻译标题（缓存优先 + 串行限速） */
+  batchTranslateTitles: (titles: string[]) =>
+    safeInvoke<BatchTranslateTitlesResult>(IPC_COMMANDS.BATCH_TRANSLATE_TITLES, { titles }),
 };
 
 // ---------------------------------------------------------------------------

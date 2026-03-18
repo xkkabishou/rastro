@@ -233,7 +233,7 @@ graph TD
 
 ---
 
-- [ ] **T3.1.1** [REQ-303]: 标题翻译缓存逻辑
+- [x] **T3.1.1** [REQ-303]: 标题翻译缓存逻辑
   - **描述**: 在后端实现标题翻译核心逻辑：接收标题列表 → 检查 `title_translations` 缓存 → 对缺失项调用 `translate_text` → 缓存翻译结果。包含英文检测逻辑（非英文标题跳过）。新增 `get_title_translation` 和 `batch_translate_titles` IPC commands
   - **输入**: T1.1.2 产出的 `title_translations.rs` 存储层方法；T1.2.2 产出的 `translate_text` 翻译能力
   - **输出**: `src-tauri/src/ipc/translation_settings.rs` [MODIFY] — 新增 `get_title_translation` 和 `batch_translate_titles` commands；或独立文件 `src-tauri/src/ipc/title_translation.rs` [NEW]
@@ -247,7 +247,7 @@ graph TD
 
 ---
 
-- [ ] **T3.1.2** [REQ-306]: 启动时缓存补全任务
+- [x] **T3.1.2** [REQ-306]: 启动时缓存补全任务
   - **描述**: 在应用启动流程中（`main.rs` 的 `setup` hook 或 app ready 事件后），检查翻译 API 是否已配置 → 查询所有已入库文献标题 LEFT JOIN `title_translations` → 过滤出英文且无缓存的条目 → spawn 后台异步任务串行限速执行翻译。不阻塞主线程和 UI
   - **输入**: T3.1.1 产出的标题翻译缓存逻辑（`batch_translate_titles` 或内部方法）；Zotero 文献存储（现有 `storage/` 中的文献列表查询方法）
   - **输出**: 启动流程修改（`main.rs` 或 `lib.rs`）[MODIFY]，spawn 后台 `tokio::task` 执行缓存补全

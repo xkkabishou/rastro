@@ -802,6 +802,26 @@ export interface TranslateTextResult {
   translated: string;
 }
 
+// ---------------------------------------------------------------------------
+// K. 标题翻译缓存 (v3)
+// ---------------------------------------------------------------------------
+
+/** 单个标题翻译查询结果 */
+export interface TitleTranslationDto {
+  originalTitle: string;
+  translatedTitle: string | null;
+}
+
+/** 批量翻译标题结果 */
+export interface BatchTranslateTitlesResult {
+  /** 原始标题 → 翻译结果 */
+  results: Record<string, string>;
+  /** 跳过的标题数量（非英文或已缓存） */
+  skipped: number;
+  /** 实际翻译的标题数量 */
+  translated: number;
+}
+
 /** 删除 AI 总结结果（对齐 ai.rs::DeleteSummaryResult） */
 export interface DeleteSummaryResult {
   deleted: boolean;
@@ -935,6 +955,9 @@ export const IPC_COMMANDS = {
   UPDATE_TRANSLATION_PROVIDER_CONFIG: "update_translation_provider_config",
   TEST_TRANSLATION_CONNECTION: "test_translation_connection",
   TRANSLATE_TEXT: "translate_text",
+  // K. 标题翻译缓存
+  GET_TITLE_TRANSLATION: "get_title_translation",
+  BATCH_TRANSLATE_TITLES: "batch_translate_titles",
 } as const;
 
 /** Tauri Event 名称常量 */
