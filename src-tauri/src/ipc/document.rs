@@ -87,6 +87,7 @@ pub fn open_document(
     file_path: String,
     source_type: Option<String>,
     zotero_item_key: Option<String>,
+    title_override: Option<String>,
 ) -> Result<DocumentSnapshot, crate::errors::AppError> {
     let path = Path::new(&file_path);
     if !path.is_absolute() || !path.exists() {
@@ -120,11 +121,13 @@ pub fn open_document(
         std::io::copy(&mut reader, &mut hasher)?;
         format!("{:x}", hasher.finalize())
     };
-    let title = path
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("Untitled")
-        .to_string();
+    // 优先使用外部传入的标题（如 Zotero 元数据标题），否则使用文件名
+    let title = title_override.unwrap_or_else(|| {
+        path.file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("Untitled")
+            .to_string()
+    });
     let timestamp = chrono::Utc::now().to_rfc3339();
     let source_type = source_type
         .as_deref()

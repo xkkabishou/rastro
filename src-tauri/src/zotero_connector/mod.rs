@@ -44,6 +44,8 @@ pub struct ZoteroItemsPage {
 pub struct ResolvedAttachment {
     pub parent_item_key: String,
     pub file_path: PathBuf,
+    /// Zotero 元数据中的文献标题
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -292,9 +294,13 @@ impl ZoteroConnector {
             })?;
         let file_path = self.resolve_attachment_reference(&attachment)?;
 
+        // 查询 parent item 的标题
+        let title = lookup_item_title(&connection, &attachment.parent_item_key).ok().flatten();
+
         Ok(ResolvedAttachment {
             parent_item_key: attachment.parent_item_key,
             file_path,
+            title,
         })
     }
 
@@ -661,6 +667,27 @@ fn lookup_attachment_by_item_key(
                     attachment_path: row.get(2)?,
                 })
             },
+        )
+        .optional()
+        .map_err(map_sqlite_error)
+}
+
+/// 根据 item_key 查询 Zotero 文献标题
+fn lookup_item_title(
+    connection: &Connection,
+    item_key: &str,
+) -> Result<Option<String>, AppError> {
+    connection
+        .query_row(
+            "SELECT idv.value
+             FROM items i
+             JOIN itemData id ON id.itemID = i.itemID
+             JOIN itemDataValues idv ON idv.valueID = id.valueID
+             JOIN fieldsCombined fc ON fc.fieldID = id.fieldID
+             WHERE i.key = ?1 AND fc.fieldName = 'title'
+             LIMIT 1",
+            params![item_key],
+            |row| row.get(0),
         )
         .optional()
         .map_err(map_sqlite_error)

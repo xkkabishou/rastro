@@ -150,6 +150,7 @@ pub fn open_zotero_attachment(
         attachment.file_path.to_string_lossy().into_owned(),
         Some(DocumentSourceType::Zotero.as_str().to_string()),
         Some(attachment.parent_item_key),
+        attachment.title,
     )
 }
 
