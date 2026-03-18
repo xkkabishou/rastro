@@ -121,6 +121,9 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             ipc::translation_settings::update_translation_provider_config,
             ipc::translation_settings::test_translation_connection,
             ipc::translation_settings::translate_text,
+            // K. 标题翻译缓存 (2 个)
+            ipc::title_translation::get_title_translation,
+            ipc::title_translation::batch_translate_titles,
         ])
         .run(tauri::generate_context!())?;
     Ok(())

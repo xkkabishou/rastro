@@ -275,15 +275,15 @@ pub async fn translate_text(
 // --- 内部辅助函数 ---
 
 /// 翻译 Provider 运行时配置
-struct TranslationRuntimeConfig {
-    provider: ProviderId,
-    model: String,
-    base_url: String,
-    api_key: String,
+pub(crate) struct TranslationRuntimeConfig {
+    pub(crate) provider: ProviderId,
+    pub(crate) model: String,
+    pub(crate) base_url: String,
+    pub(crate) api_key: String,
 }
 
 /// 解析翻译 Provider 的运行时配置（独立于主 AI 配置）
-fn resolve_translation_runtime_config(
+pub(crate) fn resolve_translation_runtime_config(
     state: &State<'_, AppState>,
     provider: ProviderId,
 ) -> Result<TranslationRuntimeConfig, AppError> {
@@ -379,7 +379,7 @@ fn build_translation_test_request(
 }
 
 /// 构建翻译聊天请求（非流式）
-fn build_translation_chat_request(
+pub(crate) fn build_translation_chat_request(
     client: &reqwest::Client,
     config: &TranslationRuntimeConfig,
     prompt: &str,
@@ -422,7 +422,7 @@ fn build_translation_chat_request(
 }
 
 /// 从非流式聊天响应中提取文本内容
-fn extract_chat_response_text(provider: ProviderId, body: &serde_json::Value) -> Option<String> {
+pub(crate) fn extract_chat_response_text(provider: ProviderId, body: &serde_json::Value) -> Option<String> {
     match provider {
         ProviderId::Openai => {
             // OpenAI: { "choices": [{ "message": { "content": "..." } }] }
