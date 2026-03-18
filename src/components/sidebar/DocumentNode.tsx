@@ -100,8 +100,9 @@ export const DocumentNode: React.FC<DocumentNodeProps> = React.memo(
 
     const handleMouseEnter = useCallback((e: React.MouseEvent) => {
       const rect = e.currentTarget.getBoundingClientRect();
-      const x = rect.left + 20;
-      const y = rect.bottom;
+      // tooltip 紧贴条目下方，x 对齐条目左边界
+      const x = rect.left;
+      const y = rect.bottom + 2;
 
       hoverTimerRef.current = setTimeout(async () => {
         setTooltipState(prev => ({ ...prev, visible: true, loading: true, x, y }));

@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Languages } from 'lucide-react';
 
@@ -25,12 +26,8 @@ interface TitleTranslationTooltipProps {
 /**
  * 标题翻译 Tooltip — 毛玻璃设计语言
  *
- * 样式 100% 对齐 TranslationBubble（glass-panel + 暖金色设计变量）：
- * - backgroundColor: rgba(255, 240, 200, 0.35)
- * - backdrop-blur-xl + backdrop-saturate-150
- * - border border-white/30 dark:border-white/10
- * - shadow-xl + rounded-xl
- * - 动画: scale 0.9 → 1, duration 0.15
+ * 样式 100% 对齐 TranslationBubble（glass-panel + 暖金色设计变量）。
+ * 通过 React Portal 渲染到 document.body，确保不受侧边栏层叠上下文限制。
  */
 export const TitleTranslationTooltip: React.FC<TitleTranslationTooltipProps> = ({
   translatedTitle,
@@ -44,13 +41,17 @@ export const TitleTranslationTooltip: React.FC<TitleTranslationTooltipProps> = (
   const tooltipMaxHeight = 120;
   const padding = 12;
 
-  const adjustedX = Math.min(anchorX, window.innerWidth - tooltipWidth - padding);
+  const adjustedX = Math.min(
+    Math.max(padding, anchorX),
+    window.innerWidth - tooltipWidth - padding,
+  );
   const adjustedY =
     anchorY + tooltipMaxHeight + padding > window.innerHeight
       ? anchorY - tooltipMaxHeight - 8 // 上方显示
       : anchorY + 4; // 下方显示
 
-  return (
+  // Portal 渲染到 body，脱离侧边栏层叠上下文
+  return createPortal(
     <AnimatePresence>
       {visible && (
         <motion.div
@@ -58,8 +59,9 @@ export const TitleTranslationTooltip: React.FC<TitleTranslationTooltipProps> = (
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: -4 }}
           transition={{ duration: 0.15 }}
-          className="fixed z-[200] rounded-xl backdrop-blur-xl backdrop-saturate-150 border border-white/30 dark:border-white/10 shadow-xl pointer-events-none"
+          className="fixed rounded-xl backdrop-blur-xl backdrop-saturate-150 border border-white/30 dark:border-white/10 shadow-xl pointer-events-none"
           style={{
+            zIndex: 99999,
             backgroundColor: 'rgba(255, 240, 200, 0.35)',
             left: adjustedX,
             top: adjustedY,
@@ -67,7 +69,7 @@ export const TitleTranslationTooltip: React.FC<TitleTranslationTooltipProps> = (
             minWidth: 160,
           }}
         >
-          {/* 内容区域 — 对齐 TranslationBubble 的 px-3 py-2.5 */}
+          {/* 内容区域 */}
           <div className="flex items-start gap-2 px-3 py-2.5">
             {/* 翻译图标 */}
             <div className="shrink-0 mt-0.5">
@@ -98,6 +100,7 @@ export const TitleTranslationTooltip: React.FC<TitleTranslationTooltipProps> = (
           </div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 };

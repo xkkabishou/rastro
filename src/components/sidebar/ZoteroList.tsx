@@ -475,8 +475,9 @@ const ItemFolder: React.FC<ItemFolderProps> = ({
 
   const handleItemMouseEnter = useCallback((e: React.MouseEvent) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = rect.left + 20;
-    const y = rect.bottom;
+    // tooltip 紧贴条目下方，x 对齐条目左边界
+    const x = rect.left;
+    const y = rect.bottom + 2;
 
     // 启动 300ms 延迟
     hoverTimerRef.current = setTimeout(async () => {
