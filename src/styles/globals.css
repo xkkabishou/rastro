@@ -294,15 +294,7 @@
     transition: background-color var(--transition-slow), color var(--transition-slow), border-color var(--transition-slow);
   }
 
-  /* pdf.js 的 textLayer 依赖精确字宽，避免继承全局排版特性导致选区错位 */
-  .pdfViewer,
-  .pdfViewer .page,
-  .pdfViewer .textLayer,
-  .pdfViewer .textLayer * {
-    letter-spacing: normal;
-    text-rendering: auto;
-    font-feature-settings: normal;
-  }
+  /* pdf.js textLayer 重置已移至文件末尾（无层规则），确保优先级高于所有 @layer 内规则 */
 
   /* pdf.js 的 .page 以 content-box 计算页面尺寸；Tailwind preflight 的 border-box 会让 canvas 比 textLayer 小 18px */
   .pdfViewer .page {
@@ -558,3 +550,33 @@
     cursor: col-resize !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * pdf.js textLayer 排版重置 — 无层规则（优先级高于所有 @layer 内规则）
+ *
+ * 全局排版设置（letter-spacing、font-feature-settings、text-rendering 等）
+ * 会通过 CSS 继承影响 pdf.js textLayer 的字符宽度计算。当实际渲染宽度
+ * 与 pdf.js 内部 scaleX transform 的预期不一致时，会导致选区偏移
+ * （用户拖选的视觉区域与 Selection API 返回的文本不匹配）。
+ *
+ * 这些规则必须放在所有 @layer 之外，确保优先级高于：
+ * - @layer base 中的 html { font-feature-settings, text-rendering }
+ * - @layer base 中的 body { letter-spacing }
+ * - pdf_viewer.css 中可能影响继承链的无层规则
+ * --------------------------------------------------------------------------- */
+
+.pdfViewer,
+.pdfViewer .page,
+.pdfViewer .textLayer,
+.pdfViewer .textLayer * {
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-rendering: auto;
+  font-feature-settings: normal;
+  font-kerning: none;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+  font-variant-ligatures: none;
+  text-indent: 0;
+}
+

@@ -23,6 +23,8 @@ import shibaReadingUrl from '../../assets/shiba/shiba-reading.png';
 // 配置 pdf.js worker，使用 Vite 本地资源导入（避免 CDN 被 Vite ?import 干扰）
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+
+
 /** 缩放范围常量 */
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 4.0;
@@ -941,12 +943,69 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     const scrollContainer = viewerContainerRef.current;
     if (!scrollContainer) return;
 
+    // 记录 mousedown 坐标用于修正 textLayer scaleX 导致的选区起始偏移
+    let mousedownX = 0;
+    let mousedownY = 0;
+
+    /**
+     * 修正 pdf.js textLayer 的选区起始偏移
+     *
+     * 根因：textLayer span 使用 CSS transform scaleX() 拉伸宽度以匹配 canvas。
+     * 当 scaleX > 1 时，前一个 span 的 bounding box 向右溢出，覆盖下一个 span
+     * 的起始区域。WebKit 的 hit-testing 会把 mousedown 位置映射到前一个 span
+     * 的末尾字符，导致 selection.toString() 在开头多出不应包含的字符。
+     *
+     * 策略：对比 mousedown 坐标与 startSpan 后续兄弟 span 的位置，
+     * 如果 mousedown 落在后续 span 中，则将 range.start 修正到该 span。
+     */
+    const fixTextLayerSelectionStart = (range: Range): void => {
+      if (mousedownX === 0 && mousedownY === 0) return;
+
+      const startNode = range.startContainer;
+      const startSpan = (startNode.nodeType === Node.TEXT_NODE
+        ? startNode.parentElement
+        : startNode as HTMLElement
+      )?.closest('.textLayer span') as HTMLElement | null;
+      if (!startSpan) return;
+
+      // 遍历 startSpan 之后的兄弟节点（跳过 <br>），查找包含 mousedown 的 span
+      let sibling = startSpan.nextElementSibling;
+      while (sibling) {
+        if (sibling.tagName === 'SPAN' && sibling.closest('.textLayer')) {
+          const sibRect = sibling.getBoundingClientRect();
+          // 如果 mousedown 的 X 在此 span 的左边界与右边界之间
+          // 且 Y 在此 span 的上下边界之间，说明用户实际点击了这个 span
+          if (
+            mousedownX >= sibRect.left &&
+            mousedownX <= sibRect.right &&
+            mousedownY >= sibRect.top - 2 &&
+            mousedownY <= sibRect.bottom + 2
+          ) {
+            // 将 range 的起始点修正到此 span 的第一个文本节点
+            const textNode = sibling.firstChild;
+            if (textNode) {
+              range.setStart(textNode, 0);
+            }
+            return;
+          }
+          break; // 只检查紧邻的下一个 span
+        }
+        sibling = sibling.nextElementSibling;
+      }
+    };
+
     const updateSelectionPopup = () => {
       requestAnimationFrame(() => {
         const selection = window.getSelection();
+        const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+
+        // 修正 textLayer scaleX 导致的选区起始偏移
+        if (range) {
+          fixTextLayerSelectionStart(range);
+        }
+
         const selectionText = selection?.toString() ?? '';
         const text = selectionText.trim();
-        const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
         const overlayContainer = containerRef.current;
         const debugSnapshot = isSelectionDebugEnabled
           ? buildSelectionDebugSnapshot({
@@ -1053,6 +1112,9 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     };
 
     const handleMouseDown = (e: MouseEvent) => {
+      // 记录 mousedown 坐标用于选区修正
+      mousedownX = e.clientX;
+      mousedownY = e.clientY;
       // 点击浮窗菜单或翻译气泡本身时不清除
       if ((e.target as HTMLElement)?.closest('.selection-popup-menu')) return;
       setSelectionPopup(null);
