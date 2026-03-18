@@ -3,12 +3,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText, BookOpen, Loader2, AlertCircle,
   RefreshCw, ChevronRight, FolderOpen, Folder, FolderMinus,
-  Library, Hash,
+  Library, Hash, Globe, Brain, StickyNote,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { ipcClient } from '../../lib/ipc-client';
 import { useDocumentStore } from '../../stores/useDocumentStore';
-import type { ZoteroItemDto, ZoteroStatusDto, ZoteroCollectionDto, PagedZoteroItemsDto } from '../../shared/types';
+import { useSummaryStore } from '../../stores/useSummaryStore';
+import type {
+  ZoteroItemDto, ZoteroStatusDto, ZoteroCollectionDto,
+  PagedZoteroItemsDto, DocumentArtifactDto, DocumentSnapshot,
+} from '../../shared/types';
+import { artifactIcon } from './ArtifactNode';
 
 /* ======================================================================== */
 /* 常量                                                                     */
@@ -33,6 +38,14 @@ interface ExpandedData {
   isLoadingMore: boolean;
 }
 
+/** 文献展开后的数据 */
+interface ItemExpandedData {
+  doc: DocumentSnapshot | null;
+  artifacts: DocumentArtifactDto[];
+  isLoading: boolean;
+  error?: string;
+}
+
 /* ======================================================================== */
 /* 辅助函数                                                                 */
 /* ======================================================================== */
@@ -52,6 +65,22 @@ function buildTree(list: ZoteroCollectionDto[]): CollectionTreeNode[] {
   return roots;
 }
 
+/** Zotero 风格的文献命名：作者 (年份) 标题 */
+function zoteroItemLabel(item: ZoteroItemDto): string {
+  const parts: string[] = [];
+  if (item.authors?.length) {
+    const surname = item.authors[0].split(' ').pop() || item.authors[0];
+    if (item.authors.length > 1) {
+      parts.push(`${surname} 等`);
+    } else {
+      parts.push(surname);
+    }
+  }
+  if (item.year) parts.push(`(${item.year})`);
+  parts.push(item.title);
+  return parts.join(' ');
+}
+
 /* 柔和的文件夹色板 */
 const FOLDER_COLORS = [
   { bg: '#FFF3E0', icon: '#F57C00', bar: '#FFB74D' },
@@ -63,6 +92,23 @@ const FOLDER_COLORS = [
   { bg: '#FCE4EC', icon: '#C62828', bar: '#EF9A9A' },
   { bg: '#EFEBE9', icon: '#4E342E', bar: '#A1887F' },
 ];
+
+/* 产物 kind → lucide icon + 颜色 */
+function artifactMeta(kind: string): { icon: React.ReactNode; color: string; label: string } {
+  switch (kind) {
+    case 'original_pdf':
+      return { icon: <FileText size={12} />, color: '#78909C', label: '原件 PDF' };
+    case 'translated_pdf':
+    case 'bilingual_pdf':
+      return { icon: <Globe size={12} />, color: '#1976D2', label: '翻译 PDF' };
+    case 'ai_summary':
+      return { icon: <StickyNote size={12} />, color: '#F57C00', label: 'AI 总结' };
+    case 'notebooklm_mindmap':
+      return { icon: <Brain size={12} />, color: '#7B1FA2', label: '思维导图' };
+    default:
+      return { icon: <FileText size={12} />, color: '#78909C', label: kind };
+  }
+}
 
 /* ======================================================================== */
 /* ZoteroList                                                                */
@@ -77,6 +123,10 @@ export const ZoteroList: React.FC = () => {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [cache, setCache] = useState<Map<string, ExpandedData>>(new Map());
   const [refreshing, setRefreshing] = useState(false);
+
+  /* 文献条目的展开状态 */
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [itemCache, setItemCache] = useState<Map<string, ItemExpandedData>>(new Map());
 
   const setCurrentDocument = useDocumentStore(s => s.setCurrentDocument);
   const setPdfUrl = useDocumentStore(s => s.setPdfUrl);
@@ -109,20 +159,61 @@ export const ZoteroList: React.FC = () => {
     }
   }, []);
 
-  const toggle = useCallback((cid: number | null) => {
+  /* 展开/折叠 collection */
+  const toggleCol = useCallback((cid: number | null) => {
     const k = cid === null ? '_uc' : String(cid);
     setExpandedIds(p => { const s = new Set(p); if (s.has(k)) s.delete(k); else { s.add(k); if (!cache.has(k)) loadItems(cid, 0); } return s; });
   }, [cache, loadItems]);
 
-  const openItem = useCallback(async (item: ZoteroItemDto) => {
-    if (!item.pdfPath) return;
-    try { const doc = await ipcClient.openZoteroAttachment(item.itemKey); setCurrentDocument(doc); setPdfUrl(convertFileSrc(doc.filePath)); }
-    catch (e) { console.error('打开附件失败:', e); }
+  /* 展开/折叠文献条目 */
+  const toggleItem = useCallback(async (item: ZoteroItemDto) => {
+    const k = item.itemKey;
+    if (expandedItems.has(k)) {
+      setExpandedItems(p => { const s = new Set(p); s.delete(k); return s; });
+      return;
+    }
+    // 展开：先注册到本地数据库，再加载产物
+    setExpandedItems(p => { const s = new Set(p); s.add(k); return s; });
+    if (itemCache.has(k)) return; // 已加载过
+
+    setItemCache(p => { const m = new Map(p); m.set(k, { doc: null, artifacts: [], isLoading: true }); return m; });
+    try {
+      // 注册文献到本地数据库
+      const doc = item.pdfPath
+        ? await ipcClient.openZoteroAttachment(item.itemKey)
+        : null;
+      // 加载产物列表
+      const artifacts = doc
+        ? await ipcClient.listDocumentArtifacts(doc.documentId)
+        : [];
+      setItemCache(p => { const m = new Map(p); m.set(k, { doc, artifacts, isLoading: false }); return m; });
+    } catch (e) {
+      setItemCache(p => { const m = new Map(p); m.set(k, { doc: null, artifacts: [], isLoading: false, error: String(e) }); return m; });
+    }
+  }, [expandedItems, itemCache]);
+
+  /* 点击产物 */
+  const handleArtifactClick = useCallback((artifact: DocumentArtifactDto, doc: DocumentSnapshot) => {
+    if (artifact.kind === 'original_pdf') {
+      setCurrentDocument(doc);
+      setPdfUrl(convertFileSrc(doc.filePath));
+    } else if (artifact.kind === 'translated_pdf' || artifact.kind === 'bilingual_pdf') {
+      if (artifact.filePath) {
+        setCurrentDocument(doc);
+        setPdfUrl(convertFileSrc(artifact.filePath));
+      }
+    } else if (artifact.kind === 'ai_summary') {
+      setCurrentDocument(doc);
+      // 总结的展示由其他组件处理
+    }
   }, [setCurrentDocument, setPdfUrl]);
 
   const refresh = useCallback(async () => {
-    setRefreshing(true); setCache(new Map()); setExpandedIds(new Set());
-    await detect(); await loadCols(); setRefreshing(false);
+    setRefreshing(true);
+    setCache(new Map()); setExpandedIds(new Set());
+    setItemCache(new Map()); setExpandedItems(new Set());
+    await detect(); await loadCols();
+    setRefreshing(false);
   }, [detect, loadCols]);
 
   const totalItems = status?.itemCount ?? 0;
@@ -139,10 +230,7 @@ export const ZoteroList: React.FC = () => {
           <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>未检测到 Zotero</p>
           <p style={{ fontSize: 12, color: 'var(--color-text-quaternary)', margin: 0 }}>{status.statusMessage || '请确认已安装并运行过一次'}</p>
         </div>
-        <button
-          onClick={detect}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 8%, transparent)', border: 'none', cursor: 'pointer' }}
-        >
+        <button onClick={detect} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 8%, transparent)', border: 'none', cursor: 'pointer' }}>
           <RefreshCw size={13} /> 重新检测
         </button>
       </div>
@@ -152,55 +240,35 @@ export const ZoteroList: React.FC = () => {
   /* --- 正常 --- */
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-
-      {/* ====== 统计头部卡片 ====== */}
+      {/* 统计头部 */}
       <div style={{ padding: '12px 12px 8px', flexShrink: 0 }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 12,
-          padding: '10px 12px',
-          borderRadius: 10,
+          padding: '10px 12px', borderRadius: 10,
           background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 6%, transparent), color-mix(in srgb, var(--color-primary) 12%, transparent))',
         }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: 'color-mix(in srgb, var(--color-primary) 15%, transparent)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'color-mix(in srgb, var(--color-primary) 15%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Library size={18} color="var(--color-primary)" />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text)', lineHeight: 1.1 }}>
-              {totalItems}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 2 }}>
-              篇文献 · {colCount} 个文件夹
-            </div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text)', lineHeight: 1.1 }}>{totalItems}</div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 2 }}>篇文献 · {colCount} 个文件夹</div>
           </div>
-          <button
-            onClick={refresh} disabled={refreshing}
-            style={{
-              width: 28, height: 28, borderRadius: 8, border: 'none',
-              background: 'color-mix(in srgb, var(--color-primary) 10%, transparent)',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
+          <button onClick={refresh} disabled={refreshing} style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: 'color-mix(in srgb, var(--color-primary) 10%, transparent)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <RefreshCw size={13} color="var(--color-primary)" className={refreshing ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
 
-      {/* ====== 分隔标签 ====== */}
+      {/* 分隔标签 */}
       <div style={{ padding: '4px 14px 6px', display: 'flex', alignItems: 'center', gap: 6 }}>
         <Hash size={11} color="var(--color-text-quaternary)" />
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-quaternary)', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-          文件夹
-        </span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-quaternary)', letterSpacing: '0.5px' }}>文件夹</span>
       </div>
 
-      {/* ====== 树形列表 ====== */}
+      {/* 树形列表 */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 12px' }}>
         {loading ? (
-          /* 骨架屏 */
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '0 4px' }}>
             {[...Array(5)].map((_, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 8, background: 'var(--color-bg-tertiary)' }}>
@@ -215,14 +283,14 @@ export const ZoteroList: React.FC = () => {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {collections.map((n, i) => (
-              <FolderNode key={n.collection.collectionId} node={n} depth={0} colorIdx={i}
-                expandedIds={expandedIds} cache={cache}
-                onToggle={toggle} onLoadMore={loadItems} onOpen={openItem} />
+              <CollectionNode key={n.collection.collectionId} node={n} depth={0} colorIdx={i}
+                expandedIds={expandedIds} cache={cache} expandedItems={expandedItems} itemCache={itemCache}
+                onToggleCol={toggleCol} onLoadMore={loadItems} onToggleItem={toggleItem} onArtifactClick={handleArtifactClick} />
             ))}
             {uncatCount > 0 && (
-              <FolderNode node={null} uncatCount={uncatCount} depth={0} colorIdx={collections.length}
-                expandedIds={expandedIds} cache={cache}
-                onToggle={toggle} onLoadMore={loadItems} onOpen={openItem} />
+              <CollectionNode node={null} uncatCount={uncatCount} depth={0} colorIdx={collections.length}
+                expandedIds={expandedIds} cache={cache} expandedItems={expandedItems} itemCache={itemCache}
+                onToggleCol={toggleCol} onLoadMore={loadItems} onToggleItem={toggleItem} onArtifactClick={handleArtifactClick} />
             )}
           </div>
         )}
@@ -231,10 +299,8 @@ export const ZoteroList: React.FC = () => {
       {/* 错误 */}
       <AnimatePresence>
         {error && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-            style={{ padding: '6px 14px', flexShrink: 0, borderTop: '1px solid var(--color-border)', overflow: 'hidden' }}
-          >
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+            style={{ padding: '6px 14px', flexShrink: 0, borderTop: '1px solid var(--color-border)', overflow: 'hidden' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-destructive)' }}>
               <AlertCircle size={13} />{error}
             </span>
@@ -246,23 +312,27 @@ export const ZoteroList: React.FC = () => {
 };
 
 /* ======================================================================== */
-/* FolderNode                                                                */
+/* CollectionNode：文件夹行                                                  */
 /* ======================================================================== */
 
-interface FolderNodeProps {
+interface CollectionNodeProps {
   node: CollectionTreeNode | null;
   uncatCount?: number;
   depth: number;
   colorIdx: number;
   expandedIds: Set<string>;
   cache: Map<string, ExpandedData>;
-  onToggle: (id: number | null) => void;
+  expandedItems: Set<string>;
+  itemCache: Map<string, ItemExpandedData>;
+  onToggleCol: (id: number | null) => void;
   onLoadMore: (id: number | null, offset: number) => void;
-  onOpen: (item: ZoteroItemDto) => void;
+  onToggleItem: (item: ZoteroItemDto) => void;
+  onArtifactClick: (artifact: DocumentArtifactDto, doc: DocumentSnapshot) => void;
 }
 
-const FolderNode: React.FC<FolderNodeProps> = ({
-  node, uncatCount, depth, colorIdx, expandedIds, cache, onToggle, onLoadMore, onOpen,
+const CollectionNode: React.FC<CollectionNodeProps> = ({
+  node, uncatCount, depth, colorIdx, expandedIds, cache, expandedItems, itemCache,
+  onToggleCol, onLoadMore, onToggleItem, onArtifactClick,
 }) => {
   const isUncat = node === null;
   const cid = isUncat ? null : node.collection.collectionId;
@@ -275,7 +345,6 @@ const FolderNode: React.FC<FolderNodeProps> = ({
   const loaded = d?.items.length ?? 0;
   const total = d?.total ?? count;
   const hasMore = loaded < total;
-
   const color = FOLDER_COLORS[colorIdx % FOLDER_COLORS.length];
   const pl = depth * 16;
   const isRoot = depth === 0;
@@ -284,30 +353,24 @@ const FolderNode: React.FC<FolderNodeProps> = ({
     <div style={{ marginLeft: pl }}>
       {/* 文件夹行 */}
       <button
-        onClick={() => onToggle(cid)}
+        onClick={() => onToggleCol(cid)}
         style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          width: '100%',
-          padding: isRoot ? '8px 10px' : '6px 10px',
-          borderRadius: 10,
-          border: 'none',
+          width: '100%', padding: isRoot ? '8px 10px' : '6px 10px',
+          borderRadius: 10, border: 'none',
           background: open ? color.bg : 'transparent',
-          cursor: 'pointer',
-          transition: 'background 150ms, transform 100ms',
+          cursor: 'pointer', transition: 'background 150ms',
         }}
         onMouseEnter={e => { if (!open) e.currentTarget.style.background = 'var(--color-hover)'; }}
         onMouseLeave={e => { e.currentTarget.style.background = open ? color.bg : 'transparent'; }}
       >
-        {/* 彩色图标容器 */}
+        {/* 彩色图标 */}
         <div style={{
-          width: isRoot ? 32 : 26,
-          height: isRoot ? 32 : 26,
+          width: isRoot ? 32 : 26, height: isRoot ? 32 : 26,
           borderRadius: isRoot ? 8 : 6,
           background: open ? color.icon : 'var(--color-bg-tertiary)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'background 200ms, transform 150ms',
-          flexShrink: 0,
-          transform: open ? 'scale(1.02)' : 'scale(1)',
+          transition: 'background 200ms', flexShrink: 0,
         }}>
           {isUncat
             ? <FolderMinus size={isRoot ? 16 : 13} color={open ? '#fff' : 'var(--color-text-quaternary)'} />
@@ -316,25 +379,15 @@ const FolderNode: React.FC<FolderNodeProps> = ({
               : <Folder size={isRoot ? 16 : 13} color="var(--color-text-quaternary)" />
           }
         </div>
-
-        {/* 名称 + 计数 */}
         <div style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
           <div style={{
-            fontSize: isRoot ? 13 : 12,
-            fontWeight: open ? 600 : 500,
+            fontSize: isRoot ? 13 : 12, fontWeight: open ? 600 : 500,
             color: open ? color.icon : 'var(--color-text)',
-            lineHeight: 1.2,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             transition: 'color 150ms',
-          }}>
-            {name}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--color-text-quaternary)', lineHeight: 1.2, marginTop: 1 }}>
-            {count} 篇
-          </div>
+          }}>{name}</div>
+          <div style={{ fontSize: 11, color: 'var(--color-text-quaternary)', marginTop: 1 }}>{count} 篇</div>
         </div>
-
-        {/* 箭头 */}
         <span style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           width: 18, height: 18, flexShrink: 0,
@@ -354,10 +407,10 @@ const FolderNode: React.FC<FolderNodeProps> = ({
         <div style={{ overflow: 'hidden' }}>
           <div style={{ paddingLeft: isRoot ? 12 : 8, paddingTop: 2, paddingBottom: open ? 4 : 0 }}>
             {/* 子文件夹 */}
-            {hasKids && node.children.map((c, i) => (
-              <FolderNode key={c.collection.collectionId} node={c} depth={depth + 1} colorIdx={colorIdx}
-                expandedIds={expandedIds} cache={cache}
-                onToggle={onToggle} onLoadMore={onLoadMore} onOpen={onOpen} />
+            {hasKids && node.children.map((c) => (
+              <CollectionNode key={c.collection.collectionId} node={c} depth={depth + 1} colorIdx={colorIdx}
+                expandedIds={expandedIds} cache={cache} expandedItems={expandedItems} itemCache={itemCache}
+                onToggleCol={onToggleCol} onLoadMore={onLoadMore} onToggleItem={onToggleItem} onArtifactClick={onArtifactClick} />
             ))}
 
             {/* 骨架 */}
@@ -368,9 +421,13 @@ const FolderNode: React.FC<FolderNodeProps> = ({
               </div>
             ))}
 
-            {/* 文献列表 */}
+            {/* 文献列表（每个文献是可展开文件夹） */}
             {!d?.isLoading && d?.items.map(item => (
-              <ItemRow key={item.itemKey} item={item} accentColor={color.icon} onClick={() => onOpen(item)} />
+              <ItemFolder key={item.itemKey} item={item} accentColor={color.icon}
+                isExpanded={expandedItems.has(item.itemKey)}
+                expandedData={itemCache.get(item.itemKey)}
+                onToggle={() => onToggleItem(item)}
+                onArtifactClick={onArtifactClick} />
             ))}
 
             {/* 加载更多 */}
@@ -380,11 +437,9 @@ const FolderNode: React.FC<FolderNodeProps> = ({
                 disabled={d?.isLoadingMore}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  width: '100%', padding: '6px 8px',
-                  fontSize: 12, fontWeight: 500, color: color.icon,
-                  background: 'transparent', border: `1px dashed ${color.bar}`,
-                  borderRadius: 6, cursor: 'pointer',
-                  marginTop: 4,
+                  width: '100%', padding: '6px 8px', fontSize: 12, fontWeight: 500,
+                  color: color.icon, background: 'transparent',
+                  border: `1px dashed ${color.bar}`, borderRadius: 6, cursor: 'pointer', marginTop: 4,
                 }}
               >
                 {d?.isLoadingMore
@@ -400,52 +455,150 @@ const FolderNode: React.FC<FolderNodeProps> = ({
 };
 
 /* ======================================================================== */
-/* ItemRow                                                                   */
+/* ItemFolder：文献条目（可展开文件夹）                                        */
 /* ======================================================================== */
 
-const ItemRow: React.FC<{ item: ZoteroItemDto; accentColor: string; onClick: () => void }> = ({ item, accentColor, onClick }) => {
-  const sub = useMemo(() => {
-    const p: string[] = [];
-    if (item.authors?.length) {
-      const a = item.authors[0].split(' ').pop() || item.authors[0];
-      p.push(item.authors.length > 1 ? `${a} 等` : a);
-    }
-    if (item.year) p.push(String(item.year));
-    return p.join(' · ');
-  }, [item.authors, item.year]);
+interface ItemFolderProps {
+  item: ZoteroItemDto;
+  accentColor: string;
+  isExpanded: boolean;
+  expandedData?: ItemExpandedData;
+  onToggle: () => void;
+  onArtifactClick: (artifact: DocumentArtifactDto, doc: DocumentSnapshot) => void;
+}
+
+const ItemFolder: React.FC<ItemFolderProps> = ({
+  item, accentColor, isExpanded, expandedData, onToggle, onArtifactClick,
+}) => {
+  const label = useMemo(() => zoteroItemLabel(item), [item]);
+  const hasContent = expandedData && !expandedData.isLoading && expandedData.artifacts.length > 0;
 
   return (
-    <button
-      onClick={onClick}
-      disabled={!item.pdfPath}
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 8,
-        width: '100%', padding: '6px 8px',
-        borderRadius: 6, border: 'none',
-        background: 'transparent', cursor: item.pdfPath ? 'pointer' : 'not-allowed',
-        opacity: item.pdfPath ? 1 : 0.35,
-        textAlign: 'left',
-        transition: 'background 100ms',
-      }}
-      onMouseEnter={e => { if (item.pdfPath) e.currentTarget.style.background = 'var(--color-hover)'; }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-    >
-      <FileText size={14} color={accentColor} style={{ flexShrink: 0, marginTop: 1, opacity: 0.7 }} />
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{
-          fontSize: 12, lineHeight: 1.35,
-          color: 'var(--color-text)',
-          overflow: 'hidden', textOverflow: 'ellipsis',
-          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+    <div>
+      {/* 文献行 — 可展开 */}
+      <button
+        onClick={onToggle}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          width: '100%', padding: '6px 8px',
+          borderRadius: 8, border: 'none',
+          background: isExpanded ? 'color-mix(in srgb, var(--color-primary) 5%, transparent)' : 'transparent',
+          cursor: 'pointer', textAlign: 'left',
+          transition: 'background 100ms',
+          opacity: item.pdfPath ? 1 : 0.4,
+        }}
+        disabled={!item.pdfPath}
+        onMouseEnter={e => { if (!isExpanded && item.pdfPath) e.currentTarget.style.background = 'var(--color-hover)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = isExpanded ? 'color-mix(in srgb, var(--color-primary) 5%, transparent)' : 'transparent'; }}
+      >
+        {/* 展开箭头 */}
+        <span style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 14, height: 14, flexShrink: 0,
+          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+          transition: 'transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
         }}>
-          {item.title}
-        </div>
-        {sub && (
-          <div style={{ fontSize: 11, color: 'var(--color-text-quaternary)', marginTop: 2 }}>
-            {sub}
-          </div>
+          <ChevronRight size={11} strokeWidth={2} color={isExpanded ? accentColor : 'var(--color-text-quaternary)'} />
+        </span>
+
+        {/* 文件图标 */}
+        <FileText size={13} color={isExpanded ? accentColor : 'var(--color-text-quaternary)'} style={{ flexShrink: 0, transition: 'color 150ms' }} />
+
+        {/* Zotero 风格标题：作者 (年份) 标题 */}
+        <span style={{
+          fontSize: 12, lineHeight: 1.35,
+          color: isExpanded ? 'var(--color-text)' : 'var(--color-text-secondary)',
+          fontWeight: isExpanded ? 500 : 400,
+          flex: 1, minWidth: 0,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          transition: 'color 150ms',
+        }}>
+          {label}
+        </span>
+
+        {/* 产物数量 badge */}
+        {hasContent && (
+          <span style={{
+            fontSize: 9, lineHeight: '12px', borderRadius: 99,
+            padding: '1px 5px', flexShrink: 0,
+            color: accentColor,
+            background: `color-mix(in srgb, ${accentColor} 10%, transparent)`,
+          }}>
+            {expandedData!.artifacts.length}
+          </span>
         )}
+      </button>
+
+      {/* 产物展开区 — CSS grid 过渡 */}
+      <div style={{
+        display: 'grid',
+        gridTemplateRows: isExpanded ? '1fr' : '0fr',
+        transition: 'grid-template-rows 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+      }}>
+        <div style={{ overflow: 'hidden' }}>
+          <div style={{ paddingLeft: 30, paddingTop: 2, paddingBottom: isExpanded ? 4 : 0 }}>
+            {/* 加载中 */}
+            {expandedData?.isLoading && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', fontSize: 11, color: 'var(--color-text-quaternary)' }}>
+                <Loader2 size={11} className="animate-spin" /> 加载产物...
+              </div>
+            )}
+
+            {/* 错误 */}
+            {expandedData?.error && (
+              <div style={{ fontSize: 11, color: 'var(--color-destructive)', padding: '4px 0' }}>
+                加载失败
+              </div>
+            )}
+
+            {/* 无产物提示 */}
+            {expandedData && !expandedData.isLoading && !expandedData.error && expandedData.artifacts.length === 0 && (
+              <div style={{ fontSize: 11, color: 'var(--color-text-quaternary)', padding: '4px 0', fontStyle: 'italic' }}>
+                暂无产物
+              </div>
+            )}
+
+            {/* 产物列表 */}
+            {expandedData?.artifacts.map(artifact => {
+              const meta = artifactMeta(artifact.kind);
+              return (
+                <button
+                  key={artifact.artifactId}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (expandedData.doc) onArtifactClick(artifact, expandedData.doc);
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    width: '100%', padding: '5px 8px',
+                    borderRadius: 6, border: 'none',
+                    background: 'transparent', cursor: 'pointer',
+                    textAlign: 'left', transition: 'background 100ms',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-hover)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  {/* icon */}
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 5, background: `color-mix(in srgb, ${meta.color} 12%, transparent)`, flexShrink: 0 }}>
+                    <span style={{ color: meta.color }}>{meta.icon}</span>
+                  </span>
+                  {/* 名称 */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {artifact.title}
+                    </div>
+                    {(artifact.provider || artifact.fileSize) && (
+                      <div style={{ fontSize: 9, color: 'var(--color-text-quaternary)' }}>
+                        {[artifact.provider, artifact.fileSize ? `${(artifact.fileSize / 1024 / 1024).toFixed(1)} MB` : null].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
-    </button>
+    </div>
   );
 };
