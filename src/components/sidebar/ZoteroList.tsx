@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText, BookOpen, Loader2, AlertCircle,
-  RefreshCw, ChevronRight, FolderOpen, Folder, FolderMinus,
+  RefreshCw, ChevronRight,
   Library, Hash, Globe, Brain, StickyNote,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -71,17 +71,84 @@ function zoteroItemLabel(item: ZoteroItemDto): string {
   return item.title;
 }
 
-/* 柔和的文件夹色板 */
+/* Shiba Warm Palette 文件夹色板 — 暖色系 */
 const FOLDER_COLORS = [
-  { bg: '#FFF3E0', icon: '#F57C00', bar: '#FFB74D' },
-  { bg: '#E8F5E9', icon: '#388E3C', bar: '#81C784' },
-  { bg: '#E3F2FD', icon: '#1976D2', bar: '#64B5F6' },
-  { bg: '#F3E5F5', icon: '#7B1FA2', bar: '#BA68C8' },
-  { bg: '#FFF8E1', icon: '#F9A825', bar: '#FFD54F' },
-  { bg: '#E0F7FA', icon: '#00838F', bar: '#4DD0E1' },
-  { bg: '#FCE4EC', icon: '#C62828', bar: '#EF9A9A' },
-  { bg: '#EFEBE9', icon: '#4E342E', bar: '#A1887F' },
+  { bg: '#FFF3E0', accent: '#D4924A', light: '#F0C896', dark: '#B07530' },  // 琥珀金
+  { bg: '#FFF0E8', accent: '#C47A3A', light: '#E8B88A', dark: '#9E5E28' },  // 赭石
+  { bg: '#FFF5EB', accent: '#D9A05B', light: '#F0D0A0', dark: '#A87A35' },  // 焦糖
+  { bg: '#F5EDE0', accent: '#8B6914', light: '#C4A86E', dark: '#6B5010' },  // 暖棕
+  { bg: '#FFF8E1', accent: '#E8973E', light: '#F5CB8A', dark: '#B87020' },  // 蜂蜜
+  { bg: '#F3EBE0', accent: '#A07848', light: '#D0B898', dark: '#7A5830' },  // 古铜
+  { bg: '#F8F0E8', accent: '#B88A5A', light: '#E0C8A8', dark: '#8A6838' },  // 砂岩
+  { bg: '#F0EBE5', accent: '#9A8068', light: '#C8B8A0', dark: '#786050' },  // 暖灰
 ];
+
+/* ======================================================================== */
+/* FolderIcon — S3 线条 + 微填充 SVG 图标                                    */
+/* ======================================================================== */
+
+interface FolderIconProps {
+  /** 描边 / 主色调 */
+  color?: string;
+  /** 图标尺寸 */
+  size?: number;
+  /** 是否展开 */
+  open?: boolean;
+  /** 是否为未分类（虚线） */
+  uncategorized?: boolean;
+}
+
+/** 线条 + 极淡填充文件夹图标，三态：关闭 / 打开 / 未分类 */
+const FolderIcon: React.FC<FolderIconProps> = ({
+  color = '#D4924A', size = 24, open = false, uncategorized = false,
+}) => {
+  const sw = 1.75;  // 描边粗细
+  const cap = 'round' as const;
+  const join = 'round' as const;
+
+  /* 未分类：虚线 + 无填充 */
+  if (uncategorized) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path
+          d="M4 4h5l2 2h7a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z"
+          stroke="#9A8068" strokeWidth={sw} strokeLinecap={cap} strokeLinejoin={join}
+          strokeDasharray="3 2.5" opacity={0.6}
+        />
+      </svg>
+    );
+  }
+
+  /* 打开态：后层 + 翻盖 */
+  if (open) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path
+          d="M5 19a2 2 0 01-2-2V6a2 2 0 012-2h4l2 2h7a2 2 0 012 2v1"
+          stroke={color} strokeWidth={sw} strokeLinecap={cap} strokeLinejoin={join}
+          fill={`${color}08`}
+        />
+        <path
+          d="M20 13H8.5a2 2 0 00-1.94 1.51L5 21h12.5a2 2 0 001.94-1.51L21 13z"
+          stroke={color} strokeWidth={sw} strokeLinecap={cap} strokeLinejoin={join}
+          fill={`${color}18`}
+        />
+      </svg>
+    );
+  }
+
+  /* 关闭态：线框 + 极淡暖色填充 */
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M4 4h5l2 2h7a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z"
+        stroke={color} strokeWidth={sw} strokeLinecap={cap} strokeLinejoin={join}
+        fill={`${color}18`}
+      />
+    </svg>
+  );
+};
+
 
 /* 产物 kind → lucide icon + 颜色 */
 function artifactMeta(kind: string): { icon: React.ReactNode; color: string; label: string } {
@@ -348,31 +415,30 @@ const CollectionNode: React.FC<CollectionNodeProps> = ({
           display: 'flex', alignItems: 'center', gap: 10,
           width: '100%', padding: isRoot ? '8px 10px' : '6px 10px',
           borderRadius: 10, border: 'none',
-          background: open ? color.bg : 'transparent',
+          background: open ? `color-mix(in srgb, ${color.accent} 6%, transparent)` : 'transparent',
           cursor: 'pointer', transition: 'background 150ms',
         }}
         onMouseEnter={e => { if (!open) e.currentTarget.style.background = 'var(--color-hover)'; }}
-        onMouseLeave={e => { e.currentTarget.style.background = open ? color.bg : 'transparent'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = open ? `color-mix(in srgb, ${color.accent} 6%, transparent)` : 'transparent'; }}
       >
-        {/* 彩色图标 */}
+        {/* 扁平线性文件夹图标 */}
         <div style={{
           width: isRoot ? 32 : 26, height: isRoot ? 32 : 26,
-          borderRadius: isRoot ? 8 : 6,
-          background: open ? color.icon : 'var(--color-bg-tertiary)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'background 200ms', flexShrink: 0,
+          flexShrink: 0,
+          transition: 'transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
         }}>
-          {isUncat
-            ? <FolderMinus size={isRoot ? 16 : 13} color={open ? '#fff' : 'var(--color-text-quaternary)'} />
-            : open
-              ? <FolderOpen size={isRoot ? 16 : 13} color="#fff" />
-              : <Folder size={isRoot ? 16 : 13} color="var(--color-text-quaternary)" />
-          }
+          <FolderIcon
+            color={color.accent}
+            size={isRoot ? 28 : 22}
+            open={open}
+            uncategorized={isUncat}
+          />
         </div>
         <div style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
           <div style={{
             fontSize: isRoot ? 13 : 12, fontWeight: open ? 600 : 500,
-            color: open ? color.icon : 'var(--color-text)',
+            color: open ? color.accent : 'var(--color-text)',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             transition: 'color 150ms',
           }}>{name}</div>
@@ -384,7 +450,7 @@ const CollectionNode: React.FC<CollectionNodeProps> = ({
           transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
           transition: 'transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
         }}>
-          <ChevronRight size={14} color={open ? color.icon : 'var(--color-text-quaternary)'} />
+          <ChevronRight size={14} color={open ? color.accent : 'var(--color-text-quaternary)'} />
         </span>
       </button>
 
@@ -413,7 +479,7 @@ const CollectionNode: React.FC<CollectionNodeProps> = ({
 
             {/* 文献列表（每个文献是可展开文件夹） */}
             {!d?.isLoading && d?.items.map(item => (
-              <ItemFolder key={item.itemKey} item={item} accentColor={color.icon}
+              <ItemFolder key={item.itemKey} item={item} accentColor={color.accent}
                 isExpanded={expandedItems.has(item.itemKey)}
                 expandedData={itemCache.get(item.itemKey)}
                 onToggle={() => onToggleItem(item)}
@@ -428,8 +494,8 @@ const CollectionNode: React.FC<CollectionNodeProps> = ({
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                   width: '100%', padding: '6px 8px', fontSize: 12, fontWeight: 500,
-                  color: color.icon, background: 'transparent',
-                  border: `1px dashed ${color.bar}`, borderRadius: 6, cursor: 'pointer', marginTop: 4,
+                  color: color.accent, background: 'transparent',
+                  border: `1px dashed ${color.light}`, borderRadius: 6, cursor: 'pointer', marginTop: 4,
                 }}
               >
                 {d?.isLoadingMore
@@ -544,8 +610,6 @@ const ItemFolder: React.FC<ItemFolderProps> = ({
           <ChevronRight size={11} strokeWidth={2} color={isExpanded ? accentColor : 'var(--color-text-quaternary)'} />
         </span>
 
-        {/* 文件图标 */}
-        <FileText size={13} color={isExpanded ? accentColor : 'var(--color-text-quaternary)'} style={{ flexShrink: 0, transition: 'color 150ms' }} />
 
         {/* Zotero 风格标题：作者 (年份) 标题 */}
         <span style={{

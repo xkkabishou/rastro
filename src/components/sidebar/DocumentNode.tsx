@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { ChevronRight, FileText, Loader2 } from 'lucide-react';
+import { ChevronRight, Loader2 } from 'lucide-react';
 import type { DocumentSnapshot } from '../../shared/types';
 import type { DocumentFlatNode } from './DocumentTree';
 import { TitleTranslationTooltip } from './TitleTranslationTooltip';
@@ -167,14 +167,7 @@ export const DocumentNode: React.FC<DocumentNodeProps> = React.memo(
             className="flex-1 min-w-0 flex items-center gap-2"
             onClick={() => onClick(doc)}
           >
-            <div className="w-6 h-6 rounded-md bg-[var(--color-bg-tertiary)] flex items-center justify-center shrink-0">
-              <FileText
-                size={12}
-                className={`${
-                  isActive ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-quaternary)]'
-                }`}
-              />
-            </div>
+
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-[var(--color-text)] truncate leading-tight">
                 {doc.title}
