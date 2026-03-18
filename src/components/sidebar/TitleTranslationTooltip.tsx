@@ -1,7 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Languages } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -70,33 +69,22 @@ export const TitleTranslationTooltip: React.FC<TitleTranslationTooltipProps> = (
           }}
         >
           {/* 内容区域 */}
-          <div className="flex items-start gap-2 px-3 py-2.5">
-            {/* 翻译图标 */}
-            <div className="shrink-0 mt-0.5">
-              <Languages
-                size={14}
-                className="text-[var(--color-text-tertiary)]"
-              />
-            </div>
-
-            {/* 翻译文本 */}
-            <div className="min-w-0 flex-1">
-              {loading ? (
-                // 加载骨架屏
-                <div className="flex flex-col gap-1.5">
-                  <div className="h-3 w-4/5 rounded bg-white/30 dark:bg-white/10 animate-pulse" />
-                  <div className="h-3 w-3/5 rounded bg-white/30 dark:bg-white/10 animate-pulse" />
-                </div>
-              ) : translatedTitle ? (
-                <span className="text-xs leading-relaxed text-[var(--color-text)] block">
-                  {translatedTitle}
-                </span>
-              ) : (
-                <span className="text-xs text-[var(--color-text-quaternary)] italic">
-                  暂无翻译
-                </span>
-              )}
-            </div>
+          <div className="px-3 py-2.5">
+            {loading ? (
+              // 加载骨架屏
+              <div className="flex flex-col gap-1.5">
+                <div className="h-3 w-4/5 rounded bg-white/30 dark:bg-white/10 animate-pulse" />
+                <div className="h-3 w-3/5 rounded bg-white/30 dark:bg-white/10 animate-pulse" />
+              </div>
+            ) : translatedTitle ? (
+              <span className="text-xs leading-relaxed text-[var(--color-text)] block">
+                {translatedTitle}
+              </span>
+            ) : (
+              <span className="text-xs text-[var(--color-text-quaternary)] italic">
+                暂无翻译
+              </span>
+            )}
           </div>
         </motion.div>
       )}
