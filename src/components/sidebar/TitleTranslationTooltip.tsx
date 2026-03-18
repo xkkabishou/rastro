@@ -25,10 +25,12 @@ interface TitleTranslationTooltipProps {
 /**
  * 标题翻译 Tooltip — 毛玻璃设计语言
  *
- * 参考：NotePopup.tsx 的毛玻璃样式
+ * 样式 100% 对齐 TranslationBubble（glass-panel + 暖金色设计变量）：
  * - backgroundColor: rgba(255, 240, 200, 0.35)
  * - backdrop-blur-xl + backdrop-saturate-150
- * - border border-white/30
+ * - border border-white/30 dark:border-white/10
+ * - shadow-xl + rounded-xl
+ * - 动画: scale 0.9 → 1, duration 0.15
  */
 export const TitleTranslationTooltip: React.FC<TitleTranslationTooltipProps> = ({
   translatedTitle,
@@ -52,11 +54,11 @@ export const TitleTranslationTooltip: React.FC<TitleTranslationTooltipProps> = (
     <AnimatePresence>
       {visible && (
         <motion.div
-          initial={{ opacity: 0, scale: 0.92, y: -2 }}
+          initial={{ opacity: 0, scale: 0.9, y: -4 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.92, y: -2 }}
-          transition={{ duration: 0.12, ease: 'easeOut' }}
-          className="fixed z-[180] rounded-lg backdrop-blur-xl backdrop-saturate-150 border border-white/30 dark:border-white/10 shadow-lg pointer-events-none"
+          exit={{ opacity: 0, scale: 0.9, y: -4 }}
+          transition={{ duration: 0.15 }}
+          className="fixed z-[200] rounded-xl backdrop-blur-xl backdrop-saturate-150 border border-white/30 dark:border-white/10 shadow-xl pointer-events-none"
           style={{
             backgroundColor: 'rgba(255, 240, 200, 0.35)',
             left: adjustedX,
@@ -65,7 +67,7 @@ export const TitleTranslationTooltip: React.FC<TitleTranslationTooltipProps> = (
             minWidth: 160,
           }}
         >
-          {/* 内容区域 */}
+          {/* 内容区域 — 对齐 TranslationBubble 的 px-3 py-2.5 */}
           <div className="flex items-start gap-2 px-3 py-2.5">
             {/* 翻译图标 */}
             <div className="shrink-0 mt-0.5">
