@@ -281,7 +281,7 @@ graph TD
 
 ---
 
-- [ ] **T3.2.2** [REQ-303, REQ-304]: ZoteroList 集成
+- [x] **T3.2.2** [REQ-303, REQ-304]: ZoteroList 集成
   - **描述**: 修改 `src/components/sidebar/ZoteroList.tsx`，为每个文献条目添加 hover 事件（≥300ms debounce），查询 `get_title_translation` 缓存，有翻译结果时显示 `TitleTranslationTooltip`
   - **输入**: T3.2.1 产出的 `TitleTranslationTooltip` 组件；T3.1.1 产出的 `get_title_translation` IPC command；现有 `ZoteroList.tsx` 的列表渲染逻辑
   - **输出**: `src/components/sidebar/ZoteroList.tsx` [MODIFY] — 增加 hover 状态管理和 tooltip 渲染
