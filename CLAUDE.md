@@ -388,10 +388,10 @@ antigravity-paper/
 
 #### 毛玻璃浮窗设计语言（Frosted Glass Popups）
 
-所有 PDF 阅读区的浮窗组件（NotePopup、SelectionPopupMenu、TranslationBubble 等）**必须**使用统一的毛玻璃配方。
+所有浮窗/弹出层组件**必须**使用统一的毛玻璃配方。
 本规范经过大量调试确定，请勿随意修改参数值。
 
-**外壳样式（必须完全一致）**:
+##### 1. 外壳样式（必须完全一致）
 
 ```tsx
 // Tailwind 类名
@@ -401,33 +401,100 @@ className="fixed z-[200] rounded-xl backdrop-blur-xl backdrop-saturate-150 borde
 style={{ backgroundColor: 'rgba(255, 240, 200, 0.35)' }}
 ```
 
-**参数说明**:
-
 | 属性 | 值 | 设计意图 |
 |------|------|---------|
-| `backgroundColor` | `rgba(255, 240, 200, 0.35)` | 暖黄色调(R255 G240 B200) + 35% 透明度，在任何背景上保持一致暖色 |
-| `backdrop-blur-xl` | 24px 模糊 | 比 2xl(40px) 更少模糊，让背景细节可见，增强透明感 |
-| `backdrop-saturate-150` | 1.5倍饱和度 | 增强模糊后的暖色调 |
-| `border-white/30` | 白色 30% 边框 | 营造微微发光的边缘，增强泛黄光泽感 |
+| `backgroundColor` | `rgba(255, 240, 200, 0.35)` | 暖黄色调 + 35% 透明度 |
+| `backdrop-blur-xl` | 24px 模糊 | 比 2xl(40px) 更少模糊，保留背景细节 |
+| `backdrop-saturate-150` | 1.5倍饱和度 | 增强暖色调 |
+| `border-white/30` | 白色 30% 边框（dark: `white/10`） | 微发光边缘 |
 | `shadow-xl` | 多层阴影 | 浮起感 |
-| `z-[200]` | z-index 200 | 浮于所有页面内容之上 |
+| `z-[200]` | z-index 200 | 浮于页面内容之上（Tooltip 用 `z-[99999]`） |
 
-**内部元素颜色规则（必须使用设计系统暖色变量，禁止冷色）**:
+##### 2. 入场/退场动画（framer-motion，所有浮窗统一）
+
+```tsx
+initial={{ opacity: 0, scale: 0.9, y: -4 }}  // y: -4 下弹；y: 4 上弹
+animate={{ opacity: 1, scale: 1, y: 0 }}
+exit={{ opacity: 0, scale: 0.9, y: -4 }}
+transition={{ duration: 0.15 }}               // 150ms，不用 spring
+```
+
+| 参数 | 值 | 说明 |
+|------|------|------|
+| `scale` | `0.9 → 1` | 微微放大进入 |
+| `opacity` | `0 → 1` | 淡入淡出 |
+| `y` | `±4px` | 下弹 `-4`，上弹 `+4`，与 placement 联动 |
+| `duration` | `0.15s` | 150ms，快速不拖沓 |
+
+##### 3. 内部元素颜色规则（禁止冷色/硬编码灰色）
 
 | 用途 | ✅ 正确 | ❌ 禁止 |
 |------|---------|---------|
 | 按钮 hover | `hover:bg-[var(--color-hover)]` | `hover:bg-white/40`, `hover:bg-black/10` |
 | 分隔线 | `bg-[var(--color-separator)]` | `bg-black/10`, `bg-gray-200` |
-| 标题栏 border | `border-[var(--color-border-secondary)]` | `border-black/5` |
-| 关闭按钮 hover | `hover:bg-[var(--color-hover)]` | `hover:bg-black/10` |
+| 标题栏分隔线 | `border-[var(--color-border-secondary)]` | `border-black/5` |
 | 文字颜色 | `text-[var(--color-text-secondary)]` | `text-gray-500` |
+| 关闭按钮图标 | `text-[var(--color-text-tertiary)]` | `text-gray-400` |
 
-**新增浮窗组件时**：复制 NotePopup.tsx 的外壳样式和内部颜色规则，保持像素级一致。
+##### 4. 内部输入元素样式
 
-**注意事项**:
-- 不要使用 `.glass-panel` CSS 类（它的 `--color-bg-overlay: 0.85` 透明度太高，会丧失毛玻璃效果）
-- `backdrop-blur-2xl`（40px）模糊过强，会使白色背景区域看起来完全不透明
-- 背景色透明度 < 0.25 时暖黄色调不明显；> 0.40 时透明感不足；0.35 是最佳平衡点
+```tsx
+// textarea / input 在毛玻璃内的样式
+className="w-full p-2 text-sm rounded-md bg-white/30 dark:bg-white/10
+           border border-white/40 dark:border-white/15
+           text-[var(--color-text)] placeholder:text-[var(--color-text-quaternary)]
+           resize-none focus:outline-none focus:border-[var(--color-border-focus)]"
+```
+
+##### 5. 加载态骨架屏
+
+```tsx
+<div className="h-3 w-4/5 rounded bg-white/30 dark:bg-white/10 animate-pulse" />
+```
+
+##### 6. 现有毛玻璃组件清单
+
+| 组件 | 路径 | 用途 |
+|------|------|------|
+| `NotePopup` | `src/components/pdf-viewer/NotePopup.tsx` | 批注编辑弹窗（**模板组件**） |
+| `SelectionPopupMenu` | `src/components/pdf-viewer/SelectionPopupMenu.tsx` | 选词操作菜单 |
+| `TranslationBubble` | `src/components/pdf-viewer/TranslationBubble.tsx` | 翻译结果气泡 |
+| `TitleTranslationTooltip` | `src/components/sidebar/TitleTranslationTooltip.tsx` | 侧栏标题翻译 Tooltip |
+
+##### 7. 注意事项
+
+- 不要使用 `.glass-panel` CSS 类（透明度 0.85 太高）
+- `backdrop-blur-2xl`（40px）模糊过强，白色区域完全不透明
+- 背景色透明度 < 0.25 暖色不明显，> 0.40 透明感不足，**0.35 最佳**
+- **新增浮窗**：复制 `NotePopup.tsx` 的外壳 + 内部颜色，保持像素级一致
+
+#### 侧边栏图标设计语言
+
+##### 图标库
+
+- 通用 UI 图标统一使用 `lucide-react`（线条风格，2px 描边，round cap/join）
+- 文件夹图标使用自定义 `FolderIcon` SVG 内联组件（位于 `ZoteroList.tsx`）
+
+##### 文件夹图标 — S3 线条 + 微填充方案
+
+```tsx
+// 核心参数
+strokeWidth: 1.75           // 比 lucide 默认 2 稍细
+strokeLinecap: 'round'
+strokeLinejoin: 'round'
+fill: `${color}18`          // hex 后缀 18 ≈ 10% 透明度
+```
+
+| 状态 | 描边色 | 填充 | 其他 |
+|------|--------|------|------|
+| **关闭** | `color`（`FOLDER_COLORS[i].accent`） | `${color}18`（10%） | — |
+| **打开** | `color` | 后层 `${color}08`（3%），翻盖 `${color}18`（10%） | 双 path 翻盖效果 |
+| **未分类** | `#9A8068`（暖灰固定） | 无 | `strokeDasharray="3 2.5"`, `opacity=0.6` |
+
+##### Shiba Warm Palette 文件夹色板（`FOLDER_COLORS`）
+
+7 色暖色系，每个文件夹按 `index % 7` 分配：琥珀金、深琥珀、蜂蜜、金麦、赭石、砂岩、暖灰。
+
 
 ### Import 规则
 
