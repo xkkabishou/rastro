@@ -1,5 +1,6 @@
-- 项目名：antigravity-paper / Rasto，本地科研文献阅读助手，当前代码库包含 Tauri 2 Rust 后端和 TypeScript 前端契约。
-- 当前阶段：genesis/v1，Wave 0 已完成 IPC 契约与 Rust command 骨架，Wave 1a 负责 Rust 后端基础设施。
-- 主要目录：`src-tauri/` 为 Rust/Tauri 后端；`src/shared/types.ts` 为前后端 IPC 契约；`genesis/v1/` 为 PRD、架构、系统设计和任务清单；`src/` 为前端目录（当前任务约束禁止改动）。
-- 现有 Rust 入口：`src-tauri/src/main.rs`，注册 25 个 `#[tauri::command]`；`src-tauri/src/ipc/*.rs` 为 command 骨架；`src-tauri/src/errors.rs` 定义统一错误模型。
-- 目标平台：Darwin / macOS。
+- 项目名：antigravity-paper / Rastro，Tauri v2 + React 19 桌面科研文献阅读助手，集成 PDF 阅读、AI 翻译、AI 问答、NotebookLM 与 Zotero。
+- 当前阶段：`genesis/v2` 已交付完成，`genesis/v2/05_TASKS.md` 中 33 个任务 + 4 个 INT 验证已全部完成；当前仓库处于维护 / 增量演进阶段，架构内迭代优先走 `/change`，重大边界调整再进入 `genesis/v3`。
+- 主要目录：`src/` 为 React 前端；`src-tauri/` 为 Rust/Tauri 后端；`rastro_translation_engine/` + `antigravity_translate/` 为 PDF 翻译服务与核心；`rastro_notebooklm_engine/` 为 NotebookLM 本地代理；`genesis/v2/` 为当前权威设计与任务文档。
+- 运行拓扑：React 19 前端经 Tauri IPC 与 Rust 后端通信；后端连接 SQLite 与 macOS Keychain，并通过 HTTP 调用翻译引擎和 NotebookLM 引擎。
+- 现有 Rust 入口：`src-tauri/src/main.rs`；当前系统规模为 40 个 IPC Command + 6 个 Event，核心子系统集中在 `src-tauri/src/ipc/`、`storage/`、`translation_manager/`、`ai_integration/`、`notebooklm_manager/`、`zotero_connector/`、`keychain/`。
+- 目标平台：Darwin / macOS；Python 运行时要求 3.12+。

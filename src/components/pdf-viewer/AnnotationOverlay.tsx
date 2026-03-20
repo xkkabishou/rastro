@@ -79,45 +79,67 @@ const AnnotationItem: React.FC<{
     [annotation, onContextMenu],
   );
 
+  // 是否需要 multiply 混合（highlight / note 类型）
+  const needsBlend = annotation.type === 'highlight' || annotation.type === 'note';
+  const isUnderline = annotation.type === 'underline';
+
+  // 渲染各 rect
+  const rectElements = cssRects.map((rect, idx) => (
+    <div
+      key={`${annotation.annotationId}-${idx}`}
+      data-ann-id={annotation.annotationId}
+      onClick={handleClick}
+      onContextMenu={handleContextMenu}
+      className="absolute pointer-events-auto cursor-pointer"
+      style={{
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        // highlight/note：使用不透明的 dot 颜色作为背景色
+        // 透明度由外层 wrapper 的 opacity 统一控制，避免重叠处 alpha 叠加变暗
+        ...(needsBlend
+          ? { backgroundColor: `var(--annotation-${color}-dot)` }
+          : {}),
+        ...(isUnderline
+          ? { borderBottom: `2px solid var(--annotation-${color}-border)` }
+          : {}),
+      }}
+    />
+  ));
+
+  // 选中态的 outline 在 wrapper 外部，不受 opacity 影响
+  const selectionOutlines = isSelected
+    ? cssRects.map((rect, idx) => (
+        <div
+          key={`sel-${annotation.annotationId}-${idx}`}
+          className="absolute pointer-events-none"
+          style={{
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+            outline: `2px solid var(--annotation-${color}-dot)`,
+            outlineOffset: '1px',
+          }}
+        />
+      ))
+    : null;
+
   return (
     <>
-      {cssRects.map((rect, idx) => {
-        const isHighlight = annotation.type === 'highlight';
-        const isUnderline = annotation.type === 'underline';
+      {/* highlight/note 类型：wrapper 统一控制 opacity + multiply 混合
+          rects 用不透明纯色背景，内部重叠不会颜色加深 */}
+      {needsBlend ? (
+        <div style={{ mixBlendMode: 'multiply' as const, opacity: 0.35 }}>
+          {rectElements}
+        </div>
+      ) : (
+        rectElements
+      )}
 
-        return (
-          <div
-            key={`${annotation.annotationId}-${idx}`}
-            data-ann-id={annotation.annotationId}
-            onClick={handleClick}
-            onContextMenu={handleContextMenu}
-            className="absolute pointer-events-auto cursor-pointer"
-            style={{
-              left: rect.left,
-              top: rect.top,
-              width: rect.width,
-              height: rect.height,
-              ...(isHighlight || annotation.type === 'note'
-                ? {
-                    backgroundColor: `var(--annotation-${color}-bg)`,
-                    mixBlendMode: 'multiply' as const,
-                  }
-                : {}),
-              ...(isUnderline
-                ? {
-                    borderBottom: `2px solid var(--annotation-${color}-border)`,
-                  }
-                : {}),
-              ...(isSelected
-                ? {
-                    outline: `2px solid var(--annotation-${color}-dot)`,
-                    outlineOffset: '1px',
-                  }
-                : {}),
-            }}
-          />
-        );
-      })}
+      {/* 选中态 outline（在 wrapper 外有，不受 opacity 影响） */}
+      {selectionOutlines}
 
       {/* 笔记图标 */}
       {annotation.type === 'note' && cssRects.length > 0 && (

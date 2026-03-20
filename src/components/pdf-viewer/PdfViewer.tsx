@@ -1119,6 +1119,10 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       if ((e.target as HTMLElement)?.closest('.selection-popup-menu')) return;
       setSelectionPopup(null);
       setTranslationBubble(null);
+      // 点击非 annotation 区域时取消选中
+      if (!(e.target as HTMLElement)?.closest('[data-ann-id]')) {
+        useAnnotationStore.getState().selectAnnotation(null);
+      }
     };
 
     document.addEventListener('selectionchange', updateSelectionPopup);

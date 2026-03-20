@@ -14,7 +14,11 @@ export interface CSSRect {
 }
 
 /**
- * 合并同行相邻/重叠矩形（减少 DOM 元素数）
+ * 合并同行相邻/重叠矩形，并裁剪行间高度防止垂直重叠
+ *
+ * 第一遍：合并同行相邻/重叠矩形（减少 DOM 元素数）
+ * 第二遍：裁剪行间高度，确保上一行的底部不超过下一行的顶部
+ *         避免半透明 mixBlendMode: multiply 导致重叠区域颜色加深
  */
 export function mergeOverlappingRects(rects: AnnotationRectDto[]): AnnotationRectDto[] {
   if (rects.length <= 1) return rects;
@@ -25,6 +29,7 @@ export function mergeOverlappingRects(rects: AnnotationRectDto[]): AnnotationRec
     return a.x - b.x;
   });
 
+  // 第一遍：合并同行矩形
   const merged: AnnotationRectDto[] = [{ ...sorted[0] }];
 
   for (let i = 1; i < sorted.length; i++) {
@@ -42,6 +47,23 @@ export function mergeOverlappingRects(rects: AnnotationRectDto[]): AnnotationRec
       last.height = Math.max(last.height, current.height);
     } else {
       merged.push({ ...current });
+    }
+  }
+
+  // 第二遍：裁剪行间高度，防止相邻行的矩形在 Y 方向重叠
+  for (let i = 0; i < merged.length - 1; i++) {
+    const current = merged[i];
+    const next = merged[i + 1];
+
+    // 只裁剪同页的矩形
+    if (current.pageNumber !== next.pageNumber) continue;
+
+    const currentBottom = current.y + current.height;
+    // 如果当前行的底部超过了下一行的顶部，裁剪高度
+    if (currentBottom > next.y) {
+      current.height = next.y - current.y;
+      // 保证高度不为负
+      if (current.height < 0.001) current.height = 0.001;
     }
   }
 
@@ -92,18 +114,38 @@ export function selectionToAnnotationRects(
 /**
  * 将百分比归一化坐标转换为容器内 CSS 绝对定位（像素）
  * containerWidth/Height 应为渲染容器（.page 元素）的实际像素尺寸
+ *
+ * 同时裁剪行间高度：上一行的底部不超过下一行的顶部，
+ * 防止半透明 mixBlendMode: multiply 在重叠区域颜色加深
  */
 export function annotationRectsToCSS(
   rects: AnnotationRectDto[],
   containerWidth: number,
   containerHeight: number,
 ): CSSRect[] {
-  return rects.map((r) => ({
+  if (rects.length === 0) return [];
+
+  // 转换为像素坐标
+  const cssRects = rects.map((r) => ({
     left: r.x * containerWidth,
     top: r.y * containerHeight,
     width: r.width * containerWidth,
     height: r.height * containerHeight,
   }));
+
+  // 按 top 排序后裁剪行间高度
+  const sorted = [...cssRects].sort((a, b) => a.top - b.top || a.left - b.left);
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const current = sorted[i];
+    const next = sorted[i + 1];
+    const currentBottom = current.top + current.height;
+    // 如果当前行的底部超过下一行的顶部，裁剪到下一行顶部
+    if (currentBottom > next.top + 0.5) {
+      current.height = Math.max(next.top - current.top, 1);
+    }
+  }
+
+  return sorted;
 }
 
 /**
