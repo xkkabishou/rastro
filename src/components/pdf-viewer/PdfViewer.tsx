@@ -943,12 +943,14 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     const scrollContainer = viewerContainerRef.current;
     if (!scrollContainer) return;
 
-    // 记录 mousedown 坐标用于修正 textLayer scaleX 导致的选区起始偏移
+    // 记录 mousedown/mouseup 坐标用于修正 textLayer scaleX 导致的选区偏移
     let mousedownX = 0;
     let mousedownY = 0;
+    let mouseupX = 0;
+    let mouseupY = 0;
 
     /**
-     * 修正 pdf.js textLayer 的选区起始偏移
+     * 修正 pdf.js textLayer 的选区起始偏移（仅在 mouseup 时调用一次）
      *
      * 根因：textLayer span 使用 CSS transform scaleX() 拉伸宽度以匹配 canvas。
      * 当 scaleX > 1 时，前一个 span 的 bounding box 向右溢出，覆盖下一个 span
@@ -957,9 +959,24 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
      *
      * 策略：对比 mousedown 坐标与 startSpan 后续兄弟 span 的位置，
      * 如果 mousedown 落在后续 span 中，则将 range.start 修正到该 span。
+     *
+     * 防护措施：
+     * - 仅在正向选取（anchor 在 focus 之前）时修正
+     * - mousedown 坐标与 startSpan 距离过远时跳过
+     * - 只检查紧邻的下一个 span，避免跨行跳转
      */
-    const fixTextLayerSelectionStart = (range: Range): void => {
+    const fixTextLayerSelectionStart = (sel: Selection, range: Range): void => {
       if (mousedownX === 0 && mousedownY === 0) return;
+
+      // 仅修正正向选取（anchor 在 focus 之前）：
+      // 反向选取时 range.startContainer 是鼠标当前位置，不需要修正
+      if (sel.anchorNode && sel.focusNode) {
+        const position = sel.anchorNode.compareDocumentPosition(sel.focusNode);
+        const isBackward =
+          (position & Node.DOCUMENT_POSITION_PRECEDING) !== 0 ||
+          (sel.anchorNode === sel.focusNode && sel.anchorOffset > sel.focusOffset);
+        if (isBackward) return;
+      }
 
       const startNode = range.startContainer;
       const startSpan = (startNode.nodeType === Node.TEXT_NODE
@@ -967,6 +984,12 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
         : startNode as HTMLElement
       )?.closest('.textLayer span') as HTMLElement | null;
       if (!startSpan) return;
+
+      // 安全检查：mousedown 坐标应在 startSpan 附近
+      // 如果 mousedown 离 startSpan 太远（超出 scaleX 溢出范围），跳过修正
+      const startRect = startSpan.getBoundingClientRect();
+      if (mousedownX < startRect.left - 20 || mousedownX > startRect.right + startRect.width) return;
+      if (mousedownY < startRect.top - 10 || mousedownY > startRect.bottom + 10) return;
 
       // 遍历 startSpan 之后的兄弟节点（跳过 <br>），查找包含 mousedown 的 span
       let sibling = startSpan.nextElementSibling;
@@ -994,15 +1017,89 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       }
     };
 
+    /**
+     * 修正 pdf.js textLayer 的选区结束点偏移（与起始点修正对称）
+     *
+     * scaleX 变换同样会导致末尾 span 的 bounding box 向右溢出，
+     * 使 mouseup 时 hit-testing 跳到下一个 span，选区结束点意外扩大。
+     *
+     * 策略：如果 mouseup 坐标在 endSpan 前一个 span 的范围内，
+     * 将 range.end 收紧到前一个 span 的末尾。
+     */
+    const fixTextLayerSelectionEnd = (sel: Selection, range: Range): void => {
+      if (mouseupX === 0 && mouseupY === 0) return;
+
+      // 仅修正正向选取
+      if (sel.anchorNode && sel.focusNode) {
+        const position = sel.anchorNode.compareDocumentPosition(sel.focusNode);
+        const isBackward =
+          (position & Node.DOCUMENT_POSITION_PRECEDING) !== 0 ||
+          (sel.anchorNode === sel.focusNode && sel.anchorOffset > sel.focusOffset);
+        if (isBackward) return;
+      }
+
+      const endNode = range.endContainer;
+      const endSpan = (endNode.nodeType === Node.TEXT_NODE
+        ? endNode.parentElement
+        : endNode as HTMLElement
+      )?.closest('.textLayer span') as HTMLElement | null;
+      if (!endSpan) return;
+
+      // 安全检查：mouseup 坐标应在 endSpan 附近
+      const endRect = endSpan.getBoundingClientRect();
+      if (mouseupX < endRect.left - endRect.width || mouseupX > endRect.right + 20) return;
+      if (mouseupY < endRect.top - 10 || mouseupY > endRect.bottom + 10) return;
+
+      // 检查 mouseup 是否实际落在 endSpan 的前一个兄弟 span 中
+      let sibling = endSpan.previousElementSibling;
+      while (sibling) {
+        if (sibling.tagName === 'SPAN' && sibling.closest('.textLayer')) {
+          const sibRect = sibling.getBoundingClientRect();
+          if (
+            mouseupX >= sibRect.left &&
+            mouseupX <= sibRect.right &&
+            mouseupY >= sibRect.top - 2 &&
+            mouseupY <= sibRect.bottom + 2
+          ) {
+            // 将 range 的结束点收紧到前一个 span 的最后一个文本节点末尾
+            const textNode = sibling.lastChild;
+            if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+              range.setEnd(textNode, (textNode as Text).length);
+            }
+            return;
+          }
+          break; // 只检查紧邻的前一个 span
+        }
+        sibling = sibling.previousElementSibling;
+      }
+    };
+
+    /**
+     * 选区合理性校验：如果鼠标拖动距离很短但选区文本异常大，
+     * 说明 textLayer 的 scaleX 导致了 hit-testing 跳跃，应清除选区。
+     *
+     * 每像素拖动距离允许约 3 个字符（适配正常阅读速度的选取密度）。
+     * 最低门槛：拖动距离 < 15px 时允许最多 60 字符（刚好双击选词的位置不移动也合理）。
+     */
+    const isSelectionReasonable = (text: string): boolean => {
+      if (!text || mousedownX === 0) return true;
+      const dx = mouseupX - mousedownX;
+      const dy = mouseupY - mousedownY;
+      const dragDistance = Math.sqrt(dx * dx + dy * dy);
+      // 双击选词等场景拖动距离为 0 但选区文本很短，合理
+      if (dragDistance < 15) return text.length <= 60;
+      // 正常拖选：每像素允许约 3 个字符（PDF 行高约 12-20px，每行约 40-80 字符）
+      const maxCharsAllowed = Math.max(60, dragDistance * 3);
+      return text.length <= maxCharsAllowed;
+    };
+
     const updateSelectionPopup = () => {
       requestAnimationFrame(() => {
         const selection = window.getSelection();
         const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
 
-        // 修正 textLayer scaleX 导致的选区起始偏移
-        if (range) {
-          fixTextLayerSelectionStart(range);
-        }
+        // 注意：fixTextLayerSelectionStart/End 已移至 handleMouseUp 中调用
+        // 不在 selectionchange 高频回调中修改 Range，避免拖选时选区异常扩大
 
         const selectionText = selection?.toString() ?? '';
         const text = selectionText.trim();
@@ -1067,7 +1164,28 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       });
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
+      // 记录 mouseup 坐标用于选区合理性校验
+      mouseupX = e.clientX;
+      mouseupY = e.clientY;
+
+      // 修正 textLayer scaleX 导致的选区起始偏移——仅在 mouseup 时执行一次
+      const sel = window.getSelection();
+      if (sel?.rangeCount) {
+        const range = sel.getRangeAt(0);
+        fixTextLayerSelectionStart(sel, range);
+        // 同样修正结束点：scaleX 变换可能让 hit-testing 在末尾也跳到错误的 span
+        fixTextLayerSelectionEnd(sel, range);
+      }
+
+      // 选区合理性校验：如果拖动距离很短但选区文本异常大，清除异常选区
+      const selText = sel?.toString().trim() ?? '';
+      if (selText.length > 0 && !isSelectionReasonable(selText)) {
+        sel?.removeAllRanges();
+        setSelectionPopup(null);
+        return;
+      }
+
       // 标注模式: 选中文本后自动创建标注（工具保持激活）
       const { activeTool, activeColor, createAnnotation, startEditingNote } = useAnnotationStore.getState();
       if (activeTool) {
