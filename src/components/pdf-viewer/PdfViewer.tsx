@@ -718,10 +718,27 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     }
   }, [updateZoomReference]);
 
-  // 监听容器宽度变化，自动按比例调整缩放（覆盖侧栏展开/收起、窗口 resize）
+  // 监听容器宽度变化，自动按比例调整缩放
+  // 策略：rAF 隔帧执行 pdf.js 重绘（跳过 React），动画结束后同步 state
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    let rafId: number | undefined;
+    let skipNext = false;
+    let syncTimer: number | undefined;
+    let latestWidth: number | null = null;
+
+    const directSetScale = (width: number) => {
+      const refWidth = referenceWidthRef.current;
+      if (!refWidth || refWidth <= 0 || !pdfViewerRef.current) return;
+      const ratio = width / refWidth;
+      const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, userSetScaleRef.current * ratio));
+      const current = pdfViewerRef.current.currentScale;
+      if (Math.abs(clamped - current) >= 0.005) {
+        pdfViewerRef.current.currentScale = clamped;
+      }
+    };
 
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -729,23 +746,47 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       const currentWidth = entry.contentRect.width;
       if (currentWidth <= 0) return;
 
-      // 首次回调：初始化参考宽度，不调整缩放
       if (referenceWidthRef.current === null) {
         referenceWidthRef.current = currentWidth;
         return;
       }
 
-      // 使用 rAF 节流，避免 framer-motion 动画期间过度渲染
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = requestAnimationFrame(() => {
-        applyAutoZoom(currentWidth);
-      });
+      latestWidth = currentWidth;
+
+      // rAF 隔帧：精确对齐渲染帧，每 2 帧重绘一次
+      if (rafId === undefined) {
+        rafId = requestAnimationFrame(() => {
+          rafId = undefined;
+          if (skipNext) {
+            skipNext = false;
+            // 跳过这帧，安排下一帧
+            rafId = requestAnimationFrame(() => {
+              rafId = undefined;
+              skipNext = true;
+              if (latestWidth !== null) directSetScale(latestWidth);
+            });
+          } else {
+            skipNext = true;
+            if (latestWidth !== null) directSetScale(latestWidth);
+          }
+        });
+      }
+
+      // 动画结束后同步 React state
+      clearTimeout(syncTimer);
+      syncTimer = window.setTimeout(() => {
+        if (latestWidth !== null) {
+          applyAutoZoom(latestWidth);
+          latestWidth = null;
+        }
+      }, 350);
     });
 
     observer.observe(container);
     return () => {
       observer.disconnect();
-      cancelAnimationFrame(rafIdRef.current);
+      if (rafId !== undefined) cancelAnimationFrame(rafId);
+      clearTimeout(syncTimer);
     };
   }, [applyAutoZoom]);
 

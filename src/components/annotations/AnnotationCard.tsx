@@ -99,8 +99,25 @@ export const AnnotationCard: React.FC<AnnotationCardProps> = React.memo(
             <span className="text-[10px] text-[var(--color-text-tertiary)]">
               第 {annotation.pageNumber} 页
             </span>
-            <span className="text-[10px] text-[var(--color-text-quaternary)] ml-auto">
+            {/* 时间 / 操作按钮：hover 时互相切换 */}
+            <span className="text-[10px] text-[var(--color-text-quaternary)] ml-auto group-hover:hidden">
               {relativeTime(annotation.createdAt)}
+            </span>
+            <span className="ml-auto hidden group-hover:inline-flex items-center gap-0.5">
+              <button
+                onClick={handleEditNote}
+                className="p-1 rounded hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)]"
+                title="编辑笔记"
+              >
+                <Pencil size={12} />
+              </button>
+              <button
+                onClick={handleDelete}
+                className="p-1 rounded hover:bg-[var(--color-destructive)]/10 text-[var(--color-text-tertiary)] hover:text-[var(--color-destructive)]"
+                title="删除"
+              >
+                <Trash2 size={12} />
+              </button>
             </span>
           </div>
 
@@ -117,23 +134,7 @@ export const AnnotationCard: React.FC<AnnotationCardProps> = React.memo(
           )}
         </div>
 
-        {/* 悬浮操作按钮 */}
-        <div className="absolute right-2 top-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={handleEditNote}
-            className="p-1 rounded hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)]"
-            title="编辑笔记"
-          >
-            <Pencil size={12} />
-          </button>
-          <button
-            onClick={handleDelete}
-            className="p-1 rounded hover:bg-[var(--color-destructive)]/10 text-[var(--color-text-tertiary)] hover:text-[var(--color-destructive)]"
-            title="删除"
-          >
-            <Trash2 size={12} />
-          </button>
-        </div>
+
       </motion.div>
     );
   },

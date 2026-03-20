@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, FolderOpen, AlertTriangle, BookOpen, FileText } from 'lucide-react';
 import shibaLogoUrl from '../../assets/shiba/shiba-logo.png';
 import { open, save } from '@tauri-apps/plugin-dialog';
@@ -45,6 +44,7 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
   const effectiveWidth = isMobile ? 280 : (width ?? 280);
   const [isLoadingRecent, setIsLoadingRecent] = useState(false);
   const [activeTab, setActiveTab] = useState<'documents' | 'zotero'>('documents');
+
   const setCurrentDocument = useDocumentStore((s) => s.setCurrentDocument);
   const setPdfUrl = useDocumentStore((s) => s.setPdfUrl);
   const currentDocument = useDocumentStore((s) => s.currentDocument);
@@ -439,21 +439,34 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
     }
   };
 
+  // 动画期间禁用 backdrop-blur（直接操作 DOM 避免 setState 触发重渲染）
+  const sidebarRef = React.useRef<HTMLElement>(null);
+  React.useEffect(() => {
+    const el = sidebarRef.current;
+    if (!el) return;
+    const onStart = () => { el.style.backdropFilter = 'none'; (el.style as unknown as Record<string, string>).webkitBackdropFilter = 'none'; };
+    const onEnd = () => { el.style.backdropFilter = ''; (el.style as unknown as Record<string, string>).webkitBackdropFilter = ''; };
+    el.addEventListener('transitionstart', onStart);
+    el.addEventListener('transitionend', onEnd);
+    el.addEventListener('transitioncancel', onEnd);
+    return () => {
+      el.removeEventListener('transitionstart', onStart);
+      el.removeEventListener('transitionend', onEnd);
+      el.removeEventListener('transitioncancel', onEnd);
+    };
+  }, []);
+
   return (
     <>
-      <AnimatePresence initial={false}>
-        {isOpen && (
-          <motion.aside
-            key="sidebar"
-            initial={{ width: 0, opacity: 0, x: isMobile ? -effectiveWidth : 0 }}
-            animate={{ width: effectiveWidth, opacity: 1, x: 0 }}
-            exit={{ width: 0, opacity: 0, x: isMobile ? -effectiveWidth : 0 }}
-            transition={isResizing
-              ? { duration: 0 }
-              : { type: "spring", stiffness: 300, damping: 30 }
-            }
-            className={`h-full border-r border-[var(--color-border)] bg-[var(--color-bg)]/90 backdrop-blur-xl overflow-hidden flex flex-col pt-8 ${isMobile ? 'absolute left-0 top-0 bottom-0 z-30' : 'relative'}`}
-          >
+      <aside
+        ref={sidebarRef}
+        style={{
+          width: isOpen ? effectiveWidth : 0,
+          transition: isResizing ? 'none' : 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          willChange: 'width',
+        }}
+        className={`h-full border-r border-[var(--color-border)] bg-[var(--color-bg)]/90 backdrop-blur-xl overflow-hidden flex flex-col pt-8 ${isMobile ? 'absolute left-0 top-0 bottom-0 z-30' : 'relative'}`}
+      >
             {/* 头部 */}
             <div className="flex items-center justify-between px-4 pb-3 shrink-0">
               <span className="font-semibold px-1 text-[var(--color-text)] flex items-center gap-2">
@@ -541,9 +554,7 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
               </div>
             )}
 
-          </motion.aside>
-        )}
-      </AnimatePresence>
+      </aside>
 
       {/* T2.4.2: 通用确认弹窗（必须在 AnimatePresence 外部，否则干扰侧栏动画） */}
       <Dialog
