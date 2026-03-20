@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { ipcClient } from '../../lib/ipc-client';
 import type { AppError, AppErrorCode } from '../../shared/types';
+import shibaErrorUrl from '../../assets/shiba/shiba-error.png';
+import shibaSuccessUrl from '../../assets/shiba/shiba-success.png';
 
 // ---------------------------------------------------------------------------
 // 类型
@@ -203,16 +205,12 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
               {/* 头部 */}
               <div className="flex items-start justify-between p-5 pb-0">
                 <div className="flex items-start gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    setupState === 'resolved'
-                      ? 'bg-[rgba(90,158,111,0.1)]'
-                      : 'bg-[rgba(255,149,0,0.1)]'
-                  }`}>
-                    {setupState === 'resolved' ? (
-                      <CheckCircle2 size={22} className="text-[var(--color-success)]" />
-                    ) : (
-                      <AlertTriangle size={22} className="text-[var(--color-warning)]" />
-                    )}
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+                    <img
+                      src={setupState === 'resolved' ? shibaSuccessUrl : shibaErrorUrl}
+                      alt=""
+                      className="w-10 h-10 object-contain"
+                    />
                   </div>
                   <div>
                     <h2 className="text-base font-semibold text-[var(--color-text)]">

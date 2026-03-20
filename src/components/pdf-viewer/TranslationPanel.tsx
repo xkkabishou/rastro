@@ -3,6 +3,7 @@ import { Languages, RefreshCw, Trash2, Clock, Server, FileText, AlertTriangle, B
 import { Dialog } from '../ui/Dialog';
 import { ipcClient } from '../../lib/ipc-client';
 import { useDocumentStore } from '../../stores/useDocumentStore';
+import shibaWelcomeUrl from '../../assets/shiba/shiba-welcome.png';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -209,9 +210,12 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
               )}
             </div>
           ) : (
-            <p className="text-xs text-[var(--color-text-quaternary)]">
-              当前文档尚未进行翻译。
-            </p>
+            <div className="flex flex-col items-center gap-2 py-2">
+              <img src={shibaWelcomeUrl} alt="" className="w-14 h-auto opacity-80" />
+              <p className="text-xs text-[var(--color-text-quaternary)]">
+                当前文档尚未进行翻译。
+              </p>
+            </div>
           )}
         </div>
 

@@ -1,6 +1,8 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { useDocumentStore } from '../../stores/useDocumentStore';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import shibaLoadingUrl from '../../assets/shiba/shiba-loading.png';
+import shibaSuccessUrl from '../../assets/shiba/shiba-success.png';
 
 /**
  * 翻译 PDF 切换组件
@@ -12,6 +14,7 @@ import { motion } from 'framer-motion';
  * - 松开恢复译文
  * - 侧栏点击 "翻译 PDF" 子项时自动同步为 "译文" 选中
  * - 翻译进行中显示进度骨架屏
+ * - 翻译完成后短暂显示成功过渡
  * - 文档没有翻译时不显示
  */
 export const TranslationSwitch: React.FC = () => {
@@ -27,6 +30,23 @@ export const TranslationSwitch: React.FC = () => {
 
   // 是否有可用翻译（通过 currentDocument 的 cachedTranslation 判断）
   const hasTranslation = !!(translatedPdfUrl || currentDocument?.cachedTranslation?.available);
+
+  // 翻译完成过渡状态
+  const [showSuccess, setShowSuccess] = useState(false);
+  const wasTranslatingRef = useRef(false);
+
+  // 检测翻译从进行中 → 完成的状态变化
+  useEffect(() => {
+    if (isTranslationActive) {
+      wasTranslatingRef.current = true;
+    } else if (wasTranslatingRef.current && hasTranslation) {
+      // 刚从翻译中变为完成
+      wasTranslatingRef.current = false;
+      setShowSuccess(true);
+      const timer = setTimeout(() => setShowSuccess(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isTranslationActive, hasTranslation]);
 
   // 监听 Option/Alt 键
   useEffect(() => {
@@ -64,7 +84,7 @@ export const TranslationSwitch: React.FC = () => {
     return (
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
         <div className="glass-panel rounded-xl px-4 py-2.5 flex items-center gap-3 shadow-lg">
-          <div className="w-5 h-5 border-2 border-[var(--color-primary)]/30 border-t-[var(--color-primary)] rounded-full animate-spin" />
+          <img src={shibaLoadingUrl} alt="" className="w-8 h-8 animate-pulse" />
           <div className="space-y-1">
             <p className="text-xs font-medium text-[var(--color-text)]">
               正在翻译... {translationProgress}%
@@ -82,6 +102,26 @@ export const TranslationSwitch: React.FC = () => {
             {translationJob.stage}
           </span>
         </div>
+      </div>
+    );
+  }
+
+  // 翻译完成过渡 — 成功提示（2 秒后自动消失）
+  if (showSuccess) {
+    return (
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.9, y: 10 }}
+          className="glass-panel rounded-xl px-5 py-3 flex items-center gap-3 shadow-lg"
+        >
+          <img src={shibaSuccessUrl} alt="" className="w-10 h-10" />
+          <div>
+            <p className="text-sm font-semibold text-[var(--color-success)]">翻译完成！</p>
+            <p className="text-[10px] text-[var(--color-text-tertiary)]">已切换到译文视图</p>
+          </div>
+        </motion.div>
       </div>
     );
   }

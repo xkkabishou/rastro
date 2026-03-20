@@ -176,7 +176,7 @@ export const ChatPanel: React.FC = () => {
 /** 空状态组件 */
 const EmptyState: React.FC = () => (
   <div className="flex-1 flex flex-col items-center justify-center p-6 text-center h-full">
-    <img src={shibaChatUrl} alt="" className="w-16 h-auto mb-3 opacity-80" />
+    <img src={shibaChatUrl} alt="" className="w-40 h-auto mb-3 opacity-80" />
     <h3 className="text-sm font-medium text-[var(--color-text)] mb-1">
       AI 问答助手
     </h3>

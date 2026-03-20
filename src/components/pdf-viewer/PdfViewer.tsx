@@ -19,6 +19,8 @@ import { useAnnotationShortcuts } from '../../lib/useAnnotationShortcuts';
 import { selectionToAnnotationRects } from '../../lib/annotation-coords';
 
 import shibaReadingUrl from '../../assets/shiba/shiba-reading.png';
+import shibaLoadingUrl from '../../assets/shiba/shiba-loading.png';
+import shibaErrorUrl from '../../assets/shiba/shiba-error.png';
 
 // 配置 pdf.js worker，使用 Vite 本地资源导入（避免 CDN 被 Vite ?import 干扰）
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
@@ -1370,11 +1372,7 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       {/* 翻译错误提示 */}
       {translationError && (
         <div className="flex items-center gap-2 px-4 py-2.5 bg-[#fef2f2] dark:bg-[#451a1a] border-b border-[#fca5a5] dark:border-[#7f1d1d] text-[#991b1b] dark:text-[#fca5a5] text-xs font-medium shrink-0">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
+          <img src={shibaErrorUrl} alt="" className="w-5 h-5 shrink-0" />
           <span className="flex-1">{translationError}</span>
           <button
             onClick={() => setTranslationError(null)}
@@ -1409,7 +1407,7 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
         {isLoading && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--color-bg-secondary)]/90">
             <div className="flex flex-col items-center gap-3 text-[var(--color-text-tertiary)]">
-              <div className="w-8 h-8 border-2 border-[var(--color-primary)]/30 border-t-[var(--color-primary)] rounded-full animate-spin" />
+              <img src={shibaLoadingUrl} alt="" className="w-[80px] h-auto opacity-85 animate-pulse" />
               <span className="text-sm">加载中...</span>
             </div>
           </div>

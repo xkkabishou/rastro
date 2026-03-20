@@ -470,7 +470,7 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
             {/* 头部 */}
             <div className="flex items-center justify-between px-4 pb-3 shrink-0">
               <span className="font-semibold px-1 text-[var(--color-text)] flex items-center gap-2">
-                <img src={shibaLogoUrl} alt="Rastro" className="w-6 h-6 rounded-md" />
+                <img src={shibaLogoUrl} alt="Rastro" className="w-10 h-10 rounded-md" />
                 Rastro
               </span>
               <button

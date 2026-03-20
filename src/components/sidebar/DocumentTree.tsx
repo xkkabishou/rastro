@@ -1,6 +1,6 @@
 import React, { useRef, useMemo, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { FileText } from 'lucide-react';
+import shibaWelcomeUrl from '../../assets/shiba/shiba-welcome.png';
 import type { DocumentSnapshot, DocumentArtifactDto } from '../../shared/types';
 import { useDocumentStore } from '../../stores/useDocumentStore';
 import { DocumentNode } from './DocumentNode';
@@ -159,9 +159,7 @@ export const DocumentTree: React.FC<DocumentTreeProps> = ({
   if (documents.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center flex-1 gap-2 p-6 text-center">
-        <div className="w-10 h-10 rounded-xl bg-[var(--color-bg-tertiary)] flex items-center justify-center">
-          <FileText size={18} className="text-[var(--color-text-quaternary)]" />
-        </div>
+        <img src={shibaWelcomeUrl} alt="" className="w-16 h-auto opacity-75" />
         <p className="text-xs text-[var(--color-text-quaternary)]">{emptyMessage}</p>
       </div>
     );
