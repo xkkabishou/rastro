@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ipcClient } from '../../lib/ipc-client';
-import { BookOpen, Loader2, RefreshCw, FileText } from 'lucide-react';
+import { BookOpen, Loader2, RefreshCw, FileText, Download, Check, BookMarked } from 'lucide-react';
 import {
   DEFAULT_SUMMARY_SOURCE_CHARS,
   DEFAULT_SUMMARY_SOURCE_PAGES,
@@ -10,6 +10,7 @@ import {
 } from '../../lib/pdf-text-extractor';
 import { useDocumentStore } from '../../stores/useDocumentStore';
 import { useSummaryStore } from '../../stores/useSummaryStore';
+import { useObsidianStore } from '../../stores/useObsidianStore';
 
 /** AI 文献总结面板 */
 export const SummaryPanel: React.FC = () => {
@@ -27,6 +28,16 @@ export const SummaryPanel: React.FC = () => {
   } = useSummaryStore();
   const contentRef = useRef<HTMLDivElement>(null);
   const documentId = currentDocument?.documentId;
+
+  // Obsidian 导出状态
+  const obsidianConfig = useObsidianStore((s) => s.config);
+  const exportSummary = useObsidianStore((s) => s.exportSummary);
+  const isExportingObsidian = useObsidianStore((s) => s.isExporting);
+  const [obsidianSuccess, setObsidianSuccess] = useState(false);
+
+  // Zotero 导出状态
+  const [isExportingZotero, setIsExportingZotero] = useState(false);
+  const [zoteroSuccess, setZoteroSuccess] = useState(false);
 
   // T2.4.5: 文档切换时自动加载已保存的总结
   useEffect(() => {
@@ -92,12 +103,51 @@ export const SummaryPanel: React.FC = () => {
     }
   }, [currentDocument, failStream, isGenerating, setActiveStreamId, startGeneration]);
 
+  // 导出到 Obsidian
+  const handleExportToObsidian = useCallback(async () => {
+    if (!currentDocument || !summaryContent) return;
+    const result = await exportSummary(
+      currentDocument.documentId,
+      currentDocument.title || '未命名文献',
+      summaryContent,
+    );
+    if (result?.success) {
+      setObsidianSuccess(true);
+      setTimeout(() => setObsidianSuccess(false), 2000);
+    }
+  }, [currentDocument, summaryContent, exportSummary]);
+
+  // 导出到 Zotero
+  const handleExportToZotero = useCallback(async () => {
+    if (!currentDocument?.zoteroItemKey || !summaryContent) return;
+    setIsExportingZotero(true);
+    try {
+      const result = await ipcClient.exportMdToZotero(
+        currentDocument.zoteroItemKey,
+        '总结.md',
+        summaryContent,
+      );
+      if (result?.success) {
+        setZoteroSuccess(true);
+        setTimeout(() => setZoteroSuccess(false), 2000);
+      }
+    } catch (err) {
+      console.error('[Zotero] 导出总结失败:', err);
+    } finally {
+      setIsExportingZotero(false);
+    }
+  }, [currentDocument, summaryContent]);
+
   // 自动滚动到底部
   useEffect(() => {
     if (contentRef.current) {
       contentRef.current.scrollTop = contentRef.current.scrollHeight;
     }
   }, [summaryContent]);
+
+  // 是否显示导出按钮
+  const showObsidianExport = obsidianConfig.vaultPath && hasGenerated && !isGenerating && summaryContent;
+  const showZoteroExport = currentDocument?.zoteroItemKey && hasGenerated && !isGenerating && summaryContent;
 
   return (
     <div className="flex flex-col h-full">
@@ -107,27 +157,62 @@ export const SummaryPanel: React.FC = () => {
           <BookOpen size={16} className="text-[var(--color-accent)]" />
           <span className="font-semibold text-sm text-[var(--color-text)]">文献总结</span>
         </div>
-        {hasGenerated && (
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating}
-            className="p-1.5 rounded-md hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)] disabled:opacity-50 transition-colors"
-            title="重新生成"
-          >
-            <RefreshCw size={14} className={isGenerating ? 'animate-spin' : ''} />
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {/* 导出到 Zotero 按钮 */}
+          {showZoteroExport && (
+            <button
+              onClick={handleExportToZotero}
+              disabled={isExportingZotero}
+              className="p-1.5 rounded-md hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)] disabled:opacity-50 transition-colors"
+              title="同步到 Zotero 附件"
+            >
+              {zoteroSuccess ? (
+                <Check size={14} className="text-emerald-500" />
+              ) : isExportingZotero ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <BookMarked size={14} />
+              )}
+            </button>
+          )}
+          {/* 导出到 Obsidian 按钮 */}
+          {showObsidianExport && (
+            <button
+              onClick={handleExportToObsidian}
+              disabled={isExportingObsidian}
+              className="p-1.5 rounded-md hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)] disabled:opacity-50 transition-colors"
+              title="导出到 Obsidian"
+            >
+              {obsidianSuccess ? (
+                <Check size={14} className="text-emerald-500" />
+              ) : isExportingObsidian ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Download size={14} />
+              )}
+            </button>
+          )}
+          {/* 重新生成按钮 */}
+          {hasGenerated && (
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating}
+              className="p-1.5 rounded-md hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)] disabled:opacity-50 transition-colors"
+              title="重新生成"
+            >
+              <RefreshCw size={14} className={isGenerating ? 'animate-spin' : ''} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 内容区域 */}
       <div ref={contentRef} className="flex-1 overflow-y-auto">
         {isLoadingSaved ? (
-          // T2.4.5: 加载已保存总结的加载态
           <div className="flex items-center justify-center h-full">
             <Loader2 size={20} className="animate-spin text-[var(--color-text-tertiary)]" />
           </div>
         ) : !hasGenerated ? (
-          // 未生成 — 引导状态
           <div className="flex flex-col items-center justify-center h-full p-6 text-center">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500/10 to-amber-500/10 flex items-center justify-center mb-3">
               <FileText size={24} className="text-[var(--color-accent)] opacity-60" />
@@ -152,7 +237,6 @@ export const SummaryPanel: React.FC = () => {
             </button>
           </div>
         ) : (
-          // 已生成/生成中 — Markdown 渲染
           <div className="p-4">
             <div className={`markdown-body text-sm ${isGenerating ? 'streaming-cursor' : ''}`}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>

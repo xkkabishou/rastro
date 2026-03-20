@@ -1,0 +1,111 @@
+{
+  "entities": [
+    {
+      "name": "ObsidianVault",
+      "type": "外部系统",
+      "necessity": "必须",
+      "description": "用户的 Obsidian Vault 根目录，所有导出内容写入此路径下的 '文献笔记' 子文件夹"
+    },
+    {
+      "name": "LiteratureFolder",
+      "type": "数据结构",
+      "necessity": "必须",
+      "description": "以文献标题命名的子文件夹，位于 '文献笔记/' 下，存放该文献的总结和聊天记录"
+    },
+    {
+      "name": "SummaryNote",
+      "type": "数据",
+      "necessity": "必须",
+      "description": "AI 总结的 Markdown 文件，导出到文献文件夹内。后续支持多种总结类型（详细/简略/paper-review 等），每种类型对应一个独立 .md 文件"
+    },
+    {
+      "name": "ChatExport",
+      "type": "数据",
+      "necessity": "必须",
+      "description": "聊天记录的 Markdown 导出文件，用户可选择性导出（多选模式），每条聊天会话导出为一个独立 .md 文件"
+    },
+    {
+      "name": "ObsidianConfig",
+      "type": "配置",
+      "necessity": "必须",
+      "description": "Obsidian 集成配置项，包含 Vault 路径、自动同步开关，存储在应用设置中"
+    },
+    {
+      "name": "ExportRecord",
+      "type": "数据",
+      "necessity": "必须",
+      "description": "导出记录，跟踪哪些总结/聊天已导出到 Obsidian，用于自动同步时判断是否需要更新"
+    }
+  ],
+  "flows": [
+    {
+      "from": "User",
+      "action": "配置 Vault 路径",
+      "to": "ObsidianConfig",
+      "data": "vaultPath: string"
+    },
+    {
+      "from": "User",
+      "action": "手动导出总结",
+      "to": "SummaryNote",
+      "data": "summaryContent + documentTitle → 写入 Vault/文献笔记/{文献名}/总结.md"
+    },
+    {
+      "from": "User",
+      "action": "选择性导出聊天记录",
+      "to": "ChatExport",
+      "data": "selectedSessionIds[] → 批量写入 Vault/文献笔记/{文献名}/对话-{时间}.md"
+    },
+    {
+      "from": "SummaryStore",
+      "action": "自动同步总结",
+      "to": "SummaryNote",
+      "data": "finishStream 后自动检测是否启用自动同步 → 写入对应 md"
+    },
+    {
+      "from": "Backend",
+      "action": "创建文献文件夹",
+      "to": "LiteratureFolder",
+      "data": "确保 Vault/文献笔记/{sanitized_title}/ 目录存在"
+    },
+    {
+      "from": "Backend",
+      "action": "写入 Markdown 文件",
+      "to": "ObsidianVault",
+      "data": "通过 Tauri fs API 写入文件到 Vault"
+    }
+  ],
+  "missing_components": [
+    {
+      "component": "文件名消毒 (sanitize)",
+      "category": "安全",
+      "priority": "高",
+      "reason": "文献标题可能含有文件系统不允许的字符（/ \\ : * ? \" < > |），需要进行转义或替换"
+    },
+    {
+      "component": "Vault 路径校验",
+      "category": "错误处理",
+      "priority": "高",
+      "reason": "用户可能配置错误的路径、权限不足的路径、或 Vault 被移动/删除"
+    },
+    {
+      "component": "导出冲突处理",
+      "category": "错误处理",
+      "priority": "中",
+      "reason": "用户可能手动在 Obsidian 中编辑了已导出的文件，自动同步时需要决定是覆盖还是跳过"
+    },
+    {
+      "component": "front matter 元数据",
+      "category": "数据完整性",
+      "priority": "中",
+      "reason": "导出的 md 文件应包含 YAML front matter（来源文档、生成日期、总结类型等）便于 Obsidian 内检索"
+    },
+    {
+      "component": "长文件名截断",
+      "category": "兼容性",
+      "priority": "中",
+      "reason": "部分文献标题很长，可能超过文件系统路径长度限制"
+    }
+  ],
+  "questions_for_user": []
+}

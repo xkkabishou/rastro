@@ -104,6 +104,8 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             ipc::zotero::fetch_zotero_collections,
             ipc::zotero::fetch_zotero_collection_items,
             ipc::zotero::open_zotero_attachment,
+            ipc::zotero::export_md_to_zotero,
+            ipc::zotero::export_pdf_to_zotero,
             // H. NotebookLM 集成 (10 个)
             ipc::notebooklm::notebooklm_get_status,
             ipc::notebooklm::notebooklm_begin_login,
@@ -132,6 +134,13 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             // K. 标题翻译缓存 (2 个)
             ipc::title_translation::get_title_translation,
             ipc::title_translation::batch_translate_titles,
+            // L. Obsidian 笔记同步 (6 个)
+            ipc::obsidian::get_obsidian_config,
+            ipc::obsidian::save_obsidian_config,
+            ipc::obsidian::validate_obsidian_vault,
+            ipc::obsidian::export_summary_to_obsidian,
+            ipc::obsidian::export_chats_to_obsidian,
+            ipc::obsidian::detect_obsidian_vaults,
         ])
         .run(tauri::generate_context!())?;
     Ok(())

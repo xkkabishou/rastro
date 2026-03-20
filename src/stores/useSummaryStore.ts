@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { AiStreamChunkPayload } from '../shared/types';
 import { ipcEvents, ipcClient } from '../lib/ipc-client';
+import { useObsidianStore } from './useObsidianStore';
+import { useDocumentStore } from './useDocumentStore';
 
 interface SummaryState {
   summaryContent: string;
@@ -87,6 +89,17 @@ export const useSummaryStore = create<SummaryState>((set, get) => ({
         .then((saved) => {
           set({ savedSummaryId: saved.summaryId });
           console.log('[Summary] 自动保存成功:', saved.summaryId);
+          // Obsidian 自动同步
+          const doc = useDocumentStore.getState().currentDocument;
+          const docTitle = doc?.title || '未命名文献';
+          useObsidianStore.getState().autoSyncSummary(currentDocumentId!, docTitle, summaryContent);
+          // Zotero 自动同步：如果文献来自 Zotero，同时写入附件
+          if (doc?.zoteroItemKey) {
+            ipcClient
+              .exportMdToZotero(doc.zoteroItemKey, '总结.md', summaryContent)
+              .then(() => console.log('[Summary] Zotero 自动同步成功'))
+              .catch((e: unknown) => console.warn('[Summary] Zotero 自动同步失败:', e));
+          }
         })
         .catch((err: unknown) => {
           console.error('[Summary] 自动保存失败:', err);

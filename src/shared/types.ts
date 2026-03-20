@@ -874,6 +874,55 @@ export interface AiStreamFailedPayload {
 }
 
 // ---------------------------------------------------------------------------
+// L. Obsidian 笔记同步 DTO
+// ---------------------------------------------------------------------------
+
+/** Obsidian 配置 */
+export interface ObsidianConfigDto {
+  vaultPath: string | null;
+  autoSync: boolean;
+}
+
+/** Vault 路径校验结果 */
+export interface ValidateVaultResult {
+  valid: boolean;
+  message: string;
+}
+
+/** 总结导出结果 */
+export interface ExportSummaryResult {
+  success: boolean;
+  filePath: string;
+}
+
+/** 聊天导出请求参数 */
+export interface ExportChatsInput {
+  documentId: string;
+  title: string;
+  sessionIds: string[];
+}
+
+/** 聊天导出结果 */
+export interface ExportChatsResult {
+  success: boolean;
+  exportedCount: number;
+  filePaths: string[];
+}
+
+/** 自动检测到的 Obsidian Vault */
+export interface DetectedVault {
+  path: string;
+  name: string;
+}
+
+/** Zotero 附件导出结果 */
+export interface ZoteroExportResult {
+  success: boolean;
+  filePath: string;
+  updated: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Command 名称常量（便于前端 IPC Client 引用）
 // ---------------------------------------------------------------------------
 
@@ -927,6 +976,8 @@ export const IPC_COMMANDS = {
   FETCH_ZOTERO_COLLECTIONS: "fetch_zotero_collections",
   FETCH_ZOTERO_COLLECTION_ITEMS: "fetch_zotero_collection_items",
   OPEN_ZOTERO_ATTACHMENT: "open_zotero_attachment",
+  EXPORT_MD_TO_ZOTERO: "export_md_to_zotero",
+  EXPORT_PDF_TO_ZOTERO: "export_pdf_to_zotero",
   // V2: 文档工作空间
   LIST_DOCUMENT_ARTIFACTS: "list_document_artifacts",
   DELETE_TRANSLATION_CACHE: "delete_translation_cache",
@@ -958,6 +1009,13 @@ export const IPC_COMMANDS = {
   // K. 标题翻译缓存
   GET_TITLE_TRANSLATION: "get_title_translation",
   BATCH_TRANSLATE_TITLES: "batch_translate_titles",
+  // L. Obsidian 笔记同步
+  GET_OBSIDIAN_CONFIG: "get_obsidian_config",
+  SAVE_OBSIDIAN_CONFIG: "save_obsidian_config",
+  VALIDATE_OBSIDIAN_VAULT: "validate_obsidian_vault",
+  EXPORT_SUMMARY_TO_OBSIDIAN: "export_summary_to_obsidian",
+  EXPORT_CHATS_TO_OBSIDIAN: "export_chats_to_obsidian",
+  DETECT_OBSIDIAN_VAULTS: "detect_obsidian_vaults",
 } as const;
 
 /** Tauri Event 名称常量 */

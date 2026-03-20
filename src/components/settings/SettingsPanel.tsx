@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { ModelSettings } from './ModelSettings';
 import { PromptSettings } from './PromptSettings';
+import { ObsidianSettings } from './ObsidianSettings';
 import { Settings, Zap, BarChart3, RefreshCw, HardDrive, Trash2, AlertTriangle, MessageSquareText } from 'lucide-react';
 import { ipcClient } from '../../lib/ipc-client';
 import type { UsageStatsDto, CacheStatsDto } from '../../shared/types';
@@ -103,12 +104,17 @@ export const SettingsPanel: React.FC = () => {
           <UsageView stats={usageStats} onRefresh={loadUsageStats} />
         )}
         {activeTab === 'storage' && (
-          <StorageView
-            stats={cacheStats}
-            error={cacheError}
-            onRefresh={loadCacheStats}
-            onStatsChange={setCacheStats}
-          />
+          <>
+            <StorageView
+              stats={cacheStats}
+              error={cacheError}
+              onRefresh={loadCacheStats}
+              onStatsChange={setCacheStats}
+            />
+            <div className="mt-3">
+              <ObsidianSettings />
+            </div>
+          </>
         )}
         {activeTab === 'prompts' && <PromptSettings />}
       </div>

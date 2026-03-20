@@ -7,6 +7,7 @@ pub mod document_summaries;
 pub mod documents;
 pub mod migration;
 pub mod migrations;
+pub mod obsidian_config;
 pub mod provider_settings;
 pub mod title_translations;
 pub mod translation_artifacts;

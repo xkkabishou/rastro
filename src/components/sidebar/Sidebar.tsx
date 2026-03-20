@@ -43,7 +43,7 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
   // 桌面端使用外部传入宽度，移动端固定 280px
   const effectiveWidth = isMobile ? 280 : (width ?? 280);
   const [isLoadingRecent, setIsLoadingRecent] = useState(false);
-  const [activeTab, setActiveTab] = useState<'documents' | 'zotero'>('documents');
+  const [activeTab, setActiveTab] = useState<'documents' | 'zotero'>('zotero');
 
   const setCurrentDocument = useDocumentStore((s) => s.setCurrentDocument);
   const setPdfUrl = useDocumentStore((s) => s.setPdfUrl);
@@ -481,20 +481,9 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
               </button>
             </div>
 
-            {/* Tab 切换：文档 / Zotero */}
+            {/* Tab 切换：Zotero / 文档 */}
             <div className="px-3 pb-2 shrink-0">
               <div className="flex gap-1 p-0.5 rounded-lg bg-[var(--color-bg-tertiary)]">
-                <button
-                  onClick={() => setActiveTab('documents')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${
-                    activeTab === 'documents'
-                      ? 'bg-[var(--color-bg)] text-[var(--color-text)] shadow-sm'
-                      : 'text-[var(--color-text-quaternary)] hover:text-[var(--color-text-secondary)]'
-                  }`}
-                >
-                  <FileText size={12} />
-                  文档
-                </button>
                 <button
                   onClick={() => setActiveTab('zotero')}
                   className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${
@@ -505,6 +494,17 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
                 >
                   <BookOpen size={12} />
                   Zotero
+                </button>
+                <button
+                  onClick={() => setActiveTab('documents')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${
+                    activeTab === 'documents'
+                      ? 'bg-[var(--color-bg)] text-[var(--color-text)] shadow-sm'
+                      : 'text-[var(--color-text-quaternary)] hover:text-[var(--color-text-secondary)]'
+                  }`}
+                >
+                  <FileText size={12} />
+                  文档
                 </button>
               </div>
             </div>

@@ -101,6 +101,11 @@ impl ZoteroConnector {
         &self.library.database_path
     }
 
+    /// 获取 Zotero profile 目录（storage 所在的父目录）
+    pub fn profile_dir(&self) -> &Path {
+        &self.library.profile_dir
+    }
+
     pub fn item_count(&self) -> Result<u32, AppError> {
         let connection = self.open_connection()?;
         connection
@@ -362,6 +367,258 @@ impl ZoteroConnector {
 
         Ok(resolved)
     }
+
+    // -----------------------------------------------------------------------
+    // 写入：向 Zotero 添加附件
+    // -----------------------------------------------------------------------
+
+    /// 以读写模式打开 Zotero 数据库连接
+    fn open_write_connection(&self) -> Result<Connection, AppError> {
+        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        let target = self.library.database_path.to_string_lossy().into_owned();
+        let connection = Connection::open_with_flags(&target, flags).map_err(|e| {
+            AppError::internal(format!(
+                "无法以写入模式打开 Zotero 数据库（Zotero 是否正在运行？）: {}",
+                e
+            ))
+        })?;
+        // 写入操作需要更长的等待时间（Zotero 可能持有 WAL 锁）
+        connection.busy_timeout(Duration::from_millis(5000)).map_err(map_sqlite_error)?;
+        Ok(connection)
+    }
+
+    /// 向指定文献条目添加存储式附件（Markdown 文件）
+    ///
+    /// 步骤：
+    /// 1. 查找 parent item 的 itemID 和 libraryID
+    /// 2. 生成唯一 8 位 key
+    /// 3. 在 storage 目录下创建子文件夹并写入文件
+    /// 4. 插入 `items` 和 `itemAttachments` 两行记录
+    pub fn add_stored_attachment(
+        &self,
+        parent_item_key: &str,
+        filename: &str,
+        content: &str,
+        content_type: &str,
+    ) -> Result<StoredAttachmentResult, AppError> {
+        let connection = self.open_write_connection()?;
+
+        // 查找 parent item
+        let (parent_item_id, library_id): (i64, i64) = connection
+            .query_row(
+                "SELECT itemID, libraryID FROM items WHERE key = ?1",
+                params![parent_item_key],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|_| {
+                AppError::internal(format!(
+                    "在 Zotero 中未找到 key={} 的文献条目",
+                    parent_item_key
+                ))
+            })?;
+
+        // 生成唯一 key
+        let new_key = generate_unique_key(&connection)?;
+
+        // 在 storage 目录下创建子文件夹并写入文件
+        let storage_dir = self
+            .library
+            .profile_dir
+            .join("storage")
+            .join(&new_key);
+        std::fs::create_dir_all(&storage_dir).map_err(|e| {
+            AppError::internal(format!("创建 Zotero 存储目录失败: {}", e))
+        })?;
+
+        let file_path = storage_dir.join(filename);
+        std::fs::write(&file_path, content).map_err(|e| {
+            AppError::internal(format!("写入附件文件失败: {}", e))
+        })?;
+
+        // 在事务中插入数据库记录
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        let storage_path = format!("storage:{}", filename);
+
+        let tx = connection.unchecked_transaction().map_err(map_sqlite_error)?;
+
+        // 插入 items 表（itemTypeID=3 = attachment）
+        tx.execute(
+            "INSERT INTO items (itemTypeID, dateAdded, dateModified, clientDateModified, libraryID, key, version, synced)
+             VALUES (3, ?1, ?1, ?1, ?2, ?3, 0, 0)",
+            params![now, library_id, new_key],
+        )
+        .map_err(|e| {
+            AppError::internal(format!("插入 Zotero items 表失败: {}", e))
+        })?;
+
+        let new_item_id = tx
+            .query_row("SELECT last_insert_rowid()", [], |row| row.get::<_, i64>(0))
+            .map_err(map_sqlite_error)?;
+
+        // 插入 itemAttachments 表（linkMode=0 = stored file）
+        tx.execute(
+            "INSERT INTO itemAttachments (itemID, parentItemID, linkMode, contentType, path, syncState)
+             VALUES (?1, ?2, 0, ?3, ?4, 0)",
+            params![new_item_id, parent_item_id, content_type, storage_path],
+        )
+        .map_err(|e| {
+            AppError::internal(format!("插入 Zotero itemAttachments 表失败: {}", e))
+        })?;
+
+        tx.commit().map_err(map_sqlite_error)?;
+
+        Ok(StoredAttachmentResult {
+            item_key: new_key,
+            file_path: file_path.to_string_lossy().to_string(),
+        })
+    }
+
+    /// 检查某个 parent item 下是否已存在同名附件（避免重复写入）
+    pub fn find_attachment_by_name(
+        &self,
+        parent_item_key: &str,
+        filename: &str,
+    ) -> Result<Option<String>, AppError> {
+        let connection = self.open_connection()?;
+        let storage_path = format!("storage:{}", filename);
+
+        let result: Option<String> = connection
+            .query_row(
+                "SELECT attachment.key
+                 FROM itemAttachments ia
+                 JOIN items attachment ON attachment.itemID = ia.itemID
+                 JOIN items parent ON parent.itemID = ia.parentItemID
+                 WHERE parent.key = ?1 AND ia.path = ?2
+                 LIMIT 1",
+                params![parent_item_key, storage_path],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(map_sqlite_error)?;
+
+        Ok(result)
+    }
+
+    /// 更新已存在的存储式附件内容
+    pub fn update_stored_attachment(
+        &self,
+        attachment_key: &str,
+        filename: &str,
+        content: &str,
+    ) -> Result<String, AppError> {
+        let file_path = self
+            .library
+            .profile_dir
+            .join("storage")
+            .join(attachment_key)
+            .join(filename);
+
+        std::fs::write(&file_path, content).map_err(|e| {
+            AppError::internal(format!("更新附件文件失败: {}", e))
+        })?;
+
+        // 更新修改时间
+        let connection = self.open_write_connection()?;
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        connection
+            .execute(
+                "UPDATE items SET dateModified = ?1, clientDateModified = ?1, synced = 0
+                 WHERE key = ?2",
+                params![now, attachment_key],
+            )
+            .map_err(map_sqlite_error)?;
+
+        Ok(file_path.to_string_lossy().to_string())
+    }
+
+    /// 将已有的磁盘文件拷贝到 Zotero storage 并创建附件条目
+    /// 用于同步翻译后的 PDF 等二进制文件
+    pub fn add_file_attachment(
+        &self,
+        parent_item_key: &str,
+        source_file_path: &Path,
+        target_filename: &str,
+        content_type: &str,
+    ) -> Result<StoredAttachmentResult, AppError> {
+        if !source_file_path.exists() {
+            return Err(AppError::internal(format!(
+                "源文件不存在: {}",
+                source_file_path.display()
+            )));
+        }
+
+        let connection = self.open_write_connection()?;
+
+        // 查找 parent item
+        let (parent_item_id, library_id): (i64, i64) = connection
+            .query_row(
+                "SELECT itemID, libraryID FROM items WHERE key = ?1",
+                params![parent_item_key],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|_| {
+                AppError::internal(format!(
+                    "在 Zotero 中未找到 key={} 的文献条目",
+                    parent_item_key
+                ))
+            })?;
+
+        let new_key = generate_unique_key(&connection)?;
+
+        // 拷贝文件到 storage 目录
+        let storage_dir = self.library.profile_dir.join("storage").join(&new_key);
+        std::fs::create_dir_all(&storage_dir).map_err(|e| {
+            AppError::internal(format!("创建 Zotero 存储目录失败: {}", e))
+        })?;
+
+        let target_path = storage_dir.join(target_filename);
+        // 使用软连接而非拷贝，节省磁盘空间
+        std::os::unix::fs::symlink(source_file_path, &target_path).map_err(|e| {
+            AppError::internal(format!("创建软连接到 Zotero 失败: {}", e))
+        })?;
+
+        // 插入数据库记录
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let storage_path = format!("storage:{}", target_filename);
+
+        let tx = connection.unchecked_transaction().map_err(map_sqlite_error)?;
+
+        tx.execute(
+            "INSERT INTO items (itemTypeID, dateAdded, dateModified, clientDateModified, libraryID, key, version, synced)
+             VALUES (3, ?1, ?1, ?1, ?2, ?3, 0, 0)",
+            params![now, library_id, new_key],
+        )
+        .map_err(|e| AppError::internal(format!("插入 Zotero items 表失败: {}", e)))?;
+
+        let new_item_id = tx
+            .query_row("SELECT last_insert_rowid()", [], |row| row.get::<_, i64>(0))
+            .map_err(map_sqlite_error)?;
+
+        tx.execute(
+            "INSERT INTO itemAttachments (itemID, parentItemID, linkMode, contentType, path, syncState)
+             VALUES (?1, ?2, 0, ?3, ?4, 0)",
+            params![new_item_id, parent_item_id, content_type, storage_path],
+        )
+        .map_err(|e| AppError::internal(format!("插入 Zotero itemAttachments 表失败: {}", e)))?;
+
+        tx.commit().map_err(map_sqlite_error)?;
+
+        Ok(StoredAttachmentResult {
+            item_key: new_key,
+            file_path: target_path.to_string_lossy().to_string(),
+        })
+    }
+}
+
+/// 附件插入结果
+#[derive(Debug, Clone)]
+pub struct StoredAttachmentResult {
+    pub item_key: String,
+    pub file_path: String,
 }
 
 #[derive(Debug)]
@@ -372,6 +629,49 @@ struct PageRow {
     publication_title: Option<String>,
     raw_year: Option<String>,
     date_added: String,
+}
+/// 生成 Zotero 兼容的 8 位唯一 key（大写字母 + 数字）
+fn generate_unique_key(connection: &Connection) -> Result<String, AppError> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    const CHARS: &[u8] = b"23456789ABCDEFGHIJKLMNPQRSTUVWXYZ";
+    let mut attempts = 0;
+
+    loop {
+        attempts += 1;
+        if attempts > 100 {
+            return Err(AppError::internal(
+                "无法生成唯一的 Zotero key（尝试次数过多）".to_string(),
+            ));
+        }
+
+        // 用时间戳 + 尝试次数生成伪随机 key
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+            .wrapping_add(attempts as u128);
+
+        let key: String = (0..8)
+            .map(|i| {
+                let idx = ((seed >> (i * 5)) % CHARS.len() as u128) as usize;
+                CHARS[idx] as char
+            })
+            .collect();
+
+        // 确保 key 不存在
+        let exists: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM items WHERE key = ?1)",
+                params![key],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+        if !exists {
+            return Ok(key);
+        }
+    }
 }
 
 fn candidate_database_paths() -> Vec<PathBuf> {

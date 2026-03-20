@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Languages, RefreshCw, Trash2, Clock, Server, FileText, AlertTriangle } from 'lucide-react';
+import { Languages, RefreshCw, Trash2, Clock, Server, FileText, AlertTriangle, BookMarked, Check, Loader2 } from 'lucide-react';
 import { Dialog } from '../ui/Dialog';
 import { ipcClient } from '../../lib/ipc-client';
 import { useDocumentStore } from '../../stores/useDocumentStore';
@@ -74,6 +74,15 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const invalidateArtifacts = useDocumentStore((s) => s.invalidateArtifacts);
   const loadArtifacts = useDocumentStore((s) => s.loadArtifacts);
+  const currentDocument = useDocumentStore((s) => s.currentDocument);
+
+  // Zotero 同步状态
+  const [isSyncingZotero, setIsSyncingZotero] = useState(false);
+  const [zoteroSyncSuccess, setZoteroSyncSuccess] = useState(false);
+  const [zoteroSyncError, setZoteroSyncError] = useState<string | null>(null);
+
+  const isFromZotero = !!currentDocument?.zoteroItemKey;
+  const available = translationInfo?.available ?? false;
 
   // 删除翻译
   const handleDelete = useCallback(async () => {
@@ -104,7 +113,51 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
     onClose();
   }, [onRetranslate, onClose]);
 
-  const available = translationInfo?.available ?? false;
+  // 同步翻译 PDF 到 Zotero
+  const handleSyncToZotero = useCallback(async () => {
+    if (!currentDocument?.zoteroItemKey || !translationInfo) return;
+    setIsSyncingZotero(true);
+    setZoteroSyncError(null);
+
+    try {
+      const results: string[] = [];
+
+      // 同步纯中文 PDF（如果有）
+      if (translationInfo.translatedPdfPath) {
+        const r = await ipcClient.exportPdfToZotero(
+          currentDocument.zoteroItemKey,
+          translationInfo.translatedPdfPath,
+          '中文翻译.pdf',
+        );
+        if (r.success) results.push('中文翻译');
+      }
+
+      // 同步双语 PDF（如果有）
+      if (translationInfo.bilingualPdfPath) {
+        const r = await ipcClient.exportPdfToZotero(
+          currentDocument.zoteroItemKey,
+          translationInfo.bilingualPdfPath,
+          '双语对照.pdf',
+        );
+        if (r.success) results.push('双语对照');
+      }
+
+      if (results.length > 0) {
+        setZoteroSyncSuccess(true);
+        setTimeout(() => setZoteroSyncSuccess(false), 2000);
+        console.log('[Translation] Zotero 同步成功:', results.join(', '));
+      }
+    } catch (err) {
+      console.error('[Translation] Zotero 同步失败:', err);
+      setZoteroSyncError(
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: string }).message)
+          : '同步到 Zotero 失败，请确认 Zotero 未在运行后重试。',
+      );
+    } finally {
+      setIsSyncingZotero(false);
+    }
+  }, [currentDocument, translationInfo]);
 
   return (
     <>
@@ -182,6 +235,39 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
             </button>
           )}
         </div>
+
+        {/* Zotero 同步按钮：仅在 Zotero 文献且翻译可用时显示 */}
+        {isFromZotero && available && (
+          <button
+            onClick={handleSyncToZotero}
+            disabled={isSyncingZotero}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] transition-colors disabled:opacity-50"
+          >
+            {zoteroSyncSuccess ? (
+              <>
+                <Check size={12} className="text-emerald-500" />
+                <span className="text-emerald-500">已同步到 Zotero</span>
+              </>
+            ) : isSyncingZotero ? (
+              <>
+                <Loader2 size={12} className="animate-spin" />
+                同步中...
+              </>
+            ) : (
+              <>
+                <BookMarked size={12} />
+                同步翻译 PDF 到 Zotero
+              </>
+            )}
+          </button>
+        )}
+
+        {/* Zotero 同步错误提示 */}
+        {zoteroSyncError && (
+          <div className="text-xs text-red-500 bg-red-500/10 rounded-lg px-3 py-2">
+            {zoteroSyncError}
+          </div>
+        )}
       </div>
 
       {/* 删除确认对话框 */}

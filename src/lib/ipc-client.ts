@@ -86,6 +86,13 @@ import {
   // K. 标题翻译缓存
   TitleTranslationDto,
   BatchTranslateTitlesResult,
+  // L. Obsidian 笔记同步
+  ObsidianConfigDto,
+  ValidateVaultResult,
+  ExportSummaryResult,
+  ExportChatsResult,
+  DetectedVault,
+  ZoteroExportResult,
   // Event Payloads
   AiStreamChunkPayload,
   AiStreamFinishedPayload,
@@ -439,6 +446,46 @@ export const ipcClient = {
   /** 批量翻译标题（缓存优先 + 串行限速） */
   batchTranslateTitles: (titles: string[]) =>
     safeInvoke<BatchTranslateTitlesResult>(IPC_COMMANDS.BATCH_TRANSLATE_TITLES, { titles }),
+
+  // =========================================================================
+  // L. Obsidian 笔记同步
+  // =========================================================================
+
+  /** 获取 Obsidian 配置 */
+  getObsidianConfig: () =>
+    safeInvoke<ObsidianConfigDto>(IPC_COMMANDS.GET_OBSIDIAN_CONFIG),
+
+  /** 保存 Obsidian 配置 */
+  saveObsidianConfig: (vaultPath?: string, autoSync?: boolean) =>
+    safeInvoke<ObsidianConfigDto>(IPC_COMMANDS.SAVE_OBSIDIAN_CONFIG, { vaultPath, autoSync }),
+
+  /** 校验 Vault 路径 */
+  validateObsidianVault: (vaultPath: string) =>
+    safeInvoke<ValidateVaultResult>(IPC_COMMANDS.VALIDATE_OBSIDIAN_VAULT, { vaultPath }),
+
+  /** 导出总结到 Obsidian */
+  exportSummaryToObsidian: (documentId: string, title: string, contentMd: string, summaryType?: string) =>
+    safeInvoke<ExportSummaryResult>(IPC_COMMANDS.EXPORT_SUMMARY_TO_OBSIDIAN, { documentId, title, contentMd, summaryType }),
+
+  /** 批量导出聊天到 Obsidian */
+  exportChatsToObsidian: (documentId: string, title: string, sessionIds: string[]) =>
+    safeInvoke<ExportChatsResult>(IPC_COMMANDS.EXPORT_CHATS_TO_OBSIDIAN, { documentId, title, sessionIds }),
+
+  /** 自动检测本机 Obsidian Vault 列表 */
+  detectObsidianVaults: () =>
+    safeInvoke<DetectedVault[]>(IPC_COMMANDS.DETECT_OBSIDIAN_VAULTS),
+
+  // -------------------------------------------------------------------------
+  // Zotero 导出
+  // -------------------------------------------------------------------------
+
+  /** 将 Markdown 内容作为附件写入 Zotero 文献条目 */
+  exportMdToZotero: (zoteroItemKey: string, filename: string, content: string, contentType?: string) =>
+    safeInvoke<ZoteroExportResult>(IPC_COMMANDS.EXPORT_MD_TO_ZOTERO, { zoteroItemKey, filename, content, contentType }),
+
+  /** 将磁盘上已有的 PDF 文件拷贝到 Zotero 附件 */
+  exportPdfToZotero: (zoteroItemKey: string, sourceFilePath: string, targetFilename: string) =>
+    safeInvoke<ZoteroExportResult>(IPC_COMMANDS.EXPORT_PDF_TO_ZOTERO, { zoteroItemKey, sourceFilePath, targetFilename }),
 };
 
 // ---------------------------------------------------------------------------

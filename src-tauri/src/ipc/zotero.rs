@@ -1,5 +1,6 @@
 // G. Zotero 集成 Command (5 个)
 // 对应 rust-backend-system.md Section 7.3 G
+use std::path::Path;
 use serde::Serialize;
 use tauri::State;
 
@@ -176,6 +177,92 @@ fn items_page_to_dto(page: crate::zotero_connector::ZoteroItemsPage) -> PagedZot
     }
 }
 
+/// Zotero 附件导出结果
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZoteroExportResult {
+    pub success: bool,
+    pub file_path: String,
+    /// 是更新还是新建
+    pub updated: bool,
+}
+
+/// 将 Markdown 内容作为附件写入 Zotero 文献条目
+/// 支持"创建或更新"语义：如果同名附件已存在则更新内容
+#[tauri::command]
+pub fn export_md_to_zotero(
+    zotero_item_key: String,
+    filename: String,
+    content: String,
+    content_type: Option<String>,
+) -> Result<ZoteroExportResult, crate::errors::AppError> {
+    let connector = ZoteroConnector::detect()?;
+    let ct = content_type.unwrap_or_else(|| "text/markdown".to_string());
+
+    // 检查是否已存在同名附件
+    if let Some(existing_key) = connector.find_attachment_by_name(&zotero_item_key, &filename)? {
+        // 已存在 → 更新文件内容
+        let file_path = connector.update_stored_attachment(&existing_key, &filename, &content)?;
+        return Ok(ZoteroExportResult {
+            success: true,
+            file_path,
+            updated: true,
+        });
+    }
+
+    // 不存在 → 创建新附件
+    let result = connector.add_stored_attachment(&zotero_item_key, &filename, &content, &ct)?;
+    Ok(ZoteroExportResult {
+        success: true,
+        file_path: result.file_path,
+        updated: false,
+    })
+}
+
+/// 将已存在的 PDF 文件作为附件写入 Zotero 文献条目
+/// 用于同步翻译后的中文/双语 PDF
+#[tauri::command]
+pub fn export_pdf_to_zotero(
+    zotero_item_key: String,
+    source_file_path: String,
+    target_filename: String,
+) -> Result<ZoteroExportResult, crate::errors::AppError> {
+    let connector = ZoteroConnector::detect()?;
+
+    // 检查是否已存在同名附件
+    if let Some(existing_key) = connector.find_attachment_by_name(&zotero_item_key, &target_filename)? {
+        // 已存在 → 删除旧链接并重建软连接
+        let source = Path::new(&source_file_path);
+        let target = connector.profile_dir()
+            .join("storage")
+            .join(&existing_key)
+            .join(&target_filename);
+        // 先删除旧文件/链接
+        let _ = std::fs::remove_file(&target);
+        std::os::unix::fs::symlink(source, &target).map_err(|e| {
+            crate::errors::AppError::internal(format!("更新软连接失败: {}", e))
+        })?;
+        return Ok(ZoteroExportResult {
+            success: true,
+            file_path: target.to_string_lossy().to_string(),
+            updated: true,
+        });
+    }
+
+    // 不存在 → 创建新附件
+    let source = Path::new(&source_file_path);
+    let result = connector.add_file_attachment(
+        &zotero_item_key,
+        source,
+        &target_filename,
+        "application/pdf",
+    )?;
+    Ok(ZoteroExportResult {
+        success: true,
+        file_path: result.file_path,
+        updated: false,
+    })
+}
 
 #[cfg(test)]
 mod tests {
