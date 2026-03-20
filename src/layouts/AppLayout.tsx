@@ -137,7 +137,7 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => {
       const winWidth = window.innerWidth;
       const leftWidth = isSidebarOpen && !isMobile ? sidebarWidth : 0;
       const rightWidth = isRightPanelOpen ? rightPanelWidth : 0;
-      const handleSpace = (leftWidth > 0 ? 6 : 0) + (rightWidth > 0 ? 6 : 0);
+      const handleSpace = 0; // ResizeHandle 使用负 margin，不占用 flex 空间
       const mainWidth = winWidth - leftWidth - rightWidth - handleSpace;
 
       if (mainWidth < MAIN_MIN) {

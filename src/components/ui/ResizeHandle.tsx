@@ -102,8 +102,8 @@ export const ResizeHandle = ({
       aria-valuemin={minWidth}
       aria-valuemax={maxWidth}
       tabIndex={0}
-      className="relative shrink-0 cursor-col-resize select-none z-10 focus-visible:outline-none group"
-      style={{ width: 6 }}
+      className="relative shrink-0 cursor-col-resize select-none z-20 focus-visible:outline-none group"
+      style={{ width: 6, marginLeft: -3, marginRight: -3 }}
       onMouseDown={handleMouseDown}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => { if (!isDragging) setIsHovered(false); }}
