@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Menu, FolderOpen, AlertTriangle, BookOpen, FileText } from 'lucide-react';
 import shibaLogoUrl from '../../assets/shiba/shiba-logo.png';
 import { open, save } from '@tauri-apps/plugin-dialog';
@@ -51,7 +52,8 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
   const recentDocuments = useDocumentStore((s) => s.recentDocuments);
   const setRecentDocuments = useDocumentStore((s) => s.setRecentDocuments);
   const searchQuery = useDocumentStore((s) => s.searchQuery);
-  const activeFilter = useDocumentStore((s) => s.activeFilter);
+  // useShallow 做浅比较，避免 activeFilter 对象每次重置为 {} 时因引用变化触发不必要的 callback 重建
+  const activeFilter = useDocumentStore(useShallow((s) => s.activeFilter));
 
   // 打开文档到阅读器
   const openDocumentInViewer = useCallback((doc: DocumentSnapshot) => {

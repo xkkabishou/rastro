@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from '../components/sidebar/Sidebar';
 import { RightPanel } from '../components/panel/RightPanel';
@@ -130,15 +130,19 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
   // -------------------------------------------------------------------------
   // 窗口缩小保护：确保主内容区 >= MAIN_MIN
+  // 使用 ref 存储最新布局状态，避免 resize listener 因依赖变化反复注册（内存泄漏）
   // -------------------------------------------------------------------------
+
+  const layoutRef = useRef({ isSidebarOpen, isRightPanelOpen, isMobile, sidebarWidth, rightPanelWidth });
+  layoutRef.current = { isSidebarOpen, isRightPanelOpen, isMobile, sidebarWidth, rightPanelWidth };
 
   useEffect(() => {
     const handleWindowResize = () => {
+      const { isSidebarOpen: sOpen, isRightPanelOpen: rOpen, isMobile: mobile, sidebarWidth: sw, rightPanelWidth: rw } = layoutRef.current;
       const winWidth = window.innerWidth;
-      const leftWidth = isSidebarOpen && !isMobile ? sidebarWidth : 0;
-      const rightWidth = isRightPanelOpen ? rightPanelWidth : 0;
-      const handleSpace = 0; // ResizeHandle 使用负 margin，不占用 flex 空间
-      const mainWidth = winWidth - leftWidth - rightWidth - handleSpace;
+      const leftWidth = sOpen && !mobile ? sw : 0;
+      const rightWidth = rOpen ? rw : 0;
+      const mainWidth = winWidth - leftWidth - rightWidth;
 
       if (mainWidth < MAIN_MIN) {
         let deficit = MAIN_MIN - mainWidth;
@@ -159,7 +163,7 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
     window.addEventListener('resize', handleWindowResize);
     return () => window.removeEventListener('resize', handleWindowResize);
-  }, [isSidebarOpen, isRightPanelOpen, isMobile, sidebarWidth, rightPanelWidth]);
+  }, []); // 空依赖 — listener 仅注册一次，通过 ref 读取最新值
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[var(--color-bg)] text-[var(--color-text)] relative">

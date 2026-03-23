@@ -19,8 +19,8 @@ const CUSTOM_PROMPTS_SQL: &str = include_str!("../../migrations/005_custom_promp
 const ANNOTATIONS_SQL: &str = include_str!("../../migrations/006_annotations.sql");
 const ADD_TRANSLATION_TABLES_SQL: &str =
     include_str!("../../migrations/007_add_translation_tables.sql");
-const OBSIDIAN_CONFIG_SQL: &str =
-    include_str!("../../migrations/008_obsidian_config.sql");
+const OBSIDIAN_CONFIG_SQL: &str = include_str!("../../migrations/008_obsidian_config.sql");
+const PERF_INDEXES_SQL: &str = include_str!("../../migrations/009_perf_indexes.sql");
 
 struct Migration {
     version: i64,
@@ -68,6 +68,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 8,
         name: "obsidian_config",
         sql: OBSIDIAN_CONFIG_SQL,
+    },
+    Migration {
+        version: 9,
+        name: "perf_indexes",
+        sql: PERF_INDEXES_SQL,
     },
 ];
 
@@ -130,7 +135,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 8);
+        assert_eq!(current_version(&connection).unwrap(), 9);
         assert_eq!(
             table_exists(&connection, "documents"),
             true,
@@ -194,10 +199,10 @@ mod tests {
         run(&connection).unwrap();
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 8);
+        assert_eq!(current_version(&connection).unwrap(), 9);
         assert_eq!(
             migration_row_count(&connection),
-            8,
+            9,
             "latest migrations should only be recorded once"
         );
     }
@@ -209,7 +214,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 8);
+        assert_eq!(current_version(&connection).unwrap(), 9);
         assert_eq!(
             provider_setting_count(&connection),
             3,

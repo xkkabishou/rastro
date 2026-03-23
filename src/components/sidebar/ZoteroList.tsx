@@ -168,13 +168,24 @@ function artifactMeta(kind: string): { icon: React.ReactNode; color: string; lab
 }
 
 /* ======================================================================== */
+/* 模块级缓存：跨 tab 切换 unmount/remount 保留探测结果，避免每次切换重新探测（1-2s 延迟）  */
+/* ======================================================================== */
+
+interface ZoteroCache {
+  status: ZoteroStatusDto;
+  collections: CollectionTreeNode[];
+  uncatCount: number;
+}
+let _zoteroCache: ZoteroCache | null = null;
+
+/* ======================================================================== */
 /* ZoteroList                                                                */
 /* ======================================================================== */
 
 export const ZoteroList: React.FC = () => {
-  const [status, setStatus] = useState<ZoteroStatusDto | null>(null);
-  const [collections, setCollections] = useState<CollectionTreeNode[]>([]);
-  const [uncatCount, setUncatCount] = useState(0);
+  const [status, setStatus] = useState<ZoteroStatusDto | null>(_zoteroCache?.status ?? null);
+  const [collections, setCollections] = useState<CollectionTreeNode[]>(_zoteroCache?.collections ?? []);
+  const [uncatCount, setUncatCount] = useState(_zoteroCache?.uncatCount ?? 0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -197,13 +208,20 @@ export const ZoteroList: React.FC = () => {
   const loadCols = useCallback(async () => {
     try {
       const raw = await ipcClient.fetchZoteroCollections();
-      setCollections(buildTree(raw));
+      const tree = buildTree(raw);
       const uc = await ipcClient.fetchZoteroCollectionItems({ collectionId: null, offset: 0, limit: 1 });
+      setCollections(tree);
       setUncatCount(uc.total);
+      // 写入模块级缓存，下次 mount 时直接使用
+      _zoteroCache = { status: { detected: true, statusMessage: '' }, collections: tree, uncatCount: uc.total };
     } catch { setError('加载文件夹失败'); }
   }, []);
 
-  useEffect(() => { (async () => { if (await detect()) await loadCols(); })(); }, [detect, loadCols]);
+  // 已有缓存时跳过探测，仅首次或手动刷新时执行
+  useEffect(() => {
+    if (_zoteroCache) return;
+    (async () => { if (await detect()) await loadCols(); })();
+  }, [detect, loadCols]);
 
   const loadItems = useCallback(async (cid: number | null, offset = 0) => {
     const k = cid === null ? '_uc' : String(cid);
@@ -267,6 +285,8 @@ export const ZoteroList: React.FC = () => {
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
+    // 清除模块级缓存，强制重新探测
+    _zoteroCache = null;
     setCache(new Map()); setExpandedIds(new Set());
     setItemCache(new Map()); setExpandedItems(new Set());
     await detect(); await loadCols();

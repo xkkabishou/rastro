@@ -10,8 +10,8 @@ interface ChatMessageProps {
   message: ChatMessageType;
 }
 
-/** 单条聊天消息组件 */
-export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
+/** 单条聊天消息组件（memo 避免流式输出时兄弟消息无关重渲染） */
+export const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message }) => {
   const isUser = message.role === 'user';
   const thinkingContent = message.thinkingContent?.trim();
 
@@ -80,4 +80,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
       </div>
     </div>
   );
-};
+});
+
+ChatMessage.displayName = 'ChatMessage';

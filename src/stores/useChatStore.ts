@@ -179,10 +179,65 @@ export const useChatStore = create<ChatState>((set, get) => ({
 // 应用启动时执行一次，无需清理（与应用同生命周期）
 // ---------------------------------------------------------------------------
 
+// RAF 批处理缓冲：将同一帧内收到的所有 token 合并为单次 set()，
+// 避免 50 tokens/s 时每帧触发 50 次重渲染
+let _rafStreamId: string | null = null;
+let _rafContent = '';
+let _rafThinking = '';
+let _rafHandle: number | null = null;
+
+const _flushStreamBuffer = () => {
+  _rafHandle = null;
+  if (!_rafStreamId) return;
+  const streamId = _rafStreamId;
+  const contentDelta = _rafContent;
+  const thinkingDelta = _rafThinking;
+  _rafStreamId = null;
+  _rafContent = '';
+  _rafThinking = '';
+
+  const state = useChatStore.getState();
+  if (state.activeStreamId !== streamId) return;
+
+  // 单次 set()：将本帧所有 content + thinking 合并更新
+  useChatStore.setState((prev) => ({
+    messages: updateOrInsertStreamMessage(prev.messages, streamId, (msg) => {
+      const base = msg ?? buildAssistantStreamMessage(streamId);
+      return {
+        ...base,
+        content: contentDelta ? `${base.content}${contentDelta}` : base.content,
+        thinkingContent: thinkingDelta
+          ? `${base.thinkingContent ?? ''}${thinkingDelta}`
+          : base.thinkingContent,
+        isStreaming: true,
+      };
+    }),
+    activeStreamId: streamId,
+  }));
+};
+
 void ipcEvents.onAiStreamChunk((payload) => {
   const state = useChatStore.getState();
-  if (state.activeStreamId === payload.streamId) {
-    state.appendStreamChunk(payload.streamId, payload.delta, payload.kind);
+  if (state.activeStreamId !== payload.streamId) return;
+
+  // streamId 变了则立即 flush 上一个流的缓冲
+  if (_rafStreamId && _rafStreamId !== payload.streamId) {
+    if (_rafHandle !== null) {
+      cancelAnimationFrame(_rafHandle);
+      _rafHandle = null;
+    }
+    _flushStreamBuffer();
+  }
+
+  _rafStreamId = payload.streamId;
+  if (payload.kind === 'thinking') {
+    _rafThinking += payload.delta;
+  } else {
+    _rafContent += payload.delta;
+  }
+
+  if (_rafHandle === null) {
+    _rafHandle = requestAnimationFrame(_flushStreamBuffer);
   }
 });
 

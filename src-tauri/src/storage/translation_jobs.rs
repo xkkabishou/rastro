@@ -171,34 +171,26 @@ pub fn update_status(
 }
 
 /// 查询文档最近的完成态翻译任务
+/// provider/model 过滤推入 SQL WHERE 子句，避免将全部已完成任务读入内存后再过滤
 pub fn find_latest_completed_for_document(
     connection: &Connection,
     document_id: &str,
     provider: Option<&str>,
     model: Option<&str>,
 ) -> rusqlite::Result<Option<TranslationJobRecord>> {
-    let mut statement = connection.prepare(
-        "SELECT * FROM translation_jobs
-         WHERE document_id = ?1
-           AND status = 'completed'
-         ORDER BY finished_at DESC, created_at DESC",
-    )?;
-
-    let rows = statement.query_map(params![document_id], map_job_row)?;
-
-    for row in rows {
-        let record = row?;
-        let provider_matches = provider
-            .map(|value| value == record.provider)
-            .unwrap_or(true);
-        let model_matches = model.map(|value| value == record.model).unwrap_or(true);
-
-        if provider_matches && model_matches {
-            return Ok(Some(record));
-        }
-    }
-
-    Ok(None)
+    connection
+        .query_row(
+            "SELECT * FROM translation_jobs
+             WHERE document_id = ?1
+               AND status = 'completed'
+               AND (?2 IS NULL OR provider = ?2)
+               AND (?3 IS NULL OR model = ?3)
+             ORDER BY finished_at DESC, created_at DESC
+             LIMIT 1",
+            params![document_id, provider, model],
+            map_job_row,
+        )
+        .optional()
 }
 
 /// 查询指定 cache_key 最近的任务
