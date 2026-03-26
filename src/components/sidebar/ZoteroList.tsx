@@ -14,6 +14,7 @@ import type {
   PagedZoteroItemsDto, DocumentArtifactDto, DocumentSnapshot,
 } from '../../shared/types';
 import { artifactIcon } from './ArtifactNode';
+import { DocumentMenu, type ContextMenuAction } from './DocumentContextMenu';
 import { TitleTranslationTooltip } from './TitleTranslationTooltip';
 
 /* ======================================================================== */
@@ -45,6 +46,11 @@ interface ItemExpandedData {
   artifacts: DocumentArtifactDto[];
   isLoading: boolean;
   error?: string;
+}
+
+interface ZoteroListProps {
+  onDocumentRegistered?: (doc: DocumentSnapshot) => void | Promise<void>;
+  onDocumentContextMenuAction?: (action: ContextMenuAction, doc: DocumentSnapshot) => void;
 }
 
 /* ======================================================================== */
@@ -182,7 +188,10 @@ let _zoteroCache: ZoteroCache | null = null;
 /* ZoteroList                                                                */
 /* ======================================================================== */
 
-export const ZoteroList: React.FC = () => {
+export const ZoteroList: React.FC<ZoteroListProps> = ({
+  onDocumentRegistered,
+  onDocumentContextMenuAction,
+}) => {
   const [status, setStatus] = useState<ZoteroStatusDto | null>(_zoteroCache?.status ?? null);
   const [collections, setCollections] = useState<CollectionTreeNode[]>(_zoteroCache?.collections ?? []);
   const [uncatCount, setUncatCount] = useState(_zoteroCache?.uncatCount ?? 0);
@@ -195,6 +204,11 @@ export const ZoteroList: React.FC = () => {
   /* 文献条目的展开状态 */
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [itemCache, setItemCache] = useState<Map<string, ItemExpandedData>>(new Map());
+  const [contextMenuState, setContextMenuState] = useState<{
+    x: number;
+    y: number;
+    doc: DocumentSnapshot;
+  } | null>(null);
 
   const setCurrentDocument = useDocumentStore(s => s.setCurrentDocument);
   const setPdfUrl = useDocumentStore(s => s.setPdfUrl);
@@ -283,15 +297,57 @@ export const ZoteroList: React.FC = () => {
     }
   }, [setCurrentDocument, setPdfUrl]);
 
+  const handleItemContextMenu = useCallback(async (
+    event: React.MouseEvent,
+    item: ZoteroItemDto,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!item.pdfPath) return;
+    const { clientX, clientY } = event;
+
+    try {
+      const doc = await ipcClient.openZoteroAttachment(item.itemKey);
+      void onDocumentRegistered?.(doc);
+      setContextMenuState({
+        x: clientX,
+        y: clientY,
+        doc,
+      });
+    } catch (err) {
+      console.error('打开 Zotero 文献右键菜单失败:', err);
+    }
+  }, [onDocumentRegistered]);
+
   const refresh = useCallback(async () => {
     setRefreshing(true);
-    // 清除模块级缓存，强制重新探测
-    _zoteroCache = null;
-    setCache(new Map()); setExpandedIds(new Set());
-    setItemCache(new Map()); setExpandedItems(new Set());
-    await detect(); await loadCols();
+    // 最小展示时长，确保刷新动画可见
+    const minDelay = new Promise(r => setTimeout(r, 400));
+    try {
+      // 后台重新加载，不清空当前 UI 数据（避免闪烁）
+      const s = await ipcClient.detectZoteroLibrary();
+      setStatus(s);
+      if (s.detected) {
+        const raw = await ipcClient.fetchZoteroCollections();
+        const tree = buildTree(raw);
+        const uc = await ipcClient.fetchZoteroCollectionItems({ collectionId: null, offset: 0, limit: 1 });
+        // 新数据就绪后一次性替换，保留展开状态
+        setCollections(tree);
+        setUncatCount(uc.total);
+        // 清空 item-level 缓存（文献数据可能变化），但保留展开状态
+        setCache(new Map());
+        setItemCache(new Map());
+        // 更新模块级缓存
+        _zoteroCache = { status: s, collections: tree, uncatCount: uc.total };
+      }
+      setError(null);
+    } catch {
+      setError('刷新失败');
+    }
+    // 等待最小展示时长结束后再取消 refreshing 状态
+    await minDelay;
     setRefreshing(false);
-  }, [detect, loadCols]);
+  }, []);
 
   const totalItems = status?.itemCount ?? 0;
   const colCount = collections.length + (uncatCount > 0 ? 1 : 0);
@@ -338,13 +394,45 @@ export const ZoteroList: React.FC = () => {
       </div>
 
       {/* 分隔标签 */}
-      <div style={{ padding: '4px 14px 6px', display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ padding: '4px 14px 6px', display: 'flex', alignItems: 'center', gap: 6, position: 'relative' }}>
         <Hash size={11} color="var(--color-text-quaternary)" />
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-quaternary)', letterSpacing: '0.5px' }}>文件夹</span>
+
+        {/* 刷新扫光条 — absolute 不占布局 */}
+        <AnimatePresence>
+          {refreshing && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              style={{
+                position: 'absolute', left: 12, right: 12, bottom: 0,
+                height: 2, borderRadius: 1, overflow: 'hidden',
+                background: 'color-mix(in srgb, var(--color-primary) 12%, transparent)',
+              }}
+            >
+              <motion.div
+                style={{
+                  height: '100%', borderRadius: 1,
+                  background: 'linear-gradient(90deg, transparent, var(--color-primary), transparent)',
+                  width: '40%',
+                }}
+                animate={{ x: ['-100%', '350%'] }}
+                transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* 树形列表 */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 12px' }}>
+      <div style={{
+        flex: 1, overflowY: 'auto', padding: '0 8px 12px',
+        opacity: refreshing ? 0.5 : 1,
+        transition: 'opacity 300ms ease',
+        pointerEvents: refreshing ? 'none' : 'auto',
+      }}>
         {loading ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '0 4px' }}>
             {[...Array(5)].map((_, i) => (
@@ -362,12 +450,14 @@ export const ZoteroList: React.FC = () => {
             {collections.map((n, i) => (
               <CollectionNode key={n.collection.collectionId} node={n} depth={0} colorIdx={i}
                 expandedIds={expandedIds} cache={cache} expandedItems={expandedItems} itemCache={itemCache}
-                onToggleCol={toggleCol} onLoadMore={loadItems} onToggleItem={toggleItem} onArtifactClick={handleArtifactClick} />
+                onToggleCol={toggleCol} onLoadMore={loadItems} onToggleItem={toggleItem}
+                onItemContextMenu={handleItemContextMenu} onArtifactClick={handleArtifactClick} />
             ))}
             {uncatCount > 0 && (
               <CollectionNode node={null} uncatCount={uncatCount} depth={0} colorIdx={collections.length}
                 expandedIds={expandedIds} cache={cache} expandedItems={expandedItems} itemCache={itemCache}
-                onToggleCol={toggleCol} onLoadMore={loadItems} onToggleItem={toggleItem} onArtifactClick={handleArtifactClick} />
+                onToggleCol={toggleCol} onLoadMore={loadItems} onToggleItem={toggleItem}
+                onItemContextMenu={handleItemContextMenu} onArtifactClick={handleArtifactClick} />
             )}
           </div>
         )}
@@ -384,6 +474,17 @@ export const ZoteroList: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      {contextMenuState && (
+        <DocumentMenu
+          doc={contextMenuState.doc}
+          position={{ x: contextMenuState.x, y: contextMenuState.y }}
+          onAction={(action) => {
+            onDocumentContextMenuAction?.(action, contextMenuState.doc);
+            setContextMenuState(null);
+          }}
+          onClose={() => setContextMenuState(null)}
+        />
+      )}
     </div>
   );
 };
@@ -404,12 +505,13 @@ interface CollectionNodeProps {
   onToggleCol: (id: number | null) => void;
   onLoadMore: (id: number | null, offset: number) => void;
   onToggleItem: (item: ZoteroItemDto) => void;
+  onItemContextMenu: (event: React.MouseEvent, item: ZoteroItemDto) => void;
   onArtifactClick: (artifact: DocumentArtifactDto, doc: DocumentSnapshot) => void;
 }
 
 const CollectionNode: React.FC<CollectionNodeProps> = ({
   node, uncatCount, depth, colorIdx, expandedIds, cache, expandedItems, itemCache,
-  onToggleCol, onLoadMore, onToggleItem, onArtifactClick,
+  onToggleCol, onLoadMore, onToggleItem, onItemContextMenu, onArtifactClick,
 }) => {
   const isUncat = node === null;
   const cid = isUncat ? null : node.collection.collectionId;
@@ -486,7 +588,8 @@ const CollectionNode: React.FC<CollectionNodeProps> = ({
             {hasKids && node.children.map((c) => (
               <CollectionNode key={c.collection.collectionId} node={c} depth={depth + 1} colorIdx={colorIdx}
                 expandedIds={expandedIds} cache={cache} expandedItems={expandedItems} itemCache={itemCache}
-                onToggleCol={onToggleCol} onLoadMore={onLoadMore} onToggleItem={onToggleItem} onArtifactClick={onArtifactClick} />
+                onToggleCol={onToggleCol} onLoadMore={onLoadMore} onToggleItem={onToggleItem}
+                onItemContextMenu={onItemContextMenu} onArtifactClick={onArtifactClick} />
             ))}
 
             {/* 骨架 */}
@@ -503,6 +606,7 @@ const CollectionNode: React.FC<CollectionNodeProps> = ({
                 isExpanded={expandedItems.has(item.itemKey)}
                 expandedData={itemCache.get(item.itemKey)}
                 onToggle={() => onToggleItem(item)}
+                onContextMenu={(event) => onItemContextMenu(event, item)}
                 onArtifactClick={onArtifactClick} />
             ))}
 
@@ -540,11 +644,12 @@ interface ItemFolderProps {
   isExpanded: boolean;
   expandedData?: ItemExpandedData;
   onToggle: () => void;
+  onContextMenu: (event: React.MouseEvent) => void;
   onArtifactClick: (artifact: DocumentArtifactDto, doc: DocumentSnapshot) => void;
 }
 
 const ItemFolder: React.FC<ItemFolderProps> = ({
-  item, accentColor, isExpanded, expandedData, onToggle, onArtifactClick,
+  item, accentColor, isExpanded, expandedData, onToggle, onContextMenu, onArtifactClick,
 }) => {
   const label = useMemo(() => zoteroItemLabel(item), [item]);
   const hasContent = expandedData && !expandedData.isLoading && expandedData.artifacts.length > 0;
@@ -618,6 +723,10 @@ const ItemFolder: React.FC<ItemFolderProps> = ({
         onMouseLeave={e => {
           handleItemMouseLeave();
           e.currentTarget.style.background = isExpanded ? 'color-mix(in srgb, var(--color-primary) 5%, transparent)' : 'transparent';
+        }}
+        onContextMenu={(e) => {
+          handleItemMouseLeave();
+          onContextMenu(e);
         }}
       >
         {/* 展开箭头 */}
