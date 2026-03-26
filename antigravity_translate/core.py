@@ -100,6 +100,7 @@ _ACK_KEYWORDS = {
     "acknowledgement", "acknowledgements",
     "acknowledgment", "acknowledgments",
 }
+_TAIL_SCAN_PAGE_LIMIT = 12
 
 # 用于去除行首编号前缀的正则，如 "7.", "VII.", "7 ", "VII "
 _HEADING_NUM_PREFIX_RE = re.compile(r'^(?:[\dIVXivx]+[\.\)\s]+)')
@@ -116,6 +117,11 @@ def _parse_pages(pages_str: str) -> set[int]:
         else:
             result.add(int(part))
     return result
+
+
+def _tail_scan_start(total_pages: int) -> int:
+    """返回尾部扫描窗口的起始页索引（0-based）。"""
+    return max(0, total_pages - _TAIL_SCAN_PAGE_LIMIT)
 
 
 def _is_ref_heading_line(line_text: str) -> bool:
@@ -165,10 +171,14 @@ def detect_reference_pages(pdf_path: Path) -> list[int]:
     ref_heading_page = None
     matched_line_text = None
 
-    _log(f"[ref-detect] Scanning {total} pages for reference heading (backward)...")
+    scan_start = _tail_scan_start(total)
+    _log(
+        f"[ref-detect] Scanning tail window pages "
+        f"{scan_start + 1}-{total} for reference heading (backward)..."
+    )
 
-    # 从最后一页向前扫描，参考文献部分通常在论文后半部分
-    for page_idx in range(total - 1, -1, -1):
+    # 仅扫描尾部窗口，避免为跳过参考文献额外全文扫描
+    for page_idx in range(total - 1, scan_start - 1, -1):
         page = doc[page_idx]
         blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)["blocks"]
 
@@ -206,7 +216,7 @@ def detect_reference_pages(pdf_path: Path) -> list[int]:
 
         _log(f"[ref-detect] Reference pages to skip: {ref_pages}")
     else:
-        _log("[ref-detect] No reference heading found.")
+        _log("[ref-detect] No reference heading found in tail window.")
 
     doc.close()
     return ref_pages
@@ -225,9 +235,17 @@ def _is_ack_heading_line(line_text: str) -> bool:
 def detect_acknowledgement_pages(pdf_path: Path) -> list[int]:
     """检测致谢页（1-based），使用结构化标题检测，只跳包含标题的页。"""
     doc = fitz.open(str(pdf_path))
+    total = len(doc)
+    scan_start = _tail_scan_start(total)
     ack_pages: list[int] = []
 
-    for page in doc:
+    _log(
+        f"[ack-detect] Scanning tail window pages "
+        f"{scan_start + 1}-{total} for acknowledgement heading..."
+    )
+
+    for page_idx in range(scan_start, total):
+        page = doc[page_idx]
         blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)["blocks"]
         for block in blocks:
             if block.get("type", 0) != 0:
@@ -243,7 +261,7 @@ def detect_acknowledgement_pages(pdf_path: Path) -> list[int]:
             break
 
     if not ack_pages:
-        _log("[ack-detect] No acknowledgement heading found.")
+        _log("[ack-detect] No acknowledgement heading found in tail window.")
 
     doc.close()
     return ack_pages
@@ -292,7 +310,8 @@ def translate(
     no_mono: bool = False,
     debug: bool = False,
     qps: int | None = None,
-    skip_references: bool = True,
+    pool_max_workers: int | None = None,
+    skip_references: bool = False,
     custom_prompt: str | None = None,
     extra_args: list[str] | None = None,
     on_progress: Callable[[str], None] | None = None,
@@ -311,6 +330,7 @@ def translate(
         no_mono:        不生成纯中文 PDF。
         debug:          开启 pdf2zh debug 模式。
         qps:            QPS 限制，默认取 config.DEFAULT_QPS。
+        pool_max_workers: 翻译线程池工人数，默认取 config.DEFAULT_POOL_MAX_WORKERS。
         skip_references: 自动跳过参考文献和致谢页。
         custom_prompt:  自定义翻译 prompt，默认用考古学 prompt。
         extra_args:     传给 pdf2zh.exe 的额外参数。
@@ -330,6 +350,8 @@ def translate(
     input_pdf = Path(input_pdf)
     if qps is None:
         qps = config.DEFAULT_QPS
+    if pool_max_workers is None:
+        pool_max_workers = config.DEFAULT_POOL_MAX_WORKERS
     if on_progress:
         set_logger(on_progress)
 
@@ -433,6 +455,9 @@ def translate(
             "--short-line-split-factor", "0.8",
         ]
 
+        if pool_max_workers is not None:
+            command.extend(["--pool-max-workers", str(pool_max_workers)])
+
         if glossary_csv and glossary_csv.exists():
             command.extend(["--glossaries", str(glossary_csv)])
         if pages:
@@ -471,17 +496,39 @@ def translate(
             encoding="utf-8",
             errors="replace",
         )
-        stdout_text = ""
-        stderr_text = ""
 
-        while True:
+        # 实时读取 stderr（pdf2zh/babeldoc 的 tqdm 进度写在 stderr）
+        stderr_lines: list[str] = []
+        _PROGRESS_RE = re.compile(r'(\d+)%')
+
+        def _drain_stderr() -> None:
+            """在后台线程中逐行读取 stderr，解析 tqdm 进度并回调。"""
+            assert process.stderr is not None
+            for raw_line in process.stderr:
+                line = raw_line.rstrip('\n\r')
+                stderr_lines.append(line)
+                # tqdm 非 TTY 模式输出形如：
+                #   translate:  45%|████▌     | 45/100 [01:23<01:34, ...]
+                m = _PROGRESS_RE.search(line)
+                if m:
+                    pct = int(m.group(1))
+                    _log(f"[pdf2zh:progress] {pct}%")
+
+        stderr_thread = threading.Thread(
+            target=_drain_stderr, daemon=True, name="pdf2zh-stderr"
+        )
+        stderr_thread.start()
+
+        # 主线程轮询：等待进程结束或取消
+        while process.poll() is None:
             if cancel_event and cancel_event.is_set():
                 process.terminate()
                 try:
-                    stdout_text, stderr_text = process.communicate(timeout=5)
+                    process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill()
-                    stdout_text, stderr_text = process.communicate()
+                    process.wait()
+                stderr_thread.join(timeout=2)
 
                 _log("[pdf2zh] Translation cancelled")
                 _cleanup_translation_outputs(output_dir, working_pdf.stem)
@@ -491,16 +538,16 @@ def translate(
                     "mono_pdf": None,
                     "dual_pdf": None,
                     "returncode": -1,
-                    "stdout": stdout_text,
-                    "stderr": stderr_text,
+                    "stdout": "",
+                    "stderr": "\n".join(stderr_lines),
                     "cancelled": True,
                 }
+            time.sleep(0.3)
 
-            try:
-                stdout_text, stderr_text = process.communicate(timeout=0.2)
-                break
-            except subprocess.TimeoutExpired:
-                time.sleep(0.1)
+        # 进程已退出，等待 stderr 线程读完尾部数据
+        stderr_thread.join(timeout=5)
+        stdout_text = process.stdout.read() if process.stdout else ""
+        stderr_text = "\n".join(stderr_lines)
 
         returncode = process.returncode if process.returncode is not None else -1
 

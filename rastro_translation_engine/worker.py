@@ -146,7 +146,7 @@ class TranslationWorker:
             base_url=params.get("providerAuth", {}).get("baseUrl"),
             output_mode=params.get("outputMode", "bilingual"),
             figure_translation=params.get("figureTranslation", True),
-            skip_reference_pages=params.get("skipReferencePages", True),
+            skip_reference_pages=params.get("skipReferencePages", False),
             force_refresh=params.get("forceRefresh", False),
             timeout_seconds=params.get("timeoutSeconds", 1800),
             custom_prompt=params.get("customPrompt"),
@@ -252,6 +252,17 @@ class TranslationWorker:
                 elif "[pdf2zh] Model:" in msg:
                     job.stage = "translating"
                     job.progress = max(job.progress, 0.4)
+                elif "[pdf2zh:progress]" in msg:
+                    # 实时百分比：[pdf2zh:progress] 45%
+                    try:
+                        pct_str = msg.split("[pdf2zh:progress]")[1].strip().rstrip('%')
+                        pct = int(pct_str)
+                        # 将 babeldoc 的 0-100 映射到 0.40-0.90 区间
+                        mapped = 0.40 + (pct / 100.0) * 0.50
+                        job.stage = "translating"
+                        job.progress = max(job.progress, min(mapped, 0.90))
+                    except (ValueError, IndexError):
+                        pass
 
             # 调用翻译核心
             result = ag_translate(

@@ -29,6 +29,11 @@ CLAUDE_API_KEY: str = os.environ.get("AG_CLAUDE_API_KEY", "")
 CLAUDE_MODEL: str = os.environ.get("AG_CLAUDE_MODEL", "Claude Sonnet 4.6")
 
 # ── 翻译参数默认值 ────────────────────────────────────────────────
-DEFAULT_QPS: int = 2
+# pdf2zh 默认 QPS=4；Google AI Studio Tier 1 和硅基流动免费层均为
+# ~1000 RPM（≈16 QPS），10 是兼顾吞吐和安全余量的推荐值。
+DEFAULT_QPS: int = 10
+# 翻译线程池工人数，None 时由 pdf2zh 自动取 QPS 值。
+# 显式设 8 可在 QPS 限流窗口内让更多请求并行排队。
+DEFAULT_POOL_MAX_WORKERS: int | None = 8
 DEFAULT_LANG_IN: str = "en"
 DEFAULT_LANG_OUT: str = "zh"

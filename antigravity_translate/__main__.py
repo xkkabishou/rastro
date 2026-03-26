@@ -20,10 +20,13 @@ def main() -> None:
     parser.add_argument("--pages", "-p", help="页码范围，如 1-3,5")
     parser.add_argument("--no-dual", action="store_true", help="不生成双语 PDF")
     parser.add_argument("--no-mono", action="store_true", help="不生成纯中文 PDF")
-    parser.add_argument("--no-skip-refs", action="store_true",
-                        help="不自动跳过参考文献和致谢页")
+    parser.add_argument("--skip-refs", action="store_true",
+                        help="自动跳过参考文献和致谢页")
     parser.add_argument("--debug", action="store_true", help="开启 debug 模式")
-    parser.add_argument("--qps", type=int, default=None, help="QPS 限制（默认 2）")
+    parser.add_argument("--qps", type=int, default=None,
+                        help="QPS 限制（默认 10）")
+    parser.add_argument("--pool-max-workers", type=int, default=None,
+                        help="翻译线程池工人数（默认 8）")
     parser.add_argument("--pdf2zh-exe", help="pdf2zh.exe 路径")
     parser.add_argument("--api-base-url", help="LLM API base URL")
     parser.add_argument("--api-key", help="LLM API key")
@@ -49,7 +52,8 @@ def main() -> None:
         no_mono=args.no_mono,
         debug=args.debug,
         qps=args.qps,
-        skip_references=not args.no_skip_refs,
+        pool_max_workers=args.pool_max_workers,
+        skip_references=args.skip_refs,
     )
 
     sys.exit(result["returncode"])
