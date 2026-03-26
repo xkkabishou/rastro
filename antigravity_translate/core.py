@@ -453,6 +453,7 @@ def translate(
             "--primary-font-family", "serif",
             "--split-short-lines",
             "--short-line-split-factor", "0.8",
+            "--no-auto-extract-glossary",
         ]
 
         if pool_max_workers is not None:
@@ -474,6 +475,7 @@ def translate(
         _log(f"[pdf2zh] Starting translation: {input_pdf.name}")
         _log(f"[pdf2zh] Model: {config.CLAUDE_MODEL}")
         _log(f"[pdf2zh] Output directory: {output_dir}")
+        _log(f"[pdf2zh:total_pages] {total_pages}")
 
         if cancel_event and cancel_event.is_set():
             _cleanup_translation_outputs(output_dir, working_pdf.stem)
@@ -490,7 +492,7 @@ def translate(
 
         process = subprocess.Popen(
             command,
-            stdout=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
@@ -546,7 +548,7 @@ def translate(
 
         # 进程已退出，等待 stderr 线程读完尾部数据
         stderr_thread.join(timeout=5)
-        stdout_text = process.stdout.read() if process.stdout else ""
+        stdout_text = ""
         stderr_text = "\n".join(stderr_lines)
 
         returncode = process.returncode if process.returncode is not None else -1

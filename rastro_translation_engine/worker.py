@@ -237,8 +237,29 @@ class TranslationWorker:
             no_dual = job.output_mode == "translated_only"
             no_mono = False
 
+            # ── 进度估算器 ──────────────────────────────────────────
+            # Rich Progress 在非 TTY 环境下不输出中间进度，无法从 stderr
+            # 解析实时百分比。改用基于总页数的时间估算线性推进进度条。
+            _est_seconds_per_page = 12  # QPS=10, workers=8 下的粗略估计
+            _progress_timer: threading.Timer | None = None
+            _total_pages: int = 0
+            _translate_started = threading.Event()
+
+            def _tick_progress() -> None:
+                """后台定时器：每 3 秒匀速推进，上限 0.95。"""
+                if job.status != JobStatus.RUNNING:
+                    return
+                if job.progress < 0.95:
+                    job.progress = min(job.progress + 0.005, 0.95)
+                    job.updated_at = _now_iso()
+                nonlocal _progress_timer
+                _progress_timer = threading.Timer(3.0, _tick_progress)
+                _progress_timer.daemon = True
+                _progress_timer.start()
+
             def progress_callback(msg: str) -> None:
                 """进度回调，更新任务状态。"""
+                nonlocal _total_pages, _progress_timer
                 job.updated_at = _now_iso()
                 if "[preprocess]" in msg:
                     job.stage = "extracting"
@@ -247,20 +268,23 @@ class TranslationWorker:
                     job.stage = "translating"
                     job.progress = 0.35
                 elif "[pdf2zh] Translation complete" in msg:
+                    # 翻译结束，停止计时器
+                    if _progress_timer:
+                        _progress_timer.cancel()
                     job.stage = "postprocessing"
                     job.progress = 0.9
                 elif "[pdf2zh] Model:" in msg:
                     job.stage = "translating"
-                    job.progress = max(job.progress, 0.4)
-                elif "[pdf2zh:progress]" in msg:
-                    # 实时百分比：[pdf2zh:progress] 45%
+                    job.progress = max(job.progress, 0.40)
+                    # 收到 Model 信息说明 pdf2zh 开始工作，启动计时器
+                    if not _translate_started.is_set():
+                        _translate_started.set()
+                        _tick_progress()
+                elif "[pdf2zh:total_pages]" in msg:
                     try:
-                        pct_str = msg.split("[pdf2zh:progress]")[1].strip().rstrip('%')
-                        pct = int(pct_str)
-                        # 将 babeldoc 的 0-100 映射到 0.40-0.90 区间
-                        mapped = 0.40 + (pct / 100.0) * 0.50
-                        job.stage = "translating"
-                        job.progress = max(job.progress, min(mapped, 0.90))
+                        _total_pages = int(
+                            msg.split("[pdf2zh:total_pages]")[1].strip()
+                        )
                     except (ValueError, IndexError):
                         pass
 
@@ -277,6 +301,10 @@ class TranslationWorker:
                 on_progress=progress_callback,
                 cancel_event=job._cancel_event,
             )
+
+            # 确保计时器停止
+            if _progress_timer:
+                _progress_timer.cancel()
 
             if result.get("cancelled") or job._cancel_event.is_set():
                 job.status = JobStatus.CANCELLED
