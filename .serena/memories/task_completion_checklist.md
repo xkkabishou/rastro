@@ -1,5 +1,0 @@
-- 完成代码后至少执行相关 Rust 构建或测试：`cargo build`、`cargo test`，必要时再做 `cargo tauri dev` 手动验证。
-- 检查 `serde` 字段名是否保持 `camelCase`，错误码是否保持 `SCREAMING_SNAKE_CASE`。
-- 确认未改动 `src/shared/types.ts` 与 `src/`。
-- 更新 `genesis/v1/05_TASKS.md` 中对应任务 checkbox。
-- 最终汇报需包含关键文件路径、验证结果、残留风险和自然后续步骤。

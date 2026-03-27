@@ -60,3 +60,23 @@ __pycache__/
 *.bak
 tmp-*.png
 antigravity_translate.zip
+
+# AI 工具配置（敏感/内部）
+.agent/
+.claude/
+.serena/
+AGENTS.MD
+CLAUDE.md
+
+# 内部文档与规划
+genesis/
+openspec/
+review/
+docs/plans/
+
+# Python 引擎（独立部署，不随主项目发布）
+antigravity_translate/
+rastro_notebooklm_engine/
+rastro_translation_engine/
+requirements.txt
+scripts/
