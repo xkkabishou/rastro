@@ -617,6 +617,7 @@ impl ZoteroConnector {
 /// 附件插入结果
 #[derive(Debug, Clone)]
 pub struct StoredAttachmentResult {
+    #[allow(dead_code)] // add_stored_attachment 返回值的一部分
     pub item_key: String,
     pub file_path: String,
 }
@@ -786,6 +787,7 @@ fn query_page(
         .map_err(map_sqlite_error)
 }
 
+#[allow(dead_code)] // 旧版单条查询，已被 batch_fetch_authors 替代但保留备用
 fn fetch_authors(connection: &Connection, item_id: i64) -> Result<Vec<String>, AppError> {
     let mut statement = connection
         .prepare(
@@ -918,6 +920,7 @@ fn batch_fetch_first_attachments(
     Ok(map)
 }
 
+#[allow(dead_code)] // 旧版单条查询，已被 batch_fetch_first_attachments 替代但保留备用
 fn lookup_first_attachment(
     connection: &Connection,
     parent_item_id: i64,
@@ -1382,6 +1385,7 @@ fn map_sqlite_error(error: rusqlite::Error) -> AppError {
     AppError::from(error)
 }
 
+#[allow(dead_code)] // 错误诊断工具函数
 fn is_locked_sqlite_error(error: &rusqlite::Error) -> bool {
     matches!(
         error,

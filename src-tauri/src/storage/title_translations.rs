@@ -6,10 +6,14 @@ use sha2::{Digest, Sha256};
 #[derive(Debug, Clone)]
 pub struct TitleTranslationRecord {
     pub title_hash: String,
+    #[allow(dead_code)]
     pub original_title: String,
     pub translated_title: String,
+    #[allow(dead_code)]
     pub provider: String,
+    #[allow(dead_code)]
     pub model: String,
+    #[allow(dead_code)]
     pub created_at: String,
 }
 
@@ -72,6 +76,7 @@ pub fn insert(
 }
 
 /// 从给定标题列表中返回尚未缓存的标题
+#[allow(dead_code)] // 预留的缓存筛选函数，测试中有覆盖
 pub fn list_uncached_titles(
     connection: &Connection,
     titles: &[String],

@@ -1,6 +1,5 @@
 // Rastro 后端错误模型
 // 与 src/shared/types.ts 中的 AppError / AppErrorCode 一一对应
-#![allow(dead_code)]
 
 use serde::Serialize;
 use std::collections::HashMap;

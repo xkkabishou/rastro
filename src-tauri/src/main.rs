@@ -94,7 +94,7 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             ipc::settings::get_custom_prompt,
             ipc::settings::save_custom_prompt,
             ipc::settings::reset_custom_prompt,
-            // G. Zotero 集成 (5 个)
+            // I. Zotero 集成 (7 个)
             ipc::zotero::detect_zotero_library,
             ipc::zotero::fetch_zotero_items,
             ipc::zotero::fetch_zotero_collections,
@@ -102,7 +102,7 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             ipc::zotero::open_zotero_attachment,
             ipc::zotero::export_md_to_zotero,
             ipc::zotero::export_pdf_to_zotero,
-            // H. NotebookLM 集成 (10 个)
+            // J. NotebookLM 集成 (11 个)
             ipc::notebooklm::notebooklm_get_status,
             ipc::notebooklm::notebooklm_begin_login,
             ipc::notebooklm::notebooklm_open_external,
@@ -114,30 +114,30 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             ipc::notebooklm::notebooklm_get_task,
             ipc::notebooklm::notebooklm_list_artifacts,
             ipc::notebooklm::notebooklm_download_artifact,
-            // I. 标注 (5 个)
+            // K. 标注 (5 个)
             ipc::annotations::save_annotation,
             ipc::annotations::update_annotation,
             ipc::annotations::delete_annotation,
             ipc::annotations::list_annotations,
             ipc::annotations::list_annotations_by_page,
-            // J. 翻译 Provider 配置与翻译 (6 个)
+            // L. 翻译 Provider 配置与翻译 (6 个)
             ipc::translation_settings::list_translation_provider_configs,
             ipc::translation_settings::save_translation_provider_key,
             ipc::translation_settings::set_active_translation_provider,
             ipc::translation_settings::update_translation_provider_config,
             ipc::translation_settings::test_translation_connection,
             ipc::translation_settings::translate_text,
-            // K. 标题翻译缓存 (2 个)
+            // M. 标题翻译缓存 (2 个)
             ipc::title_translation::get_title_translation,
             ipc::title_translation::batch_translate_titles,
-            // L. Obsidian 笔记同步 (6 个)
+            // N. Obsidian 笔记同步 (6 个)
             ipc::obsidian::get_obsidian_config,
             ipc::obsidian::save_obsidian_config,
             ipc::obsidian::validate_obsidian_vault,
             ipc::obsidian::export_summary_to_obsidian,
             ipc::obsidian::export_chats_to_obsidian,
             ipc::obsidian::detect_obsidian_vaults,
-            // M. 精读模式 (3 个)
+            // O. 精读模式 (3 个)
             ipc::deep_read::save_deep_read_text,
             ipc::deep_read::clear_deep_read_text,
             ipc::deep_read::get_deep_read_status,

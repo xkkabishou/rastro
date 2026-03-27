@@ -1,5 +1,4 @@
 // 全局应用状态
-#![allow(dead_code)]
 
 use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
 
@@ -21,6 +20,7 @@ use crate::{
 /// Tauri 全局状态
 #[derive(Clone)]
 pub struct AppState {
+    #[allow(dead_code)] // initialize() 中设置，后续功能将使用
     pub data_dir: PathBuf,
     pub storage: Storage,
     pub keychain: KeychainService,
@@ -28,8 +28,10 @@ pub struct AppState {
     pub translation_manager: TranslationManager,
     pub translation_status: Arc<Mutex<TranslationEngineStatus>>,
     pub notebooklm_manager: NotebookLMManager,
+    #[allow(dead_code)] // 为 NotebookLM 引擎管理预留
     pub notebooklm_status: Arc<Mutex<NotebookLMEngineStatus>>,
     pub zotero_status: Arc<Mutex<ZoteroStatusDto>>,
+    #[allow(dead_code)] // 运行时动态标志位，后续功能将使用
     pub runtime_flags: Arc<Mutex<HashMap<String, String>>>,
 }
 
@@ -90,6 +92,7 @@ impl AppState {
     }
 
     /// 返回应用数据库文件路径
+    #[allow(dead_code)] // 调试工具方法
     pub fn database_path(&self) -> PathBuf {
         self.data_dir.join("app.db")
     }
