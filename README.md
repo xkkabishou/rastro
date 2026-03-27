@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.png" alt="Rastro Banner" width="720" />
+  <img src="docs/banner.png?v=2" alt="Rastro Banner" width="720" />
 </p>
 
 <h1 align="center">Rastro</h1>
