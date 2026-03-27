@@ -184,6 +184,9 @@ interface ZoteroCache {
 }
 let _zoteroCache: ZoteroCache | null = null;
 
+/** 模块级变量：保存 tooltip 坐标供右键菜单 morph 动画使用 */
+let _morphOrigin: { x: number; y: number } | null = null;
+
 /* ======================================================================== */
 /* ZoteroList                                                                */
 /* ======================================================================== */
@@ -208,6 +211,7 @@ export const ZoteroList: React.FC<ZoteroListProps> = ({
     x: number;
     y: number;
     doc: DocumentSnapshot;
+    morphOrigin?: { x: number; y: number } | null;
   } | null>(null);
 
   const setCurrentDocument = useDocumentStore(s => s.setCurrentDocument);
@@ -305,6 +309,9 @@ export const ZoteroList: React.FC<ZoteroListProps> = ({
     event.stopPropagation();
     if (!item.pdfPath) return;
     const { clientX, clientY } = event;
+    // 读取并消费 morph 原点坐标
+    const origin = _morphOrigin;
+    _morphOrigin = null;
 
     try {
       const doc = await ipcClient.openZoteroAttachment(item.itemKey);
@@ -313,6 +320,7 @@ export const ZoteroList: React.FC<ZoteroListProps> = ({
         x: clientX,
         y: clientY,
         doc,
+        morphOrigin: origin,
       });
     } catch (err) {
       console.error('打开 Zotero 文献右键菜单失败:', err);
@@ -449,12 +457,14 @@ export const ZoteroList: React.FC<ZoteroListProps> = ({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {collections.map((n, i) => (
               <CollectionNode key={n.collection.collectionId} node={n} depth={0} colorIdx={i}
+                isContextMenuOpen={contextMenuState !== null}
                 expandedIds={expandedIds} cache={cache} expandedItems={expandedItems} itemCache={itemCache}
                 onToggleCol={toggleCol} onLoadMore={loadItems} onToggleItem={toggleItem}
                 onItemContextMenu={handleItemContextMenu} onArtifactClick={handleArtifactClick} />
             ))}
             {uncatCount > 0 && (
               <CollectionNode node={null} uncatCount={uncatCount} depth={0} colorIdx={collections.length}
+                isContextMenuOpen={contextMenuState !== null}
                 expandedIds={expandedIds} cache={cache} expandedItems={expandedItems} itemCache={itemCache}
                 onToggleCol={toggleCol} onLoadMore={loadItems} onToggleItem={toggleItem}
                 onItemContextMenu={handleItemContextMenu} onArtifactClick={handleArtifactClick} />
@@ -478,6 +488,7 @@ export const ZoteroList: React.FC<ZoteroListProps> = ({
         <DocumentMenu
           doc={contextMenuState.doc}
           position={{ x: contextMenuState.x, y: contextMenuState.y }}
+          morphOrigin={contextMenuState.morphOrigin}
           onAction={(action) => {
             onDocumentContextMenuAction?.(action, contextMenuState.doc);
             setContextMenuState(null);
@@ -498,6 +509,7 @@ interface CollectionNodeProps {
   uncatCount?: number;
   depth: number;
   colorIdx: number;
+  isContextMenuOpen: boolean;
   expandedIds: Set<string>;
   cache: Map<string, ExpandedData>;
   expandedItems: Set<string>;
@@ -510,7 +522,7 @@ interface CollectionNodeProps {
 }
 
 const CollectionNode: React.FC<CollectionNodeProps> = ({
-  node, uncatCount, depth, colorIdx, expandedIds, cache, expandedItems, itemCache,
+  node, uncatCount, depth, colorIdx, isContextMenuOpen, expandedIds, cache, expandedItems, itemCache,
   onToggleCol, onLoadMore, onToggleItem, onItemContextMenu, onArtifactClick,
 }) => {
   const isUncat = node === null;
@@ -587,6 +599,7 @@ const CollectionNode: React.FC<CollectionNodeProps> = ({
             {/* 子文件夹 */}
             {hasKids && node.children.map((c) => (
               <CollectionNode key={c.collection.collectionId} node={c} depth={depth + 1} colorIdx={colorIdx}
+                isContextMenuOpen={isContextMenuOpen}
                 expandedIds={expandedIds} cache={cache} expandedItems={expandedItems} itemCache={itemCache}
                 onToggleCol={onToggleCol} onLoadMore={onLoadMore} onToggleItem={onToggleItem}
                 onItemContextMenu={onItemContextMenu} onArtifactClick={onArtifactClick} />
@@ -604,6 +617,7 @@ const CollectionNode: React.FC<CollectionNodeProps> = ({
             {!d?.isLoading && d?.items.map(item => (
               <ItemFolder key={item.itemKey} item={item} accentColor={color.accent}
                 isExpanded={expandedItems.has(item.itemKey)}
+                isContextMenuOpen={isContextMenuOpen}
                 expandedData={itemCache.get(item.itemKey)}
                 onToggle={() => onToggleItem(item)}
                 onContextMenu={(event) => onItemContextMenu(event, item)}
@@ -642,6 +656,7 @@ interface ItemFolderProps {
   item: ZoteroItemDto;
   accentColor: string;
   isExpanded: boolean;
+  isContextMenuOpen: boolean;
   expandedData?: ItemExpandedData;
   onToggle: () => void;
   onContextMenu: (event: React.MouseEvent) => void;
@@ -649,13 +664,18 @@ interface ItemFolderProps {
 }
 
 const ItemFolder: React.FC<ItemFolderProps> = ({
-  item, accentColor, isExpanded, expandedData, onToggle, onContextMenu, onArtifactClick,
+  item, accentColor, isExpanded, isContextMenuOpen, expandedData, onToggle, onContextMenu, onArtifactClick,
 }) => {
   const label = useMemo(() => zoteroItemLabel(item), [item]);
   const hasContent = expandedData && !expandedData.isLoading && expandedData.artifacts.length > 0;
 
   // --- T3.2.2: 标题翻译 Tooltip ---
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contextMenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ref 保存最新的 isContextMenuOpen，供 setTimeout 回调读取
+  const isContextMenuOpenRef = useRef(isContextMenuOpen);
+  isContextMenuOpenRef.current = isContextMenuOpen;
+
   const [tooltipState, setTooltipState] = useState<{
     visible: boolean;
     translatedTitle: string | null;
@@ -665,6 +685,8 @@ const ItemFolder: React.FC<ItemFolderProps> = ({
   }>({ visible: false, translatedTitle: null, loading: false, x: 0, y: 0 });
 
   const handleItemMouseEnter = useCallback((e: React.MouseEvent) => {
+    // 右键菜单打开时不触发翻译 tooltip（用 ref 读取最新值，避免闭包过期）
+    if (isContextMenuOpenRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     // tooltip 紧贴条目下方，x 对齐条目左边界
     const x = rect.left;
@@ -672,6 +694,8 @@ const ItemFolder: React.FC<ItemFolderProps> = ({
 
     // 启动 300ms 延迟
     hoverTimerRef.current = setTimeout(async () => {
+      // 再次检查：定时器 fire 时菜单可能已经打开了
+      if (isContextMenuOpenRef.current) return;
       setTooltipState(prev => ({ ...prev, visible: true, loading: true, x, y }));
       try {
         const result = await ipcClient.getTitleTranslation(item.title);
@@ -691,13 +715,32 @@ const ItemFolder: React.FC<ItemFolderProps> = ({
       clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
     }
-    setTooltipState({ visible: false, translatedTitle: null, loading: false, x: 0, y: 0 });
+    // 仅设 visible:false，保留其余数据供 AnimatePresence 退出动画使用
+    setTooltipState(prev => ({ ...prev, visible: false }));
   }, []);
+
+  // 右键菜单：保存 tooltip 坐标供 morph 动画使用
+  const handleContextMenuWithTransition = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // 清除 hover timer
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    // 保存 tooltip 坐标供菜单 morph 动画起点
+    _morphOrigin = tooltipState.visible ? { x: tooltipState.x, y: tooltipState.y } : null;
+    // 关闭 tooltip
+    setTooltipState(prev => ({ ...prev, visible: false }));
+    // 立刻触发菜单
+    onContextMenu(e);
+  }, [onContextMenu, tooltipState.visible, tooltipState.x, tooltipState.y]);
 
   // 组件卸载时清除 timer
   useEffect(() => {
     return () => {
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+      if (contextMenuTimerRef.current) clearTimeout(contextMenuTimerRef.current);
     };
   }, []);
 
@@ -724,10 +767,7 @@ const ItemFolder: React.FC<ItemFolderProps> = ({
           handleItemMouseLeave();
           e.currentTarget.style.background = isExpanded ? 'color-mix(in srgb, var(--color-primary) 5%, transparent)' : 'transparent';
         }}
-        onContextMenu={(e) => {
-          handleItemMouseLeave();
-          onContextMenu(e);
-        }}
+        onContextMenu={handleContextMenuWithTransition}
       >
         {/* 展开箭头 */}
         <span

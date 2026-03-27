@@ -54,10 +54,10 @@ export const TitleTranslationTooltip: React.FC<TitleTranslationTooltipProps> = (
     <AnimatePresence>
       {visible && (
         <motion.div
-          initial={{ opacity: 0, scale: 0.9, y: -4 }}
+          initial={{ opacity: 0, scale: 0.92, y: -4 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.9, y: -4 }}
-          transition={{ duration: 0.15 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          transition={{ type: 'spring', stiffness: 600, damping: 35 }}
           className="fixed rounded-xl backdrop-blur-xl backdrop-saturate-150 border border-white/30 dark:border-white/10 shadow-xl pointer-events-none"
           style={{
             zIndex: 99999,

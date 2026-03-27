@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { motion } from 'framer-motion';
 import type { DocumentSnapshot, DocumentArtifactDto } from '../../shared/types';
 import type { FlatNode } from './DocumentTree';
 
@@ -85,6 +86,15 @@ function buildDocumentMenuItems(doc: DocumentSnapshot): MenuEntry[] {
       action: 'reveal_in_finder' as ContextMenuAction,
     },
     { type: 'separator' as const },
+    ...(hasTranslation
+      ? [
+          {
+            label: '删除翻译',
+            action: 'delete_translation' as ContextMenuAction,
+            danger: true,
+          },
+        ]
+      : []),
     {
       label: '从历史中移除',
       action: 'remove_from_history' as ContextMenuAction,
@@ -165,6 +175,8 @@ export interface DocumentContextMenuProps {
 interface ContextMenuPortalProps {
   items: MenuEntry[];
   position: { x: number; y: number };
+  /** Tooltip 的位置，用于 morph 滑动起点动画 */
+  morphOrigin?: { x: number; y: number } | null;
   onAction: (action: ContextMenuAction) => void;
   onClose: () => void;
 }
@@ -172,12 +184,13 @@ interface ContextMenuPortalProps {
 const ContextMenuPortal: React.FC<ContextMenuPortalProps> = ({
   items,
   position,
+  morphOrigin,
   onAction,
   onClose,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // 点击外部关闭
+  // 点击外部 / Escape / 滚动 → 关闭
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -187,17 +200,21 @@ const ContextMenuPortal: React.FC<ContextMenuPortalProps> = ({
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
+    // 滚动时关闭（capture phase 捕获所有容器的滚动）
+    const handleScroll = () => onClose();
     // 延迟绑定，避免当前的 contextmenu 事件触发关闭
     const timer = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('contextmenu', handleClickOutside);
       document.addEventListener('keydown', handleEscape);
+      document.addEventListener('scroll', handleScroll, true);
     }, 0);
     return () => {
       clearTimeout(timer);
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('contextmenu', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('scroll', handleScroll, true);
     };
   }, [onClose]);
 
@@ -215,18 +232,43 @@ const ContextMenuPortal: React.FC<ContextMenuPortalProps> = ({
     }
   }, [position]);
 
+  // morph 动画：如果有 tooltip 原点，从 tooltip 位置滑动并缩放到菜单位置
+  // 使用 x/y (translateX/Y) + scale = GPU 加速，丝滑 60fps
+  const hasMorph = morphOrigin != null;
+  const initialX = hasMorph ? morphOrigin.x : position.x;
+  const initialY = hasMorph ? morphOrigin.y : position.y;
+
   return createPortal(
-    <div
+    <motion.div
       ref={menuRef}
-      className="context-menu-overlay"
+      className="context-menu-overlay min-w-[180px] py-1 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] shadow-xl backdrop-blur-xl"
       style={{
         position: 'fixed',
-        top: position.y,
-        left: position.x,
+        top: 0,
+        left: 0,
         zIndex: 9999,
+        transformOrigin: 'top left',
       }}
+      initial={{
+        x: initialX,
+        y: initialY,
+        scale: hasMorph ? 0.6 : 0.85,
+        opacity: hasMorph ? 0.8 : 0,
+      }}
+      animate={{
+        x: position.x,
+        y: position.y,
+        scale: 1,
+        opacity: 1,
+      }}
+      transition={{ type: 'spring', stiffness: 500, damping: 32, mass: 0.7 }}
     >
-      <div className="min-w-[180px] py-1 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] shadow-lg backdrop-blur-xl">
+      {/* 菜单内容：延迟淡入，等外壳完成滑动 */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.12, delay: hasMorph ? 0.06 : 0 }}
+      >
         {items.map((entry, index) => {
           if (isSeparator(entry)) {
             return (
@@ -257,9 +299,41 @@ const ContextMenuPortal: React.FC<ContextMenuPortalProps> = ({
             </button>
           );
         })}
-      </div>
-    </div>,
+      </motion.div>
+    </motion.div>,
     document.body,
+  );
+};
+
+interface DocumentMenuProps {
+  doc: DocumentSnapshot;
+  position: { x: number; y: number };
+  morphOrigin?: { x: number; y: number } | null;
+  onAction: (action: ContextMenuAction) => void;
+  onClose: () => void;
+}
+
+export const DocumentMenu: React.FC<DocumentMenuProps> = ({
+  doc,
+  position,
+  morphOrigin,
+  onAction,
+  onClose,
+}) => {
+  const menuItems = buildDocumentMenuItems(doc);
+
+  if (menuItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <ContextMenuPortal
+      items={menuItems}
+      position={position}
+      morphOrigin={morphOrigin}
+      onAction={onAction}
+      onClose={onClose}
+    />
   );
 };
 

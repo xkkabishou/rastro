@@ -296,19 +296,30 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
             message: '确定要删除此文档的翻译缓存吗？翻译后的 PDF 文件将被删除，需要时可以重新翻译。',
             onConfirm: async () => {
               try {
-                await ipcClient.deleteTranslationCache(docId);
+                console.log('[删除翻译] docId =', docId, 'doc.title =', doc.title);
+                const result = await ipcClient.deleteTranslationCache(docId);
+                console.log('[删除翻译] result =', result);
                 // 清除产物缓存并刷新
                 useDocumentStore.getState().invalidateArtifacts(docId);
                 await useDocumentStore.getState().loadArtifacts(docId, true);
                 await useDocumentStore.getState().refreshDocumentSnapshot(docId);
+                // 刷新文档列表
+                await loadRecentDocuments();
                 // 如果当前显示的是该文档的翻译 PDF，回退到原文
                 const current = useDocumentStore.getState().currentDocument;
                 if (current?.documentId === docId) {
                   useDocumentStore.getState().setTranslatedPdfUrl(null);
                   useDocumentStore.getState().setTranslationJob(null);
                 }
+                if (!result.deleted) {
+                  console.warn('[删除翻译] 未找到可删除的翻译缓存');
+                }
               } catch (err) {
                 console.error('删除翻译缓存失败:', err);
+                const msg = err && typeof err === 'object' && 'message' in err
+                  ? String((err as { message: string }).message)
+                  : '删除翻译缓存时发生错误';
+                alert(msg);
               } finally {
                 setConfirmDialog(null);
               }
@@ -422,6 +433,24 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
       }
     },
     [openDocumentInViewer, loadRecentDocuments],
+  );
+
+  const handleZoteroDocumentRegistered = useCallback(async (_doc: DocumentSnapshot) => {
+    await loadRecentDocuments();
+  }, [loadRecentDocuments]);
+
+  const handleZoteroContextMenuAction = useCallback(
+    (action: ContextMenuAction, doc: DocumentSnapshot) => {
+      void loadRecentDocuments();
+      const node: FlatNode = {
+        type: 'document',
+        doc,
+        expanded: false,
+        artifactCount: doc.artifactCount,
+      };
+      handleContextMenuAction(action, node, doc);
+    },
+    [handleContextMenuAction, loadRecentDocuments],
   );
 
   // 处理本地文件选择
@@ -552,7 +581,10 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
             {/* Zotero Tab 内容 */}
             {activeTab === 'zotero' && (
               <div className="flex-1 overflow-hidden border-t border-[var(--color-separator)]">
-                <ZoteroList />
+                <ZoteroList
+                  onDocumentRegistered={handleZoteroDocumentRegistered}
+                  onDocumentContextMenuAction={handleZoteroContextMenuAction}
+                />
               </div>
             )}
 
@@ -592,4 +624,3 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
     </>
   );
 };
-
