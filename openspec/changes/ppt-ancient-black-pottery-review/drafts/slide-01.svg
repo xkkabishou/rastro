@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <!-- Background: Dark -->
+  <rect width="1280" height="720" fill="#18181b"/>
+
+  <!-- Accent line top -->
+  <rect x="60" y="60" width="80" height="4" rx="2" fill="#3b82f6"/>
+
+  <!-- Title -->
+  <text x="60" y="300" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif"
+        font-size="52" font-weight="700" fill="#fafafa" letter-spacing="2">
+    古代黑陶烧制工艺科技考古综述
+  </text>
+
+  <!-- Subtitle -->
+  <text x="60" y="365" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="22" fill="#a1a1aa" letter-spacing="1">
+    中国陶瓷史及鉴定 · 课程论文汇报
+  </text>
+
+  <!-- Accent line below subtitle -->
+  <rect x="60" y="390" width="520" height="1" fill="#3b82f6" opacity="0.4"/>
+
+  <!-- Author -->
+  <text x="60" y="480" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="24" fill="#fafafa" font-weight="500">
+    贾煜琪
+  </text>
+
+  <!-- Affiliation -->
+  <text x="60" y="520" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="16" fill="#a1a1aa">
+    南京大学考古文博与中华文明研究院
+  </text>
+
+  <!-- Date -->
+  <text x="60" y="555" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="16" fill="#71717a">
+    2026年3月
+  </text>
+
+  <!-- Accent vertical bar right side -->
+  <rect x="1200" y="200" width="4" height="320" rx="2" fill="#3b82f6" opacity="0.3"/>
+
+  <!-- Page number -->
+  <text x="1220" y="700" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="14" fill="#52525b" text-anchor="end">
+    01
+  </text>
+</svg>

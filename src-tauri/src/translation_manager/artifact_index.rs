@@ -76,6 +76,25 @@ impl TranslationArtifactIndex {
             .join(cache_key.replace(':', "-"))
     }
 
+    pub fn dto_from_record_basic(
+        &self,
+        record: translation_jobs::TranslationJobRecord,
+    ) -> TranslationJobDto {
+        build_job_dto(record, None, None, None)
+    }
+
+    pub fn dto_from_record_if_completed(
+        &self,
+        storage: &Storage,
+        record: translation_jobs::TranslationJobRecord,
+    ) -> Result<TranslationJobDto, AppError> {
+        if record.status == "completed" {
+            return self.dto_from_record(storage, record);
+        }
+
+        Ok(self.dto_from_record_basic(record))
+    }
+
     pub fn dto_from_record(
         &self,
         storage: &Storage,
@@ -90,24 +109,12 @@ impl TranslationArtifactIndex {
         let bilingual_pdf_path = artifact_path(&artifacts, ArtifactKind::BilingualPdf.as_str());
         let figure_report_path = artifact_path(&artifacts, ArtifactKind::FigureReport.as_str());
 
-        Ok(TranslationJobDto {
-            job_id: record.job_id,
-            document_id: record.document_id,
-            engine_job_id: record.engine_job_id,
-            status: record.status,
-            stage: record.stage,
-            progress: normalize_progress(record.progress),
-            provider: record.provider,
-            model: record.model,
+        Ok(build_job_dto(
+            record,
             translated_pdf_path,
             bilingual_pdf_path,
             figure_report_path,
-            error_code: record.error_code,
-            error_message: record.error_message,
-            created_at: record.created_at,
-            started_at: record.started_at,
-            finished_at: record.finished_at,
-        })
+        ))
     }
 
     pub fn validate_completed_record(
@@ -214,6 +221,32 @@ fn artifact_path(
         .iter()
         .find(|artifact| artifact.artifact_kind == kind)
         .map(|artifact| artifact.file_path.clone())
+}
+
+fn build_job_dto(
+    record: translation_jobs::TranslationJobRecord,
+    translated_pdf_path: Option<String>,
+    bilingual_pdf_path: Option<String>,
+    figure_report_path: Option<String>,
+) -> TranslationJobDto {
+    TranslationJobDto {
+        job_id: record.job_id,
+        document_id: record.document_id,
+        engine_job_id: record.engine_job_id,
+        status: record.status,
+        stage: record.stage,
+        progress: normalize_progress(record.progress),
+        provider: record.provider,
+        model: record.model,
+        translated_pdf_path,
+        bilingual_pdf_path,
+        figure_report_path,
+        error_code: record.error_code,
+        error_message: record.error_message,
+        created_at: record.created_at,
+        started_at: record.started_at,
+        finished_at: record.finished_at,
+    }
 }
 
 fn compute_sha256(path: &Path) -> Result<String, AppError> {

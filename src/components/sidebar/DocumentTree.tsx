@@ -1,5 +1,6 @@
 import React, { useRef, useMemo, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { useShallow } from 'zustand/react/shallow';
 import shibaWelcomeUrl from '../../assets/shiba/shiba-welcome.png';
 import type { DocumentSnapshot, DocumentArtifactDto } from '../../shared/types';
 import { useDocumentStore } from '../../stores/useDocumentStore';
@@ -85,7 +86,11 @@ export const DocumentTree: React.FC<DocumentTreeProps> = ({
   const expandedDocIds = useDocumentStore((s) => s.expandedDocIds);
   const artifactsByDocId = useDocumentStore((s) => s.artifactsByDocId);
   const toggleExpand = useDocumentStore((s) => s.toggleExpand);
-  const translationJob = useDocumentStore((s) => s.translationJob);
+  const translationState = useDocumentStore(useShallow((s) => ({
+    activeDocumentId: s.translationJob?.documentId ?? null,
+    isActive:
+      s.translationJob?.status === 'running' || s.translationJob?.status === 'queued',
+  })));
 
   // ADR-003: 扁平化 — 遍历文档列表，展开的文档插入其产物子节点
   const flatNodes: FlatNode[] = useMemo(() => {
@@ -204,8 +209,8 @@ export const DocumentTree: React.FC<DocumentTreeProps> = ({
                     onToggle={handleToggle}
                     onClick={handleDocClick}
                     isTranslating={
-                      translationJob?.documentId === node.doc.documentId &&
-                      (translationJob?.status === 'running' || translationJob?.status === 'queued')
+                      translationState.isActive &&
+                      translationState.activeDocumentId === node.doc.documentId
                     }
                   />
                 </DocumentContextMenu>

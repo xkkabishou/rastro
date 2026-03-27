@@ -32,6 +32,7 @@ const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 4.0;
 const ZOOM_STEP = 0.1;
 const ZOOM_DEFAULT = 1.0;
+const FALLBACK_TRANSLATION_POLL_MS = 5000;
 const PDF_SELECTION_DEBUG_ENABLED = import.meta.env.DEV;
 const PDF_SELECTION_DEBUG_STORAGE_KEY = 'pdf-selection-debug';
 const PDF_JS_FONT_FAMILY_RE = /^g_d\d+_f\d+$/i;
@@ -924,11 +925,38 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       }
       return;
     }
+  }, [currentDocument?.documentId, setTranslatedPdfUrl, translationJob]);
+
+  useEffect(() => {
+    if (!currentDocument || !translationJob) {
+      return;
+    }
+
+    if (translationJob.documentId !== currentDocument.documentId) {
+      return;
+    }
+
+    const isActiveJob = translationJob.status === 'queued' || translationJob.status === 'running';
+    if (!isActiveJob) {
+      return;
+    }
 
     let disposed = false;
     let timerId: number | undefined;
 
     const pollTranslationJob = async () => {
+      const currentStore = useDocumentStore.getState();
+      const liveJob = currentStore.translationJob;
+      if (!liveJob || liveJob.jobId !== translationJob.jobId) {
+        return;
+      }
+      if (liveJob.status !== 'queued' && liveJob.status !== 'running') {
+        return;
+      }
+      if (currentStore.currentDocument?.documentId !== currentDocument.documentId) {
+        return;
+      }
+
       try {
         const latestJob = await ipcClient.getTranslationJob(translationJob.jobId);
         if (disposed) {
@@ -946,7 +974,7 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
         if (latestJob.status === 'queued' || latestJob.status === 'running') {
           timerId = window.setTimeout(() => {
             void pollTranslationJob();
-          }, 1000);
+          }, FALLBACK_TRANSLATION_POLL_MS);
         } else if (latestJob.status === 'failed' || latestJob.status === 'cancelled') {
           setTranslationError(latestJob.errorMessage || `翻译任务${latestJob.status === 'failed' ? '失败' : '已取消'}`);
         }
@@ -957,13 +985,13 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
         console.error('轮询翻译任务失败:', err);
         timerId = window.setTimeout(() => {
           void pollTranslationJob();
-        }, 1000);
+        }, FALLBACK_TRANSLATION_POLL_MS);
       }
     };
 
     timerId = window.setTimeout(() => {
       void pollTranslationJob();
-    }, 1000);
+    }, FALLBACK_TRANSLATION_POLL_MS);
 
     return () => {
       disposed = true;
@@ -972,11 +1000,11 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       }
     };
   }, [
-    currentDocument,
+    currentDocument?.documentId,
     setTranslatedPdfUrl,
     setTranslationJob,
     setTranslationProgress,
-    translationJob,
+    translationJob?.jobId,
   ]);
 
   const isTranslating = translationJob?.status === 'running' || translationJob?.status === 'queued';

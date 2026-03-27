@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <!-- Dark Background -->
+  <rect width="1280" height="720" fill="#18181b"/>
+
+  <!-- Centered Content -->
+  <!-- Main Title -->
+  <text x="640" y="280" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="44" font-weight="bold" fill="#fafafa" text-anchor="middle">感谢聆听</text>
+
+  <!-- Divider line -->
+  <line x1="580" y1="310" x2="700" y2="310" stroke="#fafafa" stroke-width="1" opacity="0.2"/>
+
+  <!-- Author -->
+  <text x="640" y="370" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="24" fill="#fafafa" text-anchor="middle">贾煜琪</text>
+
+  <!-- Affiliation -->
+  <text x="640" y="410" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="18" fill="#fafafa" opacity="0.7" text-anchor="middle">南京大学考古文博与中华文明研究院</text>
+
+  <!-- Teacher -->
+  <text x="640" y="450" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="16" fill="#fafafa" opacity="0.6" text-anchor="middle">指导教师：王晓琪</text>
+
+  <!-- Bottom text -->
+  <text x="640" y="560" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="16" fill="#fafafa" opacity="0.35" text-anchor="middle">敬请批评指正</text>
+
+  <!-- Page Number (light text for dark background) -->
+  <text x="1220" y="700" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12" fill="#fafafa" opacity="0.3" text-anchor="end">16</text>
+</svg>

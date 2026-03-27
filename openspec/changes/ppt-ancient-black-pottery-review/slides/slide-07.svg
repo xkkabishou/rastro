@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow-md" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="720" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="60" y="48" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="32" fill="#18181b" font-weight="700">渗碳（碳致黑）</text>
+  <text x="60" y="72" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#71717a">中国新石器时代黑陶最主要的呈色工艺</text>
+
+  <!-- Main card -->
+  <g filter="url(#shadow-md)">
+    <rect x="60" y="90" width="920" height="590" rx="8" fill="#ffffff"/>
+  </g>
+  <rect x="60" y="90" width="4" height="590" rx="2" fill="#3b82f6"/>
+
+  <!-- Section 1: 呈色机理 -->
+  <text x="84" y="116" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="16" fill="#3b82f6" font-weight="700">呈色机理</text>
+  <line x1="84" y1="126" x2="956" y2="126" stroke="#f0f0f0" stroke-width="1"/>
+  <text x="84" y="144" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12.5" fill="#27272a">
+    <tspan x="84" dy="0">• 烧成后期密闭窑炉、减少进气量，有机燃料缺氧不完全燃烧，产生大量<tspan font-weight="700">碳黑</tspan>微粒和含碳气体。</tspan>
+    <tspan x="84" dy="18">• 碳沉积两途径：① 物理充填——碳黑颗粒沉降填入表面气孔；② 化学歧化——2CO→CO₂+C 析出固态碳。</tspan>
+    <tspan x="84" dy="18">• <tspan font-weight="700">刘鹏</tspan>系统实验：≤<tspan font-weight="700">630°C</tspan> 渗碳效果最佳。此温度下粘土矿物（伊利石）保留层间水及巨大比表面积，</tspan>
+    <tspan x="92" dy="16">对芳香烃挥发物有强烈吸附能力；超过 630°C 伊利石脱羟基，吸附能力骤降。</tspan>
+    <tspan x="84" dy="18">• <tspan font-weight="700">渗碳</tspan>程度由表面向内部递减，<tspan font-weight="700">SEM</tspan> 可见纳米碳颗粒呈珊瑚状/树枝状集合体充填气孔。</tspan>
+  </text>
+
+  <!-- Section 2: 李文杰四种模式 -->
+  <text x="84" y="280" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="16" fill="#3b82f6" font-weight="700">李文杰四种渗碳模式（大溪文化黑陶）</text>
+  <line x1="84" y1="290" x2="956" y2="290" stroke="#f0f0f0" stroke-width="1"/>
+  <text x="84" y="308" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12.5" fill="#27272a">
+    <tspan x="84" dy="0">① 全身皆黑——窑内充分密闭，内外均匀染黑　② 外红内黑——外侧先接触空气氧化，碳仅渗入内壁</tspan>
+    <tspan x="84" dy="18">③ 上红下黑——下半部接触燃料余烬<tspan font-weight="700">渗碳</tspan>　④ 竖条黑道——与相邻器物接触处形成局部<tspan font-weight="700">还原</tspan>微区</tspan>
+    <tspan x="84" dy="18">据此提出「窑内渗碳」与「窑外渗碳」两种操作方式。</tspan>
+  </text>
+
+  <!-- Section 3: 其他关键案例 -->
+  <text x="84" y="390" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="16" fill="#3b82f6" font-weight="700">其他关键研究</text>
+  <line x1="84" y1="400" x2="956" y2="400" stroke="#f0f0f0" stroke-width="1"/>
+  <text x="84" y="418" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12.5" fill="#27272a">
+    <tspan x="84" dy="0">• 周仁等：加热失重+仿烧实验，最早揭示龙山蛋壳黑陶<tspan font-weight="700">渗碳</tspan>本质，奠定中国古陶瓷科技研究基础。</tspan>
+    <tspan x="84" dy="18">• 沈建兴等：龙山黑陶胎体含铁量虽高，但渗碳才是呈色主因。</tspan>
+    <tspan x="84" dy="18">• 朱铁权等：淮河流域双墩遗址黑陶主要显色物质为<tspan font-weight="700">炭黑</tspan>，植物残体可能与渗碳工艺关联。</tspan>
+    <tspan x="84" dy="18">• 潘坤容等：西汉黑陶表面涂<tspan font-weight="700">炭黑</tspan>+生漆混合物，证明渗碳工艺从新石器时代延续到历史时期。</tspan>
+  </text>
+
+  <!-- Section 4: 科技判别 -->
+  <text x="84" y="530" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="16" fill="#3b82f6" font-weight="700">科技判别核心特征</text>
+  <line x1="84" y1="540" x2="956" y2="540" stroke="#f0f0f0" stroke-width="1"/>
+  <text x="84" y="558" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12.5" fill="#27272a">
+    <tspan x="84" dy="0">① <tspan font-weight="700">Raman</tspan> 光谱出现<tspan font-weight="700">游离碳</tspan>指纹峰：D峰 ~1350 cm⁻¹（缺陷模式）+ G峰 ~1580 cm⁻¹（石墨模式）</tspan>
+    <tspan x="84" dy="18">② <tspan font-weight="700">EDS</tspan> 线扫描显示碳含量从表层向内部呈明显递减梯度</tspan>
+    <tspan x="84" dy="18">③ <tspan font-weight="700">SEM</tspan> 形貌观察可见纳米碳颗粒呈珊瑚状/树枝状集合体充填于气孔中</tspan>
+  </text>
+
+  <!-- Side metric card 1 -->
+  <g filter="url(#shadow-md)">
+    <rect x="1008" y="90" width="212" height="140" rx="8" fill="#ffffff"/>
+  </g>
+  <text x="1114" y="142" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="36" fill="#3b82f6" font-weight="700" text-anchor="middle">630°C</text>
+  <text x="1114" y="170" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#71717a" text-anchor="middle">渗碳温度上限</text>
+  <text x="1114" y="196" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#71717a" text-anchor="middle" opacity="0.7">超过此温度伊利石脱</text>
+  <text x="1114" y="212" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#71717a" text-anchor="middle" opacity="0.7">结构水，吸附力骤降</text>
+
+  <!-- Side metric card 2 -->
+  <g filter="url(#shadow-md)">
+    <rect x="1008" y="250" width="212" height="150" rx="8" fill="#ffffff"/>
+  </g>
+  <text x="1114" y="296" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="18" fill="#3b82f6" font-weight="700" text-anchor="middle">~1350 / ~1580</text>
+  <text x="1114" y="318" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#3b82f6" font-weight="600" text-anchor="middle">cm⁻¹</text>
+  <text x="1114" y="346" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#71717a" text-anchor="middle">Raman D/G 峰</text>
+  <text x="1114" y="374" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#71717a" text-anchor="middle" opacity="0.7">游离碳（炭黑）的</text>
+  <text x="1114" y="390" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#71717a" text-anchor="middle" opacity="0.7">诊断性光谱指纹</text>
+
+  <!-- Page number -->
+  <text x="1220" y="700" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a" opacity="0.3" text-anchor="end">7</text>
+</svg>

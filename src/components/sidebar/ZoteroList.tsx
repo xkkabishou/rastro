@@ -216,6 +216,8 @@ export const ZoteroList: React.FC<ZoteroListProps> = ({
 
   const setCurrentDocument = useDocumentStore(s => s.setCurrentDocument);
   const setPdfUrl = useDocumentStore(s => s.setPdfUrl);
+  const setTranslatedPdfUrl = useDocumentStore(s => s.setTranslatedPdfUrl);
+  const setBilingualMode = useDocumentStore(s => s.setBilingualMode);
 
   const detect = useCallback(async () => {
     try { setLoading(true); setError(null); const s = await ipcClient.detectZoteroLibrary(); setStatus(s); return s.detected; }
@@ -292,14 +294,18 @@ export const ZoteroList: React.FC<ZoteroListProps> = ({
       setPdfUrl(convertFileSrc(doc.filePath));
     } else if (artifact.kind === 'translated_pdf' || artifact.kind === 'bilingual_pdf') {
       if (artifact.filePath) {
+        // 先打开文档（设置原文 URL），再设置翻译 URL
         setCurrentDocument(doc);
-        setPdfUrl(convertFileSrc(artifact.filePath));
+        setPdfUrl(convertFileSrc(doc.filePath));
+        setTranslatedPdfUrl(convertFileSrc(artifact.filePath));
+        // 切换到译文视图（bilingualMode=false 表示显示译文）
+        setBilingualMode(false);
       }
     } else if (artifact.kind === 'ai_summary') {
       setCurrentDocument(doc);
       // 总结的展示由其他组件处理
     }
-  }, [setCurrentDocument, setPdfUrl]);
+  }, [setCurrentDocument, setPdfUrl, setTranslatedPdfUrl, setBilingualMode]);
 
   const handleItemContextMenu = useCallback(async (
     event: React.MouseEvent,

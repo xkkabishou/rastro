@@ -1235,7 +1235,7 @@ fn query_page_in_collection(
          JOIN items i ON i.itemID = ci.itemID
          WHERE ci.collectionID = ?1
          {}
-         ORDER BY ci.orderIndex ASC, i.dateAdded DESC
+         ORDER BY ci.orderIndex DESC, i.dateAdded DESC
          LIMIT ?4 OFFSET ?5",
         collection_item_filter_sql()
     );
@@ -1485,6 +1485,30 @@ mod tests {
     }
 
     #[test]
+    fn fetch_items_in_collection_uses_descending_collection_order() {
+        let (profile_dir, database_path) =
+            create_collection_order_fixture("zotero-collection-order");
+        let connector = ZoteroConnector {
+            library: ZoteroLibrary {
+                database_path,
+                profile_dir,
+            },
+        };
+
+        let page = connector
+            .fetch_items_in_collection(Some(10), None, 0, 10)
+            .expect("collection items should query");
+
+        let ordered_keys: Vec<&str> = page
+            .items
+            .iter()
+            .map(|item| item.item_key.as_str())
+            .collect();
+        assert_eq!(page.total, 3);
+        assert_eq!(ordered_keys, vec!["ITEM003", "ITEM002", "ITEM001"]);
+    }
+
+    #[test]
     fn fetch_items_falls_back_to_immutable_mode_when_database_is_locked() {
         let (profile_dir, database_path, _) =
             create_test_library_fixture("zotero-connector-locked");
@@ -1616,6 +1640,9 @@ mod tests {
                   orderIndex INT NOT NULL DEFAULT 0,
                   PRIMARY KEY (itemID, creatorID, creatorTypeID, orderIndex)
                 );
+                CREATE TABLE deletedItems (
+                  itemID INT PRIMARY KEY
+                );
                 CREATE TABLE creators (
                   creatorID INTEGER PRIMARY KEY,
                   firstName TEXT,
@@ -1664,6 +1691,146 @@ mod tests {
         drop(connection);
 
         (profile_dir, database_path, pdf_path)
+    }
+
+    fn create_collection_order_fixture(prefix: &str) -> (PathBuf, PathBuf) {
+        let profile_dir = temp_profile_dir(prefix);
+        let database_path = profile_dir.join("zotero.sqlite");
+        for attachment_key in ["ATTACH001", "ATTACH002", "ATTACH003"] {
+            let storage_dir = profile_dir.join("storage").join(attachment_key);
+            fs::create_dir_all(&storage_dir).expect("storage dir should exist");
+            fs::write(storage_dir.join("paper.pdf"), b"%PDF").expect("pdf fixture should exist");
+        }
+
+        let connection = Connection::open(&database_path).expect("sqlite file should open");
+        connection
+            .execute_batch(
+                "
+                CREATE TABLE items (
+                  itemID INTEGER PRIMARY KEY,
+                  itemTypeID INT NOT NULL,
+                  dateAdded TEXT NOT NULL,
+                  dateModified TEXT NOT NULL,
+                  clientDateModified TEXT NOT NULL,
+                  libraryID INT NOT NULL,
+                  key TEXT NOT NULL,
+                  version INT NOT NULL DEFAULT 0,
+                  synced INT NOT NULL DEFAULT 0
+                );
+                CREATE TABLE itemAttachments (
+                  itemID INTEGER PRIMARY KEY,
+                  parentItemID INT,
+                  linkMode INT,
+                  contentType TEXT,
+                  charsetID INT,
+                  path TEXT,
+                  syncState INT DEFAULT 0,
+                  storageModTime INT,
+                  storageHash TEXT,
+                  lastProcessedModificationTime INT
+                );
+                CREATE TABLE itemData (
+                  itemID INT,
+                  fieldID INT,
+                  valueID INT,
+                  PRIMARY KEY (itemID, fieldID)
+                );
+                CREATE TABLE itemDataValues (
+                  valueID INTEGER PRIMARY KEY,
+                  value TEXT
+                );
+                CREATE TABLE itemCreators (
+                  itemID INT NOT NULL,
+                  creatorID INT NOT NULL,
+                  creatorTypeID INT NOT NULL DEFAULT 1,
+                  orderIndex INT NOT NULL DEFAULT 0,
+                  PRIMARY KEY (itemID, creatorID, creatorTypeID, orderIndex)
+                );
+                CREATE TABLE creators (
+                  creatorID INTEGER PRIMARY KEY,
+                  firstName TEXT,
+                  lastName TEXT,
+                  fieldMode INT
+                );
+                CREATE TABLE fieldsCombined (
+                  fieldID INT NOT NULL,
+                  fieldName TEXT NOT NULL,
+                  label TEXT,
+                  fieldFormatID INT,
+                  custom INT NOT NULL,
+                  PRIMARY KEY (fieldID)
+                );
+                CREATE TABLE deletedItems (
+                  itemID INT PRIMARY KEY
+                );
+                CREATE TABLE collections (
+                  collectionID INTEGER PRIMARY KEY,
+                  key TEXT NOT NULL,
+                  collectionName TEXT NOT NULL,
+                  parentCollectionID INT
+                );
+                CREATE TABLE collectionItems (
+                  collectionID INT NOT NULL,
+                  itemID INT NOT NULL,
+                  orderIndex INT NOT NULL DEFAULT 0,
+                  PRIMARY KEY (collectionID, itemID)
+                );
+                ",
+            )
+            .expect("schema should initialize");
+
+        connection
+            .execute_batch(
+                "
+                INSERT INTO fieldsCombined (fieldID, fieldName, custom) VALUES
+                  (1, 'title', 0),
+                  (2, 'publicationTitle', 0),
+                  (3, 'date', 0);
+
+                INSERT INTO collections (collectionID, key, collectionName, parentCollectionID)
+                VALUES (10, 'COLL001', '黑陶', NULL);
+
+                INSERT INTO items (itemID, itemTypeID, dateAdded, dateModified, clientDateModified, libraryID, key)
+                VALUES
+                  (1, 1, '2026-03-11 10:00:00', '2026-03-11 10:00:00', '2026-03-11 10:00:00', 1, 'ITEM001'),
+                  (2, 14, '2026-03-11 10:00:00', '2026-03-11 10:00:00', '2026-03-11 10:00:00', 1, 'ATTACH001'),
+                  (3, 1, '2026-03-12 10:00:00', '2026-03-12 10:00:00', '2026-03-12 10:00:00', 1, 'ITEM002'),
+                  (4, 14, '2026-03-12 10:00:00', '2026-03-12 10:00:00', '2026-03-12 10:00:00', 1, 'ATTACH002'),
+                  (5, 1, '2026-03-13 10:00:00', '2026-03-13 10:00:00', '2026-03-13 10:00:00', 1, 'ITEM003'),
+                  (6, 14, '2026-03-13 10:00:00', '2026-03-13 10:00:00', '2026-03-13 10:00:00', 1, 'ATTACH003');
+
+                INSERT INTO itemAttachments (itemID, parentItemID, linkMode, contentType, path)
+                VALUES
+                  (2, 1, 0, 'application/pdf', 'storage:paper.pdf'),
+                  (4, 3, 0, 'application/pdf', 'storage:paper.pdf'),
+                  (6, 5, 0, 'application/pdf', 'storage:paper.pdf');
+
+                INSERT INTO itemDataValues (valueID, value) VALUES
+                  (1, 'Paper A'),
+                  (2, '2024'),
+                  (3, 'Paper B'),
+                  (4, '2025'),
+                  (5, 'Paper C'),
+                  (6, '2026');
+
+                INSERT INTO itemData (itemID, fieldID, valueID) VALUES
+                  (1, 1, 1),
+                  (1, 3, 2),
+                  (3, 1, 3),
+                  (3, 3, 4),
+                  (5, 1, 5),
+                  (5, 3, 6);
+
+                INSERT INTO collectionItems (collectionID, itemID, orderIndex) VALUES
+                  (10, 1, 1),
+                  (10, 3, 2),
+                  (10, 5, 3);
+                ",
+            )
+            .expect("fixture rows should insert");
+        drop(connection);
+
+        (profile_dir, database_path)
     }
 
     fn temp_profile_dir(prefix: &str) -> PathBuf {

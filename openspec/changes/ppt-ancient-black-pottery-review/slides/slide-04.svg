@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow-md" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="720" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="60" y="50" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="32" fill="#18181b" font-weight="700">四大分类框架：以呈色本质为分类主干</text>
+  <text x="60" y="76" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="15" fill="#71717a">按呈色物质的物理化学本质，将古代黑陶归纳为四大工艺类型</text>
+
+  <!-- Full-width card -->
+  <g filter="url(#shadow-md)">
+    <rect x="60" y="96" width="1160" height="580" rx="8" fill="#ffffff"/>
+  </g>
+
+  <!-- Column headers -->
+  <rect x="60" y="96" width="1160" height="40" rx="8" fill="#3b82f6"/>
+  <rect x="60" y="126" width="1160" height="10" fill="#ffffff"/>
+  <text x="120" y="123" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#ffffff" font-weight="700">工艺类型</text>
+  <text x="310" y="123" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#ffffff" font-weight="700">呈色物质</text>
+  <text x="510" y="123" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#ffffff" font-weight="700">呈色机理</text>
+  <text x="820" y="123" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#ffffff" font-weight="700">典型案例</text>
+  <text x="1020" y="123" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#ffffff" font-weight="700">核心判别</text>
+
+  <!-- Vertical separators -->
+  <line x1="290" y1="136" x2="290" y2="670" stroke="#f0f0f0" stroke-width="1"/>
+  <line x1="490" y1="136" x2="490" y2="670" stroke="#f0f0f0" stroke-width="1"/>
+  <line x1="800" y1="136" x2="800" y2="670" stroke="#f0f0f0" stroke-width="1"/>
+  <line x1="1000" y1="136" x2="1000" y2="670" stroke="#f0f0f0" stroke-width="1"/>
+
+  <!-- Row 1: 还原焙烧 -->
+  <rect x="60" y="136" width="1160" height="130" fill="#ffffff"/>
+  <rect x="64" y="140" width="4" height="122" rx="2" fill="#3b82f6"/>
+  <text x="84" y="162" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="15" fill="#27272a" font-weight="700">还原焙烧</text>
+  <text x="84" y="184" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#3b82f6" font-weight="600">（铁致黑）</text>
+  <text x="84" y="210" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">最基础的</text>
+  <text x="84" y="230" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">呈色途径</text>
+
+  <text x="310" y="162" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">Fe₃O₄ 磁铁矿</text>
+  <text x="310" y="184" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">FeO 方铁矿</text>
+
+  <text x="510" y="162" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">缺氧窑炉气氛中赤铁矿</text>
+  <text x="510" y="182" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">(Fe₂O₃)被还原为Fe₃O₄/FeO</text>
+  <text x="510" y="206" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">Fe₂O₃含量&gt;5%时呈深灰近黑</text>
+  <text x="510" y="228" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">冷却需隔氧，否则「返红」</text>
+  <text x="510" y="250" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">温度窗口：700-900°C</text>
+
+  <text x="820" y="162" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">仰韶深灰陶</text>
+  <text x="820" y="184" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">伊特鲁里亚</text>
+  <text x="820" y="204" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">夹心陶(Nodari)</text>
+  <text x="820" y="228" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">永城龙山文化</text>
+  <text x="820" y="248" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">陶器(Xia等)</text>
+
+  <text x="1020" y="162" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">① XRD磁铁矿峰</text>
+  <text x="1020" y="184" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">② 复烧变红</text>
+  <text x="1020" y="206" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">③ 热重无碳失重</text>
+
+  <!-- Row separator -->
+  <line x1="84" y1="266" x2="1196" y2="266" stroke="#f0f0f0" stroke-width="1"/>
+
+  <!-- Row 2: 渗碳 -->
+  <rect x="60" y="266" width="1160" height="130" fill="#f8f9fa"/>
+  <rect x="64" y="270" width="4" height="122" rx="2" fill="#3b82f6"/>
+  <text x="84" y="292" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="15" fill="#27272a" font-weight="700">渗碳</text>
+  <text x="84" y="314" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#3b82f6" font-weight="600">（碳致黑）</text>
+  <text x="84" y="340" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">中国黑陶</text>
+  <text x="84" y="360" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">最主要工艺</text>
+
+  <text x="310" y="292" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">游离碳</text>
+  <text x="310" y="314" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">（炭黑）</text>
+
+  <text x="510" y="292" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">有机燃料不完全燃烧→碳黑</text>
+  <text x="510" y="312" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">物理充填气孔 + 歧化反应</text>
+  <text x="510" y="332" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">(2CO→CO₂+C)</text>
+  <text x="510" y="356" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">≤630°C效果最佳（刘鹏）</text>
+  <text x="510" y="378" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">碳梯度由表面→内部递减</text>
+
+  <text x="820" y="292" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">龙山蛋壳黑陶</text>
+  <text x="820" y="314" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">大溪文化黑陶</text>
+  <text x="820" y="336" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">双墩遗址黑陶</text>
+  <text x="820" y="360" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">西汉黑陶</text>
+  <text x="820" y="380" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">(潘坤容等)</text>
+
+  <text x="1020" y="292" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">① Raman D/G峰</text>
+  <text x="1020" y="314" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">~1350/~1580 cm⁻¹</text>
+  <text x="1020" y="338" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">② EDS碳梯度</text>
+  <text x="1020" y="360" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">③ SEM碳颗粒</text>
+
+  <!-- Row separator -->
+  <line x1="84" y1="396" x2="1196" y2="396" stroke="#f0f0f0" stroke-width="1"/>
+
+  <!-- Row 3: 三段式 -->
+  <rect x="60" y="396" width="1160" height="130" fill="#ffffff"/>
+  <rect x="64" y="400" width="4" height="122" rx="2" fill="#3b82f6"/>
+  <text x="84" y="422" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="15" fill="#27272a" font-weight="700">三段式烧成</text>
+  <text x="84" y="444" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#3b82f6" font-weight="600">（晶相致黑）</text>
+  <text x="84" y="470" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">涂层选择性</text>
+  <text x="84" y="490" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">致色技术</text>
+
+  <text x="310" y="422" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">磁铁矿/赫赛石</text>
+  <text x="310" y="444" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">微晶涂层</text>
+  <text x="310" y="468" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">(FeAl₂O₄)</text>
+
+  <text x="510" y="422" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">涂富铁泥浆(粒径&lt;2μm)</text>
+  <text x="510" y="442" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">I 氧化~800°C → II 还原</text>
+  <text x="510" y="462" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">850-950°C → III 再氧化~800°C</text>
+  <text x="510" y="486" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">涂层K₂O/CaO助熔→烧结</text>
+  <text x="510" y="508" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">封孔保黑，胎体疏松返红</text>
+
+  <text x="820" y="422" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">雅典黑光陶</text>
+  <text x="820" y="444" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">坎帕尼亚黑光陶</text>
+  <text x="820" y="468" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">中欧黑涂层陶</text>
+  <text x="820" y="490" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">(Cianchetta/</text>
+  <text x="820" y="510" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a"> Solard/Laciak)</text>
+
+  <text x="1020" y="422" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">① SEM-BSE界面</text>
+  <text x="1020" y="444" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">② 涂层Fe/K富集</text>
+  <text x="1020" y="466" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">③ SR-μXRD</text>
+  <text x="1020" y="488" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">④ 复烧不变红</text>
+
+  <!-- Row separator -->
+  <line x1="84" y1="526" x2="1196" y2="526" stroke="#f0f0f0" stroke-width="1"/>
+
+  <!-- Row 4: 抛光 -->
+  <rect x="60" y="526" width="1160" height="130" fill="#f8f9fa"/>
+  <rect x="64" y="530" width="4" height="122" rx="2" fill="#3b82f6"/>
+  <text x="84" y="552" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="15" fill="#27272a" font-weight="700">抛光</text>
+  <text x="84" y="574" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#3b82f6" font-weight="600">（结构致黑）</text>
+  <text x="84" y="600" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">最易被忽视</text>
+  <text x="84" y="620" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">的机制</text>
+
+  <text x="310" y="552" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">层状硅酸盐</text>
+  <text x="310" y="574" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">矿物定向排列</text>
+
+  <text x="510" y="552" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">不依赖碳沉积或铁物相改变</text>
+  <text x="510" y="572" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">精细磨光使矿物定向排列</text>
+  <text x="510" y="592" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">消除可见光漫反射→深色光泽</text>
+  <text x="510" y="616" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">本质：物理排列改变光学性质</text>
+
+  <text x="820" y="552" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">百济研磨黑陶</text>
+  <text x="820" y="574" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">巴里科特黑衣陶</text>
+  <text x="820" y="598" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">(Kim/Blackmore/</text>
+  <text x="820" y="618" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a"> Maritan等)</text>
+
+  <text x="1020" y="552" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">① PLM偏光消光</text>
+  <text x="1020" y="574" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">② EBSD织构</text>
+  <text x="1020" y="596" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">③ AFM粗糙度</text>
+  <text x="1020" y="618" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a">④ 无碳/铁信号</text>
+
+  <!-- Bottom note -->
+  <text x="84" y="668" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a" font-style="italic">注：实际遗物中工艺叠加并不罕见（如陶寺遗址龙山文化黑陶兼具陶衣+渗碳特征），按主导呈色因素归入相应类别</text>
+
+  <text x="1220" y="700" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a" opacity="0.3" text-anchor="end">4</text>
+</svg>

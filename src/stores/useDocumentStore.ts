@@ -1,14 +1,31 @@
 import { create } from 'zustand';
 import { listen } from '@tauri-apps/api/event';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import type {
   DocumentSnapshot,
   TranslationJobDto,
   DocumentArtifactDto,
   DocumentFilter,
 } from '../shared/types';
-import { ipcClient } from '../lib/ipc-client';
+import { ipcClient, ipcEvents } from '../lib/ipc-client';
 import { useChatStore } from './useChatStore';
 import { useSummaryStore } from './useSummaryStore';
+
+function toProgressPercentage(progress: number): number {
+  const normalized = progress > 1 ? progress / 100 : progress;
+  return Math.round(Math.min(100, Math.max(0, normalized * 100)));
+}
+
+function shouldSyncLiveTranslationJob(
+  store: DocumentState,
+  job: TranslationJobDto,
+): boolean {
+  if (store.currentDocument?.documentId === job.documentId) {
+    return true;
+  }
+
+  return store.translationJob?.jobId === job.jobId;
+}
 
 interface DocumentState {
   /** 当前打开的文档 */
@@ -84,6 +101,12 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     const prev = useDocumentStore.getState().currentDocument;
     const prevId = prev?.documentId ?? null;
     const nextId = doc?.documentId ?? null;
+
+    // 同文档重新打开时只更新快照，不重置翻译状态（避免白屏）
+    if (prevId && prevId === nextId) {
+      set({ currentDocument: doc });
+      return;
+    }
 
     set({
       currentDocument: doc,
@@ -216,11 +239,28 @@ export function initDocumentEventListeners(): void {
   if (eventListenersInitialized) return;
   eventListenersInitialized = true;
 
+  ipcEvents.onTranslationProgress((job) => {
+    const store = useDocumentStore.getState();
+    if (!shouldSyncLiveTranslationJob(store, job)) {
+      return;
+    }
+
+    store.setTranslationJob(job);
+    store.setTranslationProgress(toProgressPercentage(job.progress));
+  }).catch((err) => console.error('注册 translation://job-progress 监听失败:', err));
+
   // 翻译完成事件 → 刷新对应文档的产物 + 快照
-  listen<{ documentId: string }>('translation://job-completed', (event) => {
-    const docId = event.payload?.documentId;
+  ipcEvents.onTranslationCompleted((job) => {
+    const docId = job.documentId;
     if (!docId) return;
     const store = useDocumentStore.getState();
+    if (shouldSyncLiveTranslationJob(store, job)) {
+      store.setTranslationJob(job);
+      store.setTranslationProgress(toProgressPercentage(job.progress));
+      // 使用 convertFileSrc 将文件路径转为 Tauri asset URL，否则 PdfViewer 无法加载
+      const translatedPath = job.translatedPdfPath ?? job.bilingualPdfPath ?? null;
+      store.setTranslatedPdfUrl(translatedPath ? convertFileSrc(translatedPath) : null);
+    }
     store.invalidateArtifacts(docId);
     store.refreshDocumentSnapshot(docId);
     // 如果文档已展开，自动重新加载产物列表

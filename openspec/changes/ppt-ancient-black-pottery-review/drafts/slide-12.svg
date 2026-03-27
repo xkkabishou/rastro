@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="720" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="60" y="100" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="36" fill="#18181b" font-weight="700">埋藏环境干扰</text>
+
+  <!-- Subtitle -->
+  <text x="60" y="140" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="18" fill="#71717a">锰沉积、有机质吸附与钙质结壳</text>
+
+  <!-- Card 1: 锰的二次沉积 -->
+  <rect x="60" y="180" width="367" height="460" rx="8" ry="8" fill="#ffffff" filter="url(#shadow)"/>
+
+  <text x="84" y="224" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="22" fill="#3b82f6" font-weight="600">锰的二次沉积</text>
+  <line x1="84" y1="242" x2="403" y2="242" stroke="#e5e5e5" stroke-width="1"/>
+
+  <text x="84" y="280" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">MnOx薄膜或斑块</text>
+
+  <text x="84" y="330" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">外观与渗碳层极为相似</text>
+
+  <text x="84" y="380" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">识别：EDS面扫描Mn富集</text>
+
+  <!-- Reference -->
+  <text x="84" y="600" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13" fill="#71717a" font-style="italic">Ref: De Vito等</text>
+
+  <!-- Card 2: 有机质次生吸附 -->
+  <rect x="455" y="180" width="367" height="460" rx="8" ry="8" fill="#ffffff" filter="url(#shadow)"/>
+
+  <text x="479" y="224" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="22" fill="#3b82f6" font-weight="600">有机质次生吸附</text>
+  <line x1="479" y1="242" x2="798" y2="242" stroke="#e5e5e5" stroke-width="1"/>
+
+  <text x="479" y="280" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">腐殖酸等渗入气孔</text>
+
+  <text x="479" y="330" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">荧光效应掩盖D/G峰</text>
+
+  <text x="479" y="380" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">对策：FTIR+SEM-EDS联用</text>
+
+  <!-- Reference -->
+  <text x="479" y="600" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13" fill="#71717a" font-style="italic">Ref: Scarpelli等</text>
+
+  <!-- Card 3: 钙质结壳 -->
+  <rect x="850" y="180" width="370" height="460" rx="8" ry="8" fill="#ffffff" filter="url(#shadow)"/>
+
+  <text x="874" y="224" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="22" fill="#3b82f6" font-weight="600">钙质结壳</text>
+  <line x1="874" y1="242" x2="1196" y2="242" stroke="#e5e5e5" stroke-width="1"/>
+
+  <text x="874" y="280" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">CaCO₃覆盖器表</text>
+
+  <text x="874" y="330" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">干扰化学成分测定</text>
+
+  <text x="874" y="380" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">需显微鉴定并小心去除</text>
+
+  <!-- Reference -->
+  <text x="874" y="600" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13" fill="#71717a" font-style="italic">Ref: Laciak等</text>
+
+  <!-- Page Number -->
+  <text x="1220" y="700" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12" fill="#27272a" opacity="0.3" text-anchor="end">12</text>
+</svg>

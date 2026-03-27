@@ -1,0 +1,20 @@
+{
+  "slides": [
+    { "index": 1, "title": "封面", "type": "cover", "file": "drafts/slide-01.svg" },
+    { "index": 2, "title": "目录", "type": "toc", "file": "drafts/slide-02.svg" },
+    { "index": 3, "title": "黑陶：跨越六千年的黑色工艺", "type": "content", "file": "drafts/slide-03.svg" },
+    { "index": 4, "title": "中西方黑陶的本质差异", "type": "comparison", "file": "drafts/slide-04.svg" },
+    { "index": 5, "title": "四大工艺类型总览", "type": "data", "file": "drafts/slide-05.svg" },
+    { "index": 6, "title": "还原焙烧（铁致黑）", "type": "content", "file": "drafts/slide-06.svg" },
+    { "index": 7, "title": "渗碳（碳致黑）", "type": "content", "file": "drafts/slide-07.svg" },
+    { "index": 8, "title": "三段式烧成（晶相致黑）", "type": "process", "file": "drafts/slide-08.svg" },
+    { "index": 9, "title": "抛光（结构致黑）", "type": "content", "file": "drafts/slide-09.svg" },
+    { "index": 10, "title": "层级化分析方法体系", "type": "data", "file": "drafts/slide-10.svg" },
+    { "index": 11, "title": "主要分析方法比较", "type": "data", "file": "drafts/slide-11.svg" },
+    { "index": 12, "title": "埋藏环境干扰", "type": "content", "file": "drafts/slide-12.svg" },
+    { "index": 13, "title": "工艺多解性难题", "type": "content", "file": "drafts/slide-13.svg" },
+    { "index": 14, "title": "新兴技术与未来展望", "type": "data", "file": "drafts/slide-14.svg" },
+    { "index": 15, "title": "中西方工艺的平行之路", "type": "comparison", "file": "drafts/slide-15.svg" },
+    { "index": 16, "title": "感谢聆听", "type": "end", "file": "drafts/slide-16.svg" }
+  ]
+}

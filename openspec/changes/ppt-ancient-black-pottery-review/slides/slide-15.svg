@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow-md" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="720" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="60" y="48" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="34" fill="#18181b" font-weight="700">总结与回顾</text>
+  <text x="60" y="72" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#71717a">四大分类体系 · 方法论要点 · 研究展望</text>
+
+  <!-- Card 1: 四大分类回顾 -->
+  <g filter="url(#shadow-md)">
+    <rect x="60" y="90" width="1160" height="240" rx="8" fill="#ffffff"/>
+  </g>
+  <text x="84" y="118" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="17" fill="#3b82f6" font-weight="700">四大工艺类型回顾</text>
+  <line x1="84" y1="130" x2="1196" y2="130" stroke="#f0f0f0" stroke-width="1"/>
+
+  <text x="84" y="156" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan font-weight="700" fill="#3b82f6">❶ 还原焙烧（铁致黑）</tspan><tspan fill="#27272a">：缺氧气氛中 </tspan><tspan font-weight="700">Fe₂O₃→Fe₃O₄/FeO</tspan><tspan>，判别靠 </tspan><tspan font-weight="700">XRD磁铁矿峰 + 复烧变红 + 热重无碳失重</tspan>
+  </text>
+  <text x="84" y="184" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan font-weight="700" fill="#3b82f6">❷ 渗碳（碳致黑）</tspan><tspan fill="#27272a">：碳黑沉积于气孔，</tspan><tspan font-weight="700">≤630°C</tspan><tspan> 效果最佳，判别靠 </tspan><tspan font-weight="700">Raman D/G峰 + EDS碳梯度</tspan>
+  </text>
+  <text x="84" y="212" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan font-weight="700" fill="#3b82f6">❸ 三段式烧成（晶相致黑）</tspan><tspan fill="#27272a">：富铁涂层三段式烧成，</tspan><tspan font-weight="700">涂层玻化保黑、胎体返红</tspan><tspan>，判别靠 </tspan><tspan font-weight="700">SEM-BSE界面 + SR-μXRD</tspan>
+  </text>
+  <text x="84" y="240" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan font-weight="700" fill="#3b82f6">❹ 抛光（结构致黑）</tspan><tspan fill="#27272a">：矿物定向排列消除漫反射，</tspan><tspan font-weight="700">不依赖碳/铁</tspan><tspan>，判别靠 </tspan><tspan font-weight="700">PLM偏光消光 + EBSD织构</tspan>
+  </text>
+
+  <text x="84" y="272" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a" font-style="italic">实际遗物中工艺叠加并不罕见（如陶寺遗址兼具陶衣+渗碳），需按主导呈色因素归类并多元互证</text>
+  <text x="84" y="310" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">呈色差异→物理性能差异：渗碳黑陶致密度↑，三段式黑光陶耐磨性↑，抛光黑陶防渗性↑</text>
+
+  <!-- Card 2: 方法论要点 -->
+  <g filter="url(#shadow-md)">
+    <rect x="60" y="348" width="560" height="200" rx="8" fill="#ffffff"/>
+  </g>
+  <text x="84" y="376" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="17" fill="#3b82f6" font-weight="700">方法论要点</text>
+  <line x1="84" y1="388" x2="596" y2="388" stroke="#f0f0f0" stroke-width="1"/>
+  <text x="84" y="412" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• <tspan font-weight="700">层级化分析</tspan>：无损筛查→微损定性→微区定量</text>
+  <text x="84" y="436" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• <tspan font-weight="700">多元互证原则</tspan>：至少两种独立方法交叉验证</text>
+  <text x="84" y="460" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• <tspan font-weight="700">警惕埋藏干扰</tspan>：锰沉积/有机质吸附/钙质结壳</text>
+  <text x="84" y="484" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• <tspan font-weight="700">工艺多解性</tspan>：同一物相 ≠ 同一工艺</text>
+  <text x="84" y="508" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• <tspan font-weight="700">实验复原</tspan>：仿制品与出土样品微观特征对照</text>
+
+  <!-- Card 3: 研究展望 -->
+  <g filter="url(#shadow-md)">
+    <rect x="648" y="348" width="572" height="200" rx="8" fill="#ffffff"/>
+  </g>
+  <text x="672" y="376" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="17" fill="#3b82f6" font-weight="700">研究展望</text>
+  <line x1="672" y1="388" x2="1196" y2="388" stroke="#f0f0f0" stroke-width="1"/>
+  <text x="672" y="412" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• <tspan font-weight="700">原位无损技术</tspan>：SR-μXRD / XANES / Micro-CT</text>
+  <text x="672" y="436" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">  解决有损vs无损矛盾（蛋壳黑陶等珍贵器物）</text>
+  <text x="672" y="464" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• <tspan font-weight="700">三维重建</tspan>：Micro-CT + 3D图像分析</text>
+  <text x="672" y="488" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">  Reedy等表征42个孔隙参数，26个与烧成温度相关</text>
+  <text x="672" y="516" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• <tspan font-weight="700">跨文化比较</tspan>：揭示人类材料技术发展共性与差异</text>
+
+  <!-- Bottom accent bar -->
+  <rect x="60" y="568" width="1160" height="100" rx="8" fill="#3b82f6"/>
+  <text x="640" y="608" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="16" fill="#ffffff" text-anchor="middle" font-weight="600">本文核心贡献：建立以呈色物理化学本质为分类主干的四大工艺类型体系，</text>
+  <text x="640" y="636" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="16" fill="#ffffff" text-anchor="middle" font-weight="600">系统梳理各类型的形成机理、科技判别方法与常见误判情形。</text>
+
+  <text x="1220" y="700" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a" opacity="0.3" text-anchor="end">15</text>
+</svg>

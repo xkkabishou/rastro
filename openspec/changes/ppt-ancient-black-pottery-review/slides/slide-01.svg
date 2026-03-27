@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <linearGradient id="cover-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a1a1f"/>
+      <stop offset="100%" stop-color="#18181b"/>
+    </linearGradient>
+    <linearGradient id="accent-line-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow-sm">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="720" fill="url(#cover-bg)"/>
+
+  <!-- Subtle decorative elements -->
+  <!-- Top-left accent dot cluster -->
+  <circle cx="60" cy="60" r="2" fill="#3b82f6" opacity="0.6"/>
+  <circle cx="72" cy="60" r="2" fill="#3b82f6" opacity="0.4"/>
+  <circle cx="84" cy="60" r="2" fill="#3b82f6" opacity="0.2"/>
+
+  <!-- Right-side subtle vertical accent -->
+  <rect x="1196" y="180" width="3" height="360" rx="1.5" fill="#3b82f6" opacity="0.15"/>
+  <rect x="1208" y="240" width="2" height="240" rx="1" fill="#3b82f6" opacity="0.08"/>
+
+  <!-- Main content — centered vertical layout -->
+  <!-- Title -->
+  <text x="640" y="290" text-anchor="middle"
+        font-family="Instrument Serif, Georgia, 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', serif"
+        font-size="52" font-weight="700" fill="#fafafa" letter-spacing="4">
+    古代黑陶烧制工艺科技考古综述
+  </text>
+
+  <!-- Accent separator line -->
+  <rect x="600" y="316" width="80" height="3" rx="1.5" fill="#3b82f6" filter="url(#glow-sm)"/>
+
+  <!-- Subtitle -->
+  <text x="640" y="362" text-anchor="middle"
+        font-family="Work Sans, Inter, 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif"
+        font-size="22" fill="#a1a1aa" letter-spacing="2">
+    中国陶瓷史及鉴定 · 课程论文汇报
+  </text>
+
+  <!-- Long decorative line below subtitle -->
+  <rect x="280" y="392" width="720" height="1" rx="0.5" fill="url(#accent-line-grad)" opacity="0.2"/>
+
+  <!-- Author block -->
+  <text x="640" y="470" text-anchor="middle"
+        font-family="Work Sans, Inter, 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif"
+        font-size="22" fill="#fafafa" font-weight="500" letter-spacing="1">
+    贾煜琪
+  </text>
+
+  <!-- Affiliation -->
+  <text x="640" y="504" text-anchor="middle"
+        font-family="Work Sans, Inter, 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif"
+        font-size="16" fill="#a1a1aa" letter-spacing="0.5">
+    南京大学考古文博与中华文明研究院
+  </text>
+
+  <!-- Date -->
+  <text x="640" y="540" text-anchor="middle"
+        font-family="Work Sans, Inter, 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif"
+        font-size="14" fill="#71717a" opacity="0.7" letter-spacing="0.5">
+    2026年3月
+  </text>
+
+  <!-- Bottom decorative line -->
+  <rect x="60" y="680" width="1160" height="1" rx="0.5" fill="#27272a" opacity="0.3"/>
+</svg>

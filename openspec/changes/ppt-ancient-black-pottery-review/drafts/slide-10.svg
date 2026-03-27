@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.1"/>
+    </filter>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="720" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="60" y="100" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="36" fill="#18181b" font-weight="700">层级化分析方法体系</text>
+
+  <!-- Subtitle -->
+  <text x="60" y="140" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="18" fill="#71717a">无损筛查 → 微损定性 → 微区定量</text>
+
+  <!-- Top Hero Card -->
+  <rect x="60" y="175" width="1160" height="120" rx="8" ry="8" fill="#ffffff" filter="url(#shadow)"/>
+
+  <!-- Flow: 3 stages with arrows -->
+  <!-- Stage 1 -->
+  <rect x="120" y="200" width="260" height="70" rx="6" ry="6" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="250" y="242" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" fill="#3b82f6" text-anchor="middle" font-weight="600">无损筛查</text>
+
+  <!-- Arrow 1 -->
+  <line x1="395" y1="235" x2="465" y2="235" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Stage 2 -->
+  <rect x="480" y="200" width="260" height="70" rx="6" ry="6" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="610" y="242" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" fill="#3b82f6" text-anchor="middle" font-weight="600">微损定性</text>
+
+  <!-- Arrow 2 -->
+  <line x1="755" y1="235" x2="825" y2="235" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Stage 3 -->
+  <rect x="840" y="200" width="260" height="70" rx="6" ry="6" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="970" y="242" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" fill="#3b82f6" text-anchor="middle" font-weight="600">微区定量</text>
+
+  <!-- Bottom Row: 3 Equal Cards -->
+  <!-- Card 1: 无损筛查 -->
+  <rect x="60" y="323" width="367" height="330" rx="8" ry="8" fill="#ffffff" filter="url(#shadow)"/>
+
+  <text x="84" y="363" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="20" fill="#3b82f6" font-weight="600">无损筛查</text>
+  <line x1="84" y1="378" x2="403" y2="378" stroke="#e5e5e5" stroke-width="1"/>
+
+  <text x="84" y="410" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#71717a" font-weight="500">仪器</text>
+  <text x="84" y="438" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">体视显微镜</text>
+  <text x="84" y="468" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">便携XRF</text>
+  <text x="84" y="498" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">色度计</text>
+
+  <text x="84" y="540" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#71717a" font-weight="500">获取信息</text>
+  <text x="84" y="568" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">表面形貌</text>
+  <text x="84" y="598" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">主量元素</text>
+  <text x="84" y="628" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">颜色参数</text>
+
+  <!-- Card 2: 微损定性 -->
+  <rect x="455" y="323" width="367" height="330" rx="8" ry="8" fill="#ffffff" filter="url(#shadow)"/>
+
+  <text x="479" y="363" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="20" fill="#3b82f6" font-weight="600">微损定性</text>
+  <line x1="479" y1="378" x2="798" y2="378" stroke="#e5e5e5" stroke-width="1"/>
+
+  <text x="479" y="410" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#71717a" font-weight="500">仪器</text>
+  <text x="479" y="438" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">拉曼光谱</text>
+  <text x="479" y="468" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">FTIR</text>
+  <text x="479" y="498" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">偏光显微镜</text>
+
+  <text x="479" y="540" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#71717a" font-weight="500">获取信息</text>
+  <text x="479" y="568" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">碳/铁物相</text>
+  <text x="479" y="598" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">矿物种类</text>
+
+  <!-- Card 3: 微区定量 -->
+  <rect x="850" y="323" width="370" height="330" rx="8" ry="8" fill="#ffffff" filter="url(#shadow)"/>
+
+  <text x="874" y="363" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="20" fill="#3b82f6" font-weight="600">微区定量</text>
+  <line x1="874" y1="378" x2="1196" y2="378" stroke="#e5e5e5" stroke-width="1"/>
+
+  <text x="874" y="410" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#71717a" font-weight="500">仪器</text>
+  <text x="874" y="438" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">SEM-EDS</text>
+  <text x="874" y="468" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">穆斯堡尔谱</text>
+  <text x="874" y="498" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">SR-μXRD</text>
+
+  <text x="874" y="540" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#71717a" font-weight="500">获取信息</text>
+  <text x="874" y="568" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">元素分布</text>
+  <text x="874" y="598" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">铁价态</text>
+  <text x="874" y="628" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">微晶物相</text>
+
+  <!-- Page Number -->
+  <text x="1220" y="700" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12" fill="#27272a" opacity="0.3" text-anchor="end">10</text>
+</svg>

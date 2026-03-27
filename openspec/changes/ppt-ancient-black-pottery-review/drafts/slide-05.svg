@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="720" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="60" y="100" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="36" fill="#18181b" font-weight="700">四大工艺类型总览</text>
+  <!-- Subtitle -->
+  <text x="60" y="138" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="16" fill="#71717a">以呈色物质的物理化学本质为分类主干</text>
+
+  <!-- Card 1: 还原焙烧 (top-left) -->
+  <g filter="url(#shadow)">
+    <rect x="60" y="176" width="556" height="224" rx="8" ry="8" fill="#ffffff"/>
+  </g>
+  <text x="84" y="212" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="20" fill="#3b82f6" font-weight="600">还原焙烧（铁致黑）</text>
+  <text x="84" y="248" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">呈色物质：Fe₃O₄ / FeO</text>
+  <text x="84" y="288" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#71717a">典型代表</text>
+  <text x="84" y="314" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">仰韶深灰陶</text>
+  <text x="84" y="350" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#71717a">判别方法</text>
+  <text x="84" y="376" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">XRD + 复烧变红</text>
+
+  <!-- Card 2: 渗碳 (top-right) -->
+  <g filter="url(#shadow)">
+    <rect x="644" y="176" width="576" height="224" rx="8" ry="8" fill="#ffffff"/>
+  </g>
+  <text x="668" y="212" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="20" fill="#3b82f6" font-weight="600">渗碳（碳致黑）</text>
+  <text x="668" y="248" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">呈色物质：游离碳</text>
+  <text x="668" y="288" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#71717a">典型代表</text>
+  <text x="668" y="314" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">龙山蛋壳黑陶</text>
+  <text x="668" y="350" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#71717a">判别方法</text>
+  <text x="668" y="376" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">Raman D/G 峰</text>
+
+  <!-- Card 3: 三段式烧成 (bottom-left) -->
+  <g filter="url(#shadow)">
+    <rect x="60" y="428" width="556" height="224" rx="8" ry="8" fill="#ffffff"/>
+  </g>
+  <text x="84" y="464" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="20" fill="#3b82f6" font-weight="600">三段式烧成（晶相致黑）</text>
+  <text x="84" y="500" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">呈色物质：磁铁矿微晶涂层</text>
+  <text x="84" y="540" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#71717a">典型代表</text>
+  <text x="84" y="566" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">雅典黑光陶</text>
+  <text x="84" y="602" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#71717a">判别方法</text>
+  <text x="84" y="628" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">SEM-BSE + SR-μXRD</text>
+
+  <!-- Card 4: 抛光 (bottom-right) -->
+  <g filter="url(#shadow)">
+    <rect x="644" y="428" width="576" height="224" rx="8" ry="8" fill="#ffffff"/>
+  </g>
+  <text x="668" y="464" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="20" fill="#3b82f6" font-weight="600">抛光（结构致黑）</text>
+  <text x="668" y="500" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">呈色物质：矿物定向排列</text>
+  <text x="668" y="540" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#71717a">典型代表</text>
+  <text x="668" y="566" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">百济研磨黑陶</text>
+  <text x="668" y="602" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#71717a">判别方法</text>
+  <text x="668" y="628" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#27272a">PLM + EBSD</text>
+
+  <!-- Page number -->
+  <text x="1220" y="700" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12" fill="#27272a" opacity="0.3" text-anchor="end">5</text>
+</svg>

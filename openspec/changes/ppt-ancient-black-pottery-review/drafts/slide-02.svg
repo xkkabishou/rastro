@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="720" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="60" y="110" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif"
+        font-size="40" font-weight="700" fill="#18181b">
+    目录
+  </text>
+
+  <!-- Accent underline -->
+  <rect x="60" y="125" width="56" height="3" rx="1.5" fill="#3b82f6"/>
+
+  <!-- Section 1 -->
+  <g transform="translate(60, 200)">
+    <rect x="0" y="-32" width="680" height="72" rx="8" fill="#ffffff" filter="url(#shadow)"/>
+    <text x="24" y="0" font-family="Instrument Serif, Georgia, serif"
+          font-size="32" font-weight="700" fill="#3b82f6">
+      01
+    </text>
+    <text x="80" y="-2" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+          font-size="22" fill="#27272a" font-weight="500">
+      引言与背景
+    </text>
+    <text x="80" y="26" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+          font-size="14" fill="#71717a">
+      黑陶研究的学术脉络与科技考古视角
+    </text>
+  </g>
+
+  <!-- Section 2 -->
+  <g transform="translate(60, 300)">
+    <rect x="0" y="-32" width="680" height="72" rx="8" fill="#ffffff" filter="url(#shadow)"/>
+    <text x="24" y="0" font-family="Instrument Serif, Georgia, serif"
+          font-size="32" font-weight="700" fill="#3b82f6">
+      02
+    </text>
+    <text x="80" y="-2" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+          font-size="22" fill="#27272a" font-weight="500">
+      黑陶分类体系
+    </text>
+    <text x="80" y="26" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+          font-size="14" fill="#71717a">
+      按呈色机制的系统分类方法
+    </text>
+  </g>
+
+  <!-- Section 3 -->
+  <g transform="translate(60, 400)">
+    <rect x="0" y="-32" width="680" height="72" rx="8" fill="#ffffff" filter="url(#shadow)"/>
+    <text x="24" y="0" font-family="Instrument Serif, Georgia, serif"
+          font-size="32" font-weight="700" fill="#3b82f6">
+      03
+    </text>
+    <text x="80" y="-2" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+          font-size="22" fill="#27272a" font-weight="500">
+      研究方法体系
+    </text>
+    <text x="80" y="26" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+          font-size="14" fill="#71717a">
+      科技分析手段与实验考古路径
+    </text>
+  </g>
+
+  <!-- Section 4 -->
+  <g transform="translate(60, 500)">
+    <rect x="0" y="-32" width="680" height="72" rx="8" fill="#ffffff" filter="url(#shadow)"/>
+    <text x="24" y="0" font-family="Instrument Serif, Georgia, serif"
+          font-size="32" font-weight="700" fill="#3b82f6">
+      04
+    </text>
+    <text x="80" y="-2" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+          font-size="22" fill="#27272a" font-weight="500">
+      误判与挑战
+    </text>
+    <text x="80" y="26" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+          font-size="14" fill="#71717a">
+      研究中的常见陷阱与方法论反思
+    </text>
+  </g>
+
+  <!-- Section 5 -->
+  <g transform="translate(60, 600)">
+    <rect x="0" y="-32" width="680" height="72" rx="8" fill="#ffffff" filter="url(#shadow)"/>
+    <text x="24" y="0" font-family="Instrument Serif, Georgia, serif"
+          font-size="32" font-weight="700" fill="#3b82f6">
+      05
+    </text>
+    <text x="80" y="-2" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+          font-size="22" fill="#27272a" font-weight="500">
+      展望与结语
+    </text>
+    <text x="80" y="26" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+          font-size="14" fill="#71717a">
+      未来研究方向与学科融合趋势
+    </text>
+  </g>
+
+  <!-- Page number -->
+  <text x="1220" y="700" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="14" fill="#71717a" text-anchor="end">
+    02
+  </text>
+</svg>

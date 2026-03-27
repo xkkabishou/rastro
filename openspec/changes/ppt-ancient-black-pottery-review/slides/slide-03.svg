@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow-md" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="720" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="60" y="50" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="34" fill="#18181b" font-weight="700">研究对象</text>
+  <text x="60" y="76" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="15" fill="#71717a">古代黑陶——表面呈黑色的陶器，烧造至少可追溯到距今六千年以上</text>
+
+  <!-- Left card: 研究对象 = 定义 + 分布合并 -->
+  <g filter="url(#shadow-md)">
+    <rect x="60" y="96" width="740" height="580" rx="8" fill="#ffffff"/>
+  </g>
+
+  <text x="84" y="128" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="17" fill="#3b82f6" font-weight="700">研究对象：古代黑陶的分布与代表类型</text>
+  <line x1="84" y1="142" x2="776" y2="142" stroke="#f0f0f0" stroke-width="1"/>
+  <text x="84" y="168" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a">黑陶是古代先民在掌握还原焙烧技术后制作的一类表面呈黑色的陶器，</text>
+  <text x="84" y="194" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a">在中国新石器时代中晚期和地中海古典时期都有大量发现。主要包括：</text>
+
+  <text x="84" y="232" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a" font-weight="600">大汶口文化（黄河流域）</text>
+  <text x="296" y="232" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#71717a">— 早期已出现泥质黑陶</text>
+
+  <text x="84" y="262" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a" font-weight="600">龙山文化（山东章丘龙山镇）</text>
+  <text x="84" y="288" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#71717a">  蛋壳黑陶最负盛名：「黑如漆，薄如纸，亮如镜，硬如瓷」</text>
+  <text x="84" y="312" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#71717a">  黑色主要源自封窑渗碳产生的游离碳沉积（周仁等揭示渗碳本质）</text>
+
+  <text x="84" y="342" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a" font-weight="600">跨湖桥 / 河姆渡文化（长江下游）</text>
+  <text x="430" y="342" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#71717a">— 年代更早，已出现夹炭黑陶</text>
+
+  <text x="84" y="372" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a" font-weight="600">良渚文化（长江下游）</text>
+  <text x="84" y="398" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#71717a">  发展出施加黑色陶衣并借助磨光工艺增强光泽感的技术传统</text>
+
+  <text x="84" y="428" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a" font-weight="600">古希腊黑光陶（地中海）</text>
+  <text x="84" y="454" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#71717a">  器表涂刷富铁细泥浆，经「氧化—还原—再氧化」三段式烧成</text>
+  <text x="84" y="478" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#71717a">  涂层中铁矿物转变为磁铁矿，与返红的胎体形成鲜明黑红色差</text>
+
+  <text x="84" y="508" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a" font-weight="600">百济研磨黑陶（朝鲜半岛）</text>
+  <text x="84" y="534" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#71717a">  不依赖碳或铁，矿物定向排列消除漫反射产生黑色光泽</text>
+
+  <!-- Researchers -->
+  <text x="84" y="576" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="17" fill="#3b82f6" font-weight="700">主要研究者</text>
+  <line x1="84" y1="590" x2="776" y2="590" stroke="#f0f0f0" stroke-width="1"/>
+  <text x="84" y="614" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">周仁(渗碳本质)　刘鹏(渗碳机理)　肖芮/崔剑锋(呈色工艺综述)</text>
+  <text x="84" y="638" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">Aloupi-Siotis(黑光陶涂层)　Solard(μ-XRD₂分析)　Kim(百济黑陶)</text>
+
+  <!-- Right card top: 核心问题 -->
+  <g filter="url(#shadow-md)">
+    <rect x="828" y="96" width="392" height="280" rx="8" fill="#ffffff"/>
+  </g>
+  <text x="852" y="128" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="17" fill="#3b82f6" font-weight="700">核心问题</text>
+  <line x1="852" y1="142" x2="1196" y2="142" stroke="#f0f0f0" stroke-width="1"/>
+  <text x="852" y="170" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a" font-weight="600">外观都是黑色，但——</text>
+  <text x="852" y="200" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">有的靠铁氧化物还原变黑</text>
+  <text x="852" y="226" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">有的靠碳颗粒沉积变黑</text>
+  <text x="852" y="252" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">有的靠涂层微晶致色</text>
+  <text x="852" y="278" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">有的靠矿物排列改变光学性质</text>
+  <text x="852" y="312" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a" font-weight="600">物理化学本质截然不同</text>
+  <text x="852" y="340" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">→ 肉眼无法区分，需科技考古系统辨析</text>
+
+  <!-- Right card bottom: 四大分类预览 -->
+  <g filter="url(#shadow-md)">
+    <rect x="828" y="404" width="392" height="272" rx="8" fill="#ffffff"/>
+  </g>
+  <text x="852" y="436" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="17" fill="#3b82f6" font-weight="700">四大分类预览</text>
+  <line x1="852" y1="450" x2="1196" y2="450" stroke="#f0f0f0" stroke-width="1"/>
+  <text x="852" y="478" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a">❶ 还原焙烧（铁致黑）</text>
+  <text x="1060" y="478" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">Fe₃O₄/FeO</text>
+  <text x="852" y="506" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a">❷ 渗碳（碳致黑）</text>
+  <text x="1060" y="506" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">游离碳</text>
+  <text x="852" y="534" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a">❸ 三段式烧成（晶相致黑）</text>
+  <text x="1130" y="534" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">涂层微晶</text>
+  <text x="852" y="562" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a">❹ 抛光（结构致黑）</text>
+  <text x="1060" y="562" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">矿物排列</text>
+  <text x="852" y="600" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">实际遗物中工艺叠加并不罕见</text>
+  <text x="852" y="624" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">（如陶寺遗址兼具陶衣+渗碳）</text>
+  <text x="852" y="648" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">需依据多元互证原则综合判断</text>
+
+  <text x="1220" y="700" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a" opacity="0.3" text-anchor="end">3</text>
+</svg>

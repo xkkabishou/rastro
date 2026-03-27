@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow-md" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="720" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="60" y="48" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="32" fill="#18181b" font-weight="700">三段式烧成（晶相致黑）</text>
+  <text x="60" y="72" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#71717a">氧化—还原—再氧化：地中海黑光陶的选择性致色</text>
+
+  <!-- Timeline bar -->
+  <g filter="url(#shadow-md)">
+    <rect x="60" y="90" width="1160" height="110" rx="8" fill="#ffffff"/>
+  </g>
+  <line x1="200" y1="135" x2="1080" y2="135" stroke="#e0e0e0" stroke-width="2"/>
+
+  <!-- Node I -->
+  <circle cx="200" cy="135" r="16" fill="#3b82f6"/>
+  <text x="200" y="140" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#ffffff" text-anchor="middle" font-weight="700">I</text>
+  <text x="200" y="166" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="13" fill="#3b82f6" text-anchor="middle" font-weight="700">氧化 ~800°C</text>
+  <text x="200" y="183" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#71717a" text-anchor="middle">有氧气氛，涂层+胎体</text>
+  <text x="200" y="196" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#71717a" text-anchor="middle">均为 <tspan font-weight="700">Fe₂O₃</tspan> 赤铁矿(红色)</text>
+  <text x="440" y="132" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a" text-anchor="middle">→ 封窑</text>
+
+  <!-- Node II -->
+  <circle cx="640" cy="135" r="16" fill="#3b82f6"/>
+  <text x="640" y="140" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#ffffff" text-anchor="middle" font-weight="700">II</text>
+  <text x="640" y="166" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="13" fill="#3b82f6" text-anchor="middle" font-weight="700">还原 850–950°C</text>
+  <text x="640" y="183" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#71717a" text-anchor="middle">封窑+投湿木，<tspan font-weight="700">Fe₂O₃→Fe₃O₄</tspan></text>
+  <text x="640" y="196" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#71717a" text-anchor="middle">涂层开始烧结玻化</text>
+  <text x="860" y="132" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a" text-anchor="middle">→ 开窑</text>
+
+  <!-- Node III -->
+  <circle cx="1080" cy="135" r="16" fill="#3b82f6"/>
+  <text x="1080" y="140" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#ffffff" text-anchor="middle" font-weight="700">III</text>
+  <text x="1080" y="166" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="13" fill="#3b82f6" text-anchor="middle" font-weight="700">再氧化 ~800°C</text>
+  <text x="1080" y="183" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#71717a" text-anchor="middle">重开进气口，涂层致密</text>
+  <text x="1080" y="196" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#71717a" text-anchor="middle">保黑，胎体疏松<tspan font-weight="700">返红</tspan></text>
+
+  <!-- Detail card -->
+  <g filter="url(#shadow-md)">
+    <rect x="60" y="216" width="1160" height="464" rx="8" fill="#ffffff"/>
+  </g>
+  <rect x="60" y="216" width="4" height="464" rx="2" fill="#3b82f6"/>
+
+  <!-- Section 1: 选择性致色 -->
+  <text x="84" y="244" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="16" fill="#3b82f6" font-weight="700">选择性致色关键机制</text>
+  <line x1="84" y1="254" x2="1196" y2="254" stroke="#f0f0f0" stroke-width="1"/>
+  <text x="84" y="272" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12.5" fill="#27272a">
+    <tspan x="84" dy="0">• 工匠先在成形陶坯表面涂刷经精细淘洗的富铁细泥浆（粒径&lt;2μm），该涂层富含 K₂O、CaO 等助熔剂。</tspan>
+    <tspan x="84" dy="18">• 在还原阶段(<tspan font-weight="700">850-950°C</tspan>)，助熔剂使涂层低温即烧结并形成致密玻化层，有效封闭气孔，阻止氧气渗入。</tspan>
+    <tspan x="84" dy="18">• 胎体由粗颗粒粘土构成，结构疏松、气孔连通。再氧化时氧气迅速渗入→<tspan font-weight="700">Fe₃O₄</tspan> 重新氧化为 <tspan font-weight="700">Fe₂O₃</tspan>→红色。</tspan>
+    <tspan x="84" dy="18">• 涂层内<tspan font-weight="700">磁铁矿</tspan>被玻璃相包裹隔氧→保持黑色。最终形成「红色胎体 + 黑色涂层」的经典外观。</tspan>
+  </text>
+
+  <!-- Section 2: 关键研究 -->
+  <text x="84" y="376" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="16" fill="#3b82f6" font-weight="700">关键研究</text>
+  <line x1="84" y1="386" x2="1196" y2="386" stroke="#f0f0f0" stroke-width="1"/>
+  <text x="84" y="404" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12.5" fill="#27272a">
+    <tspan x="84" dy="0">• <tspan font-weight="700">Cianchetta</tspan> 等：<tspan font-weight="700">拉曼+XRD</tspan> 对比仿制品与真品，确认涂层黑色相为<tspan font-weight="700">磁铁矿</tspan>(Fe₃O₄) + 赫赛石(FeAl₂O₄) 微晶。</tspan>
+    <tspan x="84" dy="18">• <tspan font-weight="700">Solard</tspan> 等：μ-XRD₂ + <tspan font-weight="700">SEM-EDS</tspan> 分析 4 世纪雅典黑光陶，涂层富 K₂O/CaO，BSE 图像界面分明，厚约 20-40μm。</tspan>
+    <tspan x="84" dy="18">• Laciak 等：中欧黑涂层陶器研究，高铁含量 + 细颗粒质地是实现选择性致色的共性前提条件。</tspan>
+  </text>
+
+  <!-- Section 3: 科技判别 -->
+  <text x="84" y="500" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="16" fill="#3b82f6" font-weight="700">科技判别</text>
+  <line x1="84" y1="510" x2="1196" y2="510" stroke="#f0f0f0" stroke-width="1"/>
+  <text x="84" y="530" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12.5" fill="#27272a">
+    <tspan x="84" dy="0">① <tspan font-weight="700">SEM-BSE</tspan> 成像显示涂层/胎体清晰分界，涂层致密均匀、胎体多孔</tspan>
+    <tspan x="84" dy="20">② <tspan font-weight="700">EDS</tspan> 面扫描显示涂层 Fe、K 含量显著高于胎体</tspan>
+    <tspan x="84" dy="20">③ SR-<tspan font-weight="700">μXRD</tspan> 检测涂层中<tspan font-weight="700">磁铁矿</tspan>及赫赛石(FeAl₂O₄)衍射峰</tspan>
+    <tspan x="84" dy="20">④ 复烧实验中涂层颜色不变红（涂层已充分烧结玻化，阻氧能力强）</tspan>
+  </text>
+
+  <!-- Page number -->
+  <text x="1220" y="700" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a" opacity="0.3" text-anchor="end">8</text>
+</svg>

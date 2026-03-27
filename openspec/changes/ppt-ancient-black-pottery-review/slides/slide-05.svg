@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow-md" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="720" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="60" y="52" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="34" fill="#18181b" font-weight="700">四大工艺类型总览</text>
+  <text x="60" y="78" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="15" fill="#71717a">以呈色物质的物理化学本质为分类主干　|　实际遗物中两种甚至三种工艺叠加并不罕见（如陶寺遗址龙山黑陶）</text>
+
+  <!-- Card 1: 还原焙烧 -->
+  <g filter="url(#shadow-md)">
+    <rect x="60" y="100" width="565" height="280" rx="8" fill="#ffffff"/>
+  </g>
+  <rect x="60" y="100" width="4" height="280" rx="2" fill="#3b82f6"/>
+  <text x="84" y="130" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="20" fill="#3b82f6" font-weight="700">还原焙烧（铁致黑）</text>
+  <text x="84" y="160" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a" font-weight="600">呈色物质：<tspan font-weight="700">Fe₃O₄ 磁铁矿</tspan> / FeO 方铁矿</text>
+  <text x="84" y="188" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• 缺氧窑炉中赤铁矿(<tspan font-weight="700">Fe₂O₃</tspan>)被还原：Fe₂O₃→<tspan font-weight="700">Fe₃O₄</tspan>→FeO</text>
+  <text x="84" y="212" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• Fe₂O₃含量 &gt;5% 且氧分压足够低时呈深灰近黑色</text>
+  <text x="84" y="236" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• 冷却需保持隔氧，否则Fe₃O₄重新氧化为Fe₂O₃而「<tspan font-weight="700">返红</tspan>」</text>
+  <text x="84" y="264" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">典型：仰韶深灰陶、伊特鲁里亚夹心陶（<tspan font-weight="700">Nodari</tspan>等发现Fe²⁺/Fe³⁺梯度）</text>
+  <text x="84" y="290" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a" font-weight="600">判别：① <tspan font-weight="700">XRD</tspan>磁铁矿峰 ② 复烧变红 ③ 热重无碳失重</text>
+  <text x="84" y="314" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a"><tspan font-weight="700">磁铁矿</tspan>形成温度窗口：<tspan font-weight="700">700-900°C</tspan></text>
+  <text x="84" y="362" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#71717a" opacity="0.7">Maritan等：有机质消耗O₂营造局部还原微环境 | Lima等：穆斯堡尔谱测Fe²⁺/Fe³⁺丰度</text>
+
+  <!-- Card 2: 渗碳 -->
+  <g filter="url(#shadow-md)">
+    <rect x="653" y="100" width="567" height="280" rx="8" fill="#ffffff"/>
+  </g>
+  <rect x="653" y="100" width="4" height="280" rx="2" fill="#3b82f6"/>
+  <text x="677" y="130" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="20" fill="#3b82f6" font-weight="700">渗碳（碳致黑）</text>
+  <text x="677" y="160" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a" font-weight="600">呈色物质：<tspan font-weight="700">游离碳</tspan>（炭黑）— 中国黑陶最主要工艺</text>
+  <text x="677" y="188" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• 密闭窑炉中有机燃料不完全燃烧产生<tspan font-weight="700">碳黑</tspan>颗粒</text>
+  <text x="677" y="212" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• 两种沉积途径：物理充填气孔 + 歧化反应(2CO→CO₂+C)</text>
+  <text x="677" y="236" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• <tspan font-weight="700">刘鹏</tspan>实验：≤<tspan font-weight="700">630°C</tspan>渗碳最佳（粘土保留层间水，吸附力强）</text>
+  <text x="677" y="260" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• 渗碳梯度：由表面向内部递减，<tspan font-weight="700">SEM</tspan>可见纳米碳颗粒</text>
+  <text x="677" y="288" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">典型：龙山蛋壳黑陶（周仁揭示<tspan font-weight="700">渗碳</tspan>本质）、大溪文化黑陶</text>
+  <text x="677" y="314" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a" font-weight="600">判别：① <tspan font-weight="700">Raman</tspan> D峰~1350/G峰~1580 cm⁻¹ ② <tspan font-weight="700">EDS</tspan>碳梯度 ③ SEM碳颗粒</text>
+  <text x="677" y="340" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">李文杰复原四种模式：全身皆黑/外红内黑/上红下黑/竖条黑道</text>
+  <text x="677" y="362" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#71717a" opacity="0.7">潘坤容等：西汉黑陶涂炭黑+生漆，渗碳工艺跨时代延续</text>
+
+  <!-- Card 3: 三段式烧成 -->
+  <g filter="url(#shadow-md)">
+    <rect x="60" y="408" width="565" height="270" rx="8" fill="#ffffff"/>
+  </g>
+  <rect x="60" y="408" width="4" height="270" rx="2" fill="#3b82f6"/>
+  <text x="84" y="438" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="20" fill="#3b82f6" font-weight="700">三段式烧成（晶相致黑）</text>
+  <text x="84" y="466" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a" font-weight="600">呈色物质：涂层中<tspan font-weight="700">磁铁矿</tspan>/赫赛石(FeAl₂O₄)微晶</text>
+  <text x="84" y="494" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• 先涂富铁细泥浆(粒径&lt;2μm)，三阶段烧成：</text>
+  <text x="84" y="518" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">  I 氧化~800°C → II <tspan font-weight="700">还原850-950°C</tspan> → III 再氧化~800°C</text>
+  <text x="84" y="542" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• 涂层含K₂O/CaO助熔剂，低温即烧结封孔阻氧→保黑</text>
+  <text x="84" y="566" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• 胎体粗颗粒疏松→氧气渗入→<tspan font-weight="700">Fe₃O₄</tspan>重新氧化→<tspan font-weight="700">返红</tspan></text>
+  <text x="84" y="594" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">典型：雅典黑光陶、坎帕尼亚黑光陶（<tspan font-weight="700">Cianchetta</tspan>/Solard等）</text>
+  <text x="84" y="618" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a" font-weight="600">判别：① <tspan font-weight="700">SEM-BSE</tspan>涂层/胎体界面 ② 涂层Fe/K富集 ③ 复烧不变红</text>
+  <text x="84" y="660" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#71717a" opacity="0.7">Solard等：μ-XRD₂ + <tspan font-weight="700">SEM-EDS</tspan>分析4世纪雅典化黑光陶，BSE界限分明</text>
+
+  <!-- Card 4: 抛光 -->
+  <g filter="url(#shadow-md)">
+    <rect x="653" y="408" width="567" height="270" rx="8" fill="#ffffff"/>
+  </g>
+  <rect x="653" y="408" width="4" height="270" rx="2" fill="#3b82f6"/>
+  <text x="677" y="438" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="20" fill="#3b82f6" font-weight="700">抛光（结构致黑）</text>
+  <text x="677" y="466" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#27272a" font-weight="600">呈色物质：层状硅酸盐矿物<tspan font-weight="700">定向排列</tspan></text>
+  <text x="677" y="494" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• 不依赖碳沉积或铁物相改变，本质是「结构致黑」</text>
+  <text x="677" y="518" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• 精细磨光使矿物定向排列→消除可见光<tspan font-weight="700">漫反射</tspan></text>
+  <text x="677" y="542" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• Kim等：百济黑陶未检测到碳/涂层，呈色全归因于排列</text>
+  <text x="677" y="566" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">• Choi等：抛光处理导致表面粗糙度大幅降低、光泽度提升</text>
+  <text x="677" y="594" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">典型：百济汉城期研磨黑陶、巴里科特黑衣陶（Maritan等）</text>
+  <text x="677" y="618" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a" font-weight="600">判别：① <tspan font-weight="700">PLM</tspan>偏光消光 ② <tspan font-weight="700">EBSD</tspan>织构 ③ <tspan font-weight="700">AFM</tspan>粗糙度 ④ 无碳/铁信号</text>
+  <text x="677" y="660" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#71717a" opacity="0.7">Blackmore等：研磨抛光费工费时，具有社会等级标识功能</text>
+
+  <text x="1220" y="700" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a" opacity="0.3" text-anchor="end">5</text>
+</svg>

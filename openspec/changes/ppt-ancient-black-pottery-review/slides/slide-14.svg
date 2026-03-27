@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow-md"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.06"/></filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="720" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="60" y="52" font-family="Instrument Serif, Georgia, 'PingFang SC', serif" font-size="32" font-weight="700" fill="#27272a">新兴技术与未来展望</text>
+  <!-- Subtitle -->
+  <text x="60" y="78" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="14" fill="#71717a">原位无损分析——解决有损 vs 无损矛盾的新途径</text>
+
+  <!-- ============ Card 1: SR-μXRD (top-left) ============ -->
+  <rect x="40" y="96" width="588" height="296" rx="8" fill="#ffffff" filter="url(#shadow-md)"/>
+
+  <text x="60" y="124" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#3b82f6">SR-&#x03BC;XRD</text>
+  <text x="175" y="124" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">同步辐射微区X射线衍射</text>
+  <line x1="60" y1="132" x2="608" y2="132" stroke="#e5e7eb" stroke-width="1"/>
+
+  <circle cx="72" cy="153" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan x="82" y="157">可在 10 &#x03BC;m 甚至更小空间尺度获取物相信息，空间分辨率</tspan>
+    <tspan x="82" dy="17">远超常规 XRD（mm 级光斑）</tspan>
+  </text>
+
+  <circle cx="72" cy="194" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan x="82" y="198">无需粉碎样品即可完成物相分析，对珍贵文物友好</tspan>
+  </text>
+
+  <circle cx="72" cy="220" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan x="82" y="224">为涂层中磁铁矿（Fe&#x2083;O&#x2084;）与赫赛石（Fe&#x2082;O&#x2083;&#x00B7;H&#x2082;O）</tspan>
+    <tspan x="82" dy="17">等微晶的无损鉴定提供技术可能</tspan>
+  </text>
+
+  <circle cx="72" cy="262" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#71717a">
+    <tspan x="82" y="266">局限：依赖同步辐射光源（大科学装置），实验机时获取</tspan>
+    <tspan x="82" dy="17">困难，对样品制备仍有一定要求</tspan>
+  </text>
+
+  <!-- Tag -->
+  <rect x="60" y="363" width="96" height="20" rx="10" fill="#eff6ff"/>
+  <text x="108" y="377" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#3b82f6" text-anchor="middle">无损微区物相</text>
+
+  <!-- ============ Card 2: XANES (top-right) ============ -->
+  <rect x="648" y="96" width="592" height="296" rx="8" fill="#ffffff" filter="url(#shadow-md)"/>
+
+  <text x="668" y="124" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#3b82f6">XANES</text>
+  <text x="748" y="124" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">X射线吸收近边结构谱</text>
+  <line x1="668" y1="132" x2="1220" y2="132" stroke="#e5e7eb" stroke-width="1"/>
+
+  <circle cx="680" cy="153" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan x="690" y="157">不取样条件下直接测定铁的价态（Fe&#xB2;&#x207A; vs Fe&#xB3;&#x207A;）</tspan>
+    <tspan x="690" dy="17">及配位环境，对样品无任何损伤</tspan>
+  </text>
+
+  <circle cx="680" cy="196" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan x="690" y="200">为还原焙烧（整体 Fe&#xB3;&#x207A;→Fe&#xB2;&#x207A;）与三段式黑陶</tspan>
+    <tspan x="690" dy="17">（涂层局部还原）的原位判别提供新途径</tspan>
+  </text>
+
+  <circle cx="680" cy="240" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan x="690" y="244">可区分 Fe&#xB2;&#x207A; 与 Fe&#xB3;&#x207A; 的局域结构差异：不同配位</tspan>
+    <tspan x="690" dy="17">环境的吸收边形状和位置存在可辨识的差别</tspan>
+  </text>
+
+  <circle cx="680" cy="282" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#71717a">
+    <tspan x="690" y="286">同样依赖同步辐射光源，但与 SR-&#x03BC;XRD 互补：</tspan>
+    <tspan x="690" dy="17">一个给物相，一个给价态，联合使用威力倍增</tspan>
+  </text>
+
+  <!-- Tag -->
+  <rect x="668" y="363" width="118" height="20" rx="10" fill="#eff6ff"/>
+  <text x="727" y="377" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#3b82f6" text-anchor="middle">铁价态原位判别</text>
+
+  <!-- ============ Card 3: Micro-CT (bottom-left) ============ -->
+  <rect x="40" y="406" width="588" height="290" rx="8" fill="#ffffff" filter="url(#shadow-md)"/>
+
+  <text x="60" y="434" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#3b82f6">Micro-CT</text>
+  <text x="172" y="434" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">微焦点CT扫描</text>
+  <line x1="60" y1="442" x2="608" y2="442" stroke="#e5e7eb" stroke-width="1"/>
+
+  <circle cx="72" cy="463" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan x="82" y="467">不接触样品即可三维重建胎体气孔的形态、大小与空间分布</tspan>
+  </text>
+
+  <circle cx="72" cy="489" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan x="82" y="493">间接判断渗碳深度和均匀性：碳沉积封闭气孔后密度变化</tspan>
+    <tspan x="82" dy="17">可在 CT 图像中清晰辨识</tspan>
+  </text>
+
+  <circle cx="72" cy="530" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan x="82" y="534">Reedy 等：结合 3D 图像分析系统表征 42 个孔隙参数，</tspan>
+    <tspan x="82" dy="17">其中 26 个与烧成温度显著相关（相关系数 r > 0.7）</tspan>
+  </text>
+
+  <circle cx="72" cy="574" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan x="82" y="578">为烧成工艺重建提供全新的三维视角，超越传统薄片二维观察</tspan>
+  </text>
+
+  <!-- Tag -->
+  <rect x="60" y="667" width="118" height="20" rx="10" fill="#eff6ff"/>
+  <text x="119" y="681" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#3b82f6" text-anchor="middle">三维气孔重建</text>
+
+  <!-- ============ Card 4: HR-TEM (bottom-right) ============ -->
+  <rect x="648" y="406" width="592" height="290" rx="8" fill="#ffffff" filter="url(#shadow-md)"/>
+
+  <text x="668" y="434" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#3b82f6">HR-TEM</text>
+  <text x="775" y="434" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#71717a">高分辨透射电镜</text>
+  <line x1="668" y1="442" x2="1220" y2="442" stroke="#e5e7eb" stroke-width="1"/>
+
+  <circle cx="680" cy="463" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan x="690" y="467">揭示涂层中纳米级磁铁矿或赫赤铁矿（hercynite）微晶的</tspan>
+    <tspan x="690" dy="17">晶体学特征：晶面间距、取向关系、缺陷结构</tspan>
+  </text>
+
+  <circle cx="680" cy="508" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan x="690" y="512">为三段式烧成工艺的精细复原提供以往难以获取的</tspan>
+    <tspan x="690" dy="17">微观证据——纳米尺度的矿物相转变直接对应烧成阶段</tspan>
+  </text>
+
+  <circle cx="680" cy="554" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#27272a">
+    <tspan x="690" y="558">Amicone 等 Campus Galli 窑烧实验：综合 XRD + SEM-EDS +</tspan>
+    <tspan x="690" dy="17">拉曼光谱系统表征不同烧成阶段的产物相变序列</tspan>
+  </text>
+
+  <circle cx="680" cy="596" r="3" fill="#3b82f6"/>
+  <text font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="13" fill="#71717a">
+    <tspan x="690" y="600">需要制备超薄切片（&lt;100 nm），属有损方法，但信息量极大</tspan>
+  </text>
+
+  <!-- Tag -->
+  <rect x="668" y="667" width="130" height="20" rx="10" fill="#eff6ff"/>
+  <text x="733" y="681" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="11" fill="#3b82f6" text-anchor="middle">纳米级微晶表征</text>
+
+  <!-- Page Number -->
+  <text x="1220" y="700" font-family="Work Sans, Inter, 'PingFang SC', sans-serif" font-size="12" fill="#27272a" opacity="0.3" text-anchor="end">14</text>
+</svg>

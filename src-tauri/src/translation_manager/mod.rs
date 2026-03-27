@@ -15,10 +15,6 @@ use parking_lot::Mutex as ParkingMutex;
 use tauri::async_runtime;
 use tokio::{sync::Mutex, time::sleep};
 
-/// R3-H1: 翻译 job 完成或失败时触发的事件回调类型
-/// 参数: (event_name, document_id, job_id)
-pub type TranslationEventEmitter = dyn Fn(&str, &str, &str) + Send + Sync;
-
 use crate::{
     errors::{AppError, AppErrorCode},
     ipc::translation::{RequestTranslationInput, TranslationEngineStatus, TranslationJobDto},
@@ -31,10 +27,15 @@ use self::{
     artifact_index::{normalize_progress, CacheKeyInput, TranslationArtifactIndex},
     engine_supervisor::EngineSupervisor,
     http_client::{
-        CreateJobRequest, EngineJobError, GetJobResponse, ProviderAuth, TranslationHttpClient,
+        CreateJobRequest, CreateJobResponse, EngineJobError, GetJobResponse, ProviderAuth,
+        TranslationHttpClient,
     },
     job_registry::{JobRegistry, PendingTranslationRequest, MAX_QUEUED_JOBS},
 };
+
+/// R3-H1: 翻译任务事件回调类型
+/// 参数: (event_name, job_dto)
+pub type TranslationEventEmitter = dyn Fn(&str, &TranslationJobDto) + Send + Sync;
 
 const ENGINE_HOST: &str = "127.0.0.1";
 const DEFAULT_ENGINE_PORT: u16 = 8890;
@@ -95,15 +96,15 @@ impl TranslationManager {
     /// R3-H1: 注入事件发射回调（Tauri setup 后调用一次）
     pub fn set_event_emitter<F>(&self, emitter: F)
     where
-        F: Fn(&str, &str, &str) + Send + Sync + 'static,
+        F: Fn(&str, &TranslationJobDto) + Send + Sync + 'static,
     {
         *self.inner.event_emitter.lock() = Some(Arc::new(emitter));
     }
 
     /// 触发事件回调（如果已注入）
-    fn emit_event(&self, event_name: &str, document_id: &str, job_id: &str) {
+    fn emit_event(&self, event_name: &str, job: &TranslationJobDto) {
         if let Some(emitter) = self.inner.event_emitter.lock().as_ref() {
-            emitter(event_name, document_id, job_id);
+            emitter(event_name, job);
         }
     }
 
@@ -174,10 +175,7 @@ impl TranslationManager {
                 drop(registry);
                 if let Some(record) = self.lookup_job(&existing_job_id)? {
                     if !is_terminal_status(&record.status) {
-                        return self
-                            .inner
-                            .artifact_index
-                            .dto_from_record(&self.inner.storage, record);
+                        return Ok(self.inner.artifact_index.dto_from_record_basic(record));
                     }
                 }
 
@@ -232,9 +230,7 @@ impl TranslationManager {
             });
         }
 
-        self.inner
-            .artifact_index
-            .dto_from_record(&self.inner.storage, job.0)
+        Ok(self.inner.artifact_index.dto_from_record_basic(job.0))
     }
 
     pub fn get_job(&self, job_id: String) -> Result<TranslationJobDto, AppError> {
@@ -245,7 +241,7 @@ impl TranslationManager {
 
         self.inner
             .artifact_index
-            .dto_from_record(&self.inner.storage, record)
+            .dto_from_record_if_completed(&self.inner.storage, record)
     }
 
     pub async fn cancel_translation(&self, job_id: String) -> Result<bool, AppError> {
@@ -410,7 +406,7 @@ impl TranslationManager {
             normalize_output_mode(input.output_mode.unwrap_or_else(|| "bilingual".to_string()))?;
 
         let figure_translation = input.figure_translation.unwrap_or(true);
-        let skip_reference_pages = input.skip_reference_pages.unwrap_or(true);
+        let skip_reference_pages = input.skip_reference_pages.unwrap_or(false);
 
         // 读取用户自定义翻译提示词（cache_key 计算需要包含 prompt）
         let custom_prompt = {
@@ -509,11 +505,6 @@ impl TranslationManager {
             Some(0.0),
         );
 
-        if let Err(error) = self.ensure_engine(None, false).await {
-            let _ = self.fail_job(&job_id, &error, Some(started_at));
-            return;
-        }
-
         let create_request = CreateJobRequest {
             request_id: job_id.clone(),
             document_id: snapshot.request.document_id.clone(),
@@ -537,14 +528,12 @@ impl TranslationManager {
             custom_prompt: snapshot.request.custom_prompt.clone(),
         };
 
-        let create_response = match self.inner.http_client.create_job(&create_request).await {
+        let create_response = match self
+            .submit_engine_job(&job_id, &create_request, &started_at)
+            .await
+        {
             Ok(response) => response,
-            Err(error) => {
-                let _ = self
-                    .handle_engine_transport_failure(&job_id, &error, Some(started_at))
-                    .await;
-                return;
-            }
+            Err(()) => return,
         };
 
         {
@@ -662,13 +651,12 @@ impl TranslationManager {
                     Some(finished_at),
                     Some(1.0),
                 )?;
-                // R3-H1: 翻译完成后触发事件通知前端
-                self.emit_event("translation://job-completed", document_id, job_id);
                 if let Err(error) =
                     cache_eviction::evict_if_needed_excluding(&self.inner.storage, Some(job_id))
                 {
                     eprintln!("translation cache eviction failed for job {job_id}: {error}");
                 }
+                self.emit_completed_event(job_id)?;
             }
             "failed" => {
                 let error = job.error.clone().unwrap_or(EngineJobError {
@@ -742,6 +730,72 @@ impl TranslationManager {
             started_at.as_deref(),
             finished_at.as_deref(),
         )?;
+        if status != "completed" {
+            if let Some(record) = translation_jobs::get_by_id(&connection, job_id)? {
+                let dto = self.inner.artifact_index.dto_from_record_basic(record);
+                self.emit_event("translation://job-progress", &dto);
+            }
+        }
+        Ok(())
+    }
+
+    async fn submit_engine_job(
+        &self,
+        job_id: &str,
+        create_request: &CreateJobRequest,
+        started_at: &str,
+    ) -> Result<CreateJobResponse, ()> {
+        match self.inner.http_client.create_job(create_request).await {
+            Ok(response) => Ok(response),
+            Err(error)
+                if matches!(
+                    error.code,
+                    AppErrorCode::EngineUnavailable | AppErrorCode::EngineTimeout
+                ) =>
+            {
+                if let Err(restart_error) = self.ensure_engine(None, false).await {
+                    let _ = self
+                        .handle_engine_transport_failure(
+                            job_id,
+                            &restart_error,
+                            Some(started_at.to_string()),
+                        )
+                        .await;
+                    return Err(());
+                }
+
+                match self.inner.http_client.create_job(create_request).await {
+                    Ok(response) => Ok(response),
+                    Err(retry_error) => {
+                        let _ = self
+                            .handle_engine_transport_failure(
+                                job_id,
+                                &retry_error,
+                                Some(started_at.to_string()),
+                            )
+                            .await;
+                        Err(())
+                    }
+                }
+            }
+            Err(error) => {
+                let _ = self
+                    .handle_engine_transport_failure(job_id, &error, Some(started_at.to_string()))
+                    .await;
+                Err(())
+            }
+        }
+    }
+
+    fn emit_completed_event(&self, job_id: &str) -> Result<(), AppError> {
+        let Some(record) = self.lookup_job(job_id)? else {
+            return Ok(());
+        };
+        let dto = self
+            .inner
+            .artifact_index
+            .dto_from_record(&self.inner.storage, record)?;
+        self.emit_event("translation://job-completed", &dto);
         Ok(())
     }
 

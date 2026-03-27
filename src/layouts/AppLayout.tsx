@@ -166,7 +166,10 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => {
   }, []); // 空依赖 — listener 仅注册一次，通过 ref 读取最新值
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[var(--color-bg)] text-[var(--color-text)] relative">
+    <div
+      className="flex h-screen w-full overflow-hidden bg-[var(--color-bg)] text-[var(--color-text)] relative"
+      onContextMenu={(e) => e.preventDefault()}
+    >
       {/* 左侧 Sidebar */}
       <Sidebar
         isOpen={isSidebarOpen}

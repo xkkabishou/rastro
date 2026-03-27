@@ -117,9 +117,11 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
       case 'translated_pdf':
       case 'bilingual_pdf':
         if (artifact.filePath) {
-          setCurrentDocument(doc);
-          setPdfUrl(convertFileSrc(artifact.filePath));
-          if (isMobile) onToggle();
+          // 先打开文档（设置原文 URL），再设置翻译 URL
+          openDocumentInViewer(doc);
+          useDocumentStore.getState().setTranslatedPdfUrl(convertFileSrc(artifact.filePath));
+          // 切换到译文视图（bilingualMode=false 表示显示译文）
+          useDocumentStore.getState().setBilingualMode(false);
         }
         break;
       case 'ai_summary':
@@ -135,7 +137,7 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
         }
         break;
     }
-  }, [openDocumentInViewer, setCurrentDocument, setPdfUrl, isMobile, onToggle]);
+  }, [openDocumentInViewer]);
 
   // -------------------------------------------------------------------------
   // T2.4.2: 确认弹窗状态
@@ -161,12 +163,18 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
 
         case 'translate': {
           // T2.4.2: 触发翻译（复用 PdfViewer.handleTranslate 模式）
+          // 已有翻译时菜单显示"重新翻译全文"，需要 forceRefresh
+          const hasExistingTranslation = doc.cachedTranslation?.available ?? false;
           void (async () => {
             try {
               openDocumentInViewer(doc);
+              // 显式重置翻译状态，准备开始新翻译
+              useDocumentStore.getState().setTranslatedPdfUrl(null);
+              useDocumentStore.getState().setTranslationProgress(0);
               const job = await ipcClient.requestTranslation({
                 documentId: docId,
                 filePath: doc.filePath,
+                forceRefresh: hasExistingTranslation,
               });
               useDocumentStore.getState().setTranslationJob(job);
             } catch (err) {
@@ -275,13 +283,15 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
           void (async () => {
             try {
               openDocumentInViewer(doc);
+              // 显式重置翻译状态，准备开始重新翻译
+              useDocumentStore.getState().setTranslatedPdfUrl(null);
+              useDocumentStore.getState().setTranslationProgress(0);
               const job = await ipcClient.requestTranslation({
                 documentId: docId,
                 filePath: doc.filePath,
                 forceRefresh: true,
               });
               useDocumentStore.getState().setTranslationJob(job);
-              useDocumentStore.getState().setTranslatedPdfUrl(null);
             } catch (err) {
               console.error('重新翻译失败:', err);
             }

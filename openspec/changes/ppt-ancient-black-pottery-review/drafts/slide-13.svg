@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="720" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="60" y="90" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="36" font-weight="bold" fill="#18181b">工艺多解性难题</text>
+  <!-- Subtitle -->
+  <text x="60" y="125" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="18" fill="#71717a">同一物相 ≠ 同一工艺</text>
+
+  <!-- Hero Card (left 2/3) -->
+  <rect x="60" y="160" width="760" height="480" rx="8" ry="8" fill="#ffffff" filter="url(#shadow)"/>
+  <!-- Hero card content -->
+  <text x="84" y="204" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="600" fill="#18181b">核心挑战</text>
+  <line x1="84" y1="218" x2="796" y2="218" stroke="#e5e5e5" stroke-width="1"/>
+
+  <!-- Bullet 1 -->
+  <circle cx="96" cy="258" r="4" fill="#3b82f6"/>
+  <text x="112" y="254" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" fill="#27272a">
+    <tspan x="112" dy="0">磁铁矿的双重来源：既可是还原焙烧产物，</tspan>
+    <tspan x="112" dy="30">也可出现在三段式涂层中</tspan>
+  </text>
+
+  <!-- Bullet 2 -->
+  <circle cx="96" cy="340" r="4" fill="#3b82f6"/>
+  <text x="112" y="336" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" fill="#27272a">
+    <tspan x="112" dy="0">良渚案例：胎体有机质草木灰形成低磷泥浆层</tspan>
+    <tspan x="112" dy="30">而非专门陶衣</tspan>
+  </text>
+
+  <!-- Bullet 3 -->
+  <circle cx="96" cy="418" r="4" fill="#3b82f6"/>
+  <text x="112" y="414" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" fill="#27272a">
+    <tspan x="112" dy="0">有损vs无损矛盾：蛋壳黑陶等珍贵器物</tspan>
+    <tspan x="112" dy="30">难以接受有损取样</tspan>
+  </text>
+
+  <!-- Right Card (1/3) - Accent background -->
+  <rect x="848" y="160" width="372" height="480" rx="8" ry="8" fill="#3b82f6" filter="url(#shadow)"/>
+  <!-- Right card content -->
+  <text x="872" y="210" font-family="Instrument Serif, Georgia, 'PingFang SC', 'Microsoft YaHei', serif" font-size="24" font-weight="bold" fill="#fafafa">多元互证原则</text>
+  <line x1="872" y1="228" x2="1196" y2="228" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+
+  <circle cx="884" cy="278" r="4" fill="#fafafa"/>
+  <text x="900" y="283" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" fill="#fafafa">
+    <tspan x="900" dy="0">至少两种独立分析方法</tspan>
+    <tspan x="900" dy="30">交叉验证</tspan>
+  </text>
+
+  <circle cx="884" cy="358" r="4" fill="#fafafa"/>
+  <text x="900" y="363" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" fill="#fafafa">
+    <tspan x="900" dy="0">结合空间分布信息</tspan>
+    <tspan x="900" dy="30">综合判断</tspan>
+  </text>
+
+  <circle cx="884" cy="438" r="4" fill="#fafafa"/>
+  <text x="900" y="443" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" fill="#fafafa">
+    <tspan x="900" dy="0">实验复原与分析数据</tspan>
+    <tspan x="900" dy="30">对照</tspan>
+  </text>
+
+  <!-- Page Number -->
+  <text x="1220" y="700" font-family="Work Sans, Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12" fill="#27272a" opacity="0.3" text-anchor="end">13</text>
+</svg>

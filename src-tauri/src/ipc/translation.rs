@@ -21,7 +21,7 @@ pub struct TranslationEngineStatus {
 }
 
 /// 翻译任务 DTO
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TranslationJobDto {
     pub job_id: String,
