@@ -31,15 +31,11 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
 
             // R3-H1: 注入翻译事件发射器，将 translation_manager 的回调桥接到 Tauri 前端事件
             let handle = app.handle().clone();
-            state.translation_manager.set_event_emitter(move |event_name, document_id, job_id| {
-                let _ = handle.emit(
-                    event_name,
-                    serde_json::json!({
-                        "documentId": document_id,
-                        "jobId": job_id,
-                    }),
-                );
-            });
+            state
+                .translation_manager
+                .set_event_emitter(move |event_name, job| {
+                    let _ = handle.emit(event_name, job.clone());
+                });
 
             // T3.1.2: 启动时后台缓存补全任务（不阻塞主线程）
             let bg_state = state.clone();
@@ -141,6 +137,10 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             ipc::obsidian::export_summary_to_obsidian,
             ipc::obsidian::export_chats_to_obsidian,
             ipc::obsidian::detect_obsidian_vaults,
+            // M. 精读模式 (3 个)
+            ipc::deep_read::save_deep_read_text,
+            ipc::deep_read::clear_deep_read_text,
+            ipc::deep_read::get_deep_read_status,
         ])
         .run(tauri::generate_context!())?;
     Ok(())
@@ -171,15 +171,14 @@ async fn background_fill_title_cache(
     let provider = models::ProviderId::from_str(&active_record.provider)?;
 
     // 验证 API Key 是否存在
-    let config = match ipc::translation_settings::resolve_translation_runtime_config(
-        &state, provider,
-    ) {
-        Ok(c) => c,
-        Err(_) => {
-            eprintln!("[标题缓存补全] 翻译 API Key 未配置，跳过");
-            return Ok(());
-        }
-    };
+    let config =
+        match ipc::translation_settings::resolve_translation_runtime_config(&state, provider) {
+            Ok(c) => c,
+            Err(_) => {
+                eprintln!("[标题缓存补全] 翻译 API Key 未配置，跳过");
+                return Ok(());
+            }
+        };
 
     // 2. 检测 Zotero
     let connector = match zotero_connector::ZoteroConnector::detect() {
@@ -267,9 +266,8 @@ async fn background_fill_title_cache(
             title
         );
 
-        let request = ipc::translation_settings::build_translation_chat_request(
-            &client, &config, &prompt,
-        );
+        let request =
+            ipc::translation_settings::build_translation_chat_request(&client, &config, &prompt);
         let response = match request
             .timeout(std::time::Duration::from_secs(30))
             .send()
@@ -286,10 +284,7 @@ async fn background_fill_title_cache(
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            eprintln!(
-                "[标题缓存补全] API 错误 ({}): {} - {}",
-                title, status, body
-            );
+            eprintln!("[标题缓存补全] API 错误 ({}): {} - {}", title, status, body);
             fail_count += 1;
             // 如果连续失败 3 次以上，提前退出避免浪费资源
             if fail_count >= 3 && success_count == 0 {
@@ -302,10 +297,7 @@ async fn background_fill_title_cache(
         let body: serde_json::Value = match response.json().await {
             Ok(v) => v,
             Err(err) => {
-                eprintln!(
-                    "[标题缓存补全] 响应解析失败 ({}): {}",
-                    title, err
-                );
+                eprintln!("[标题缓存补全] 响应解析失败 ({}): {}", title, err);
                 fail_count += 1;
                 continue;
             }
@@ -328,10 +320,7 @@ async fn background_fill_title_cache(
                     &config.model,
                     &now,
                 ) {
-                    eprintln!(
-                        "[标题缓存补全] 缓存写入失败 ({}): {}",
-                        title, err
-                    );
+                    eprintln!("[标题缓存补全] 缓存写入失败 ({}): {}", title, err);
                 } else {
                     success_count += 1;
                 }

@@ -93,6 +93,8 @@ import {
   ExportChatsResult,
   DetectedVault,
   ZoteroExportResult,
+  // M. 精读模式
+  DeepReadStatus,
   // Event Payloads
   AiStreamChunkPayload,
   AiStreamFinishedPayload,
@@ -486,6 +488,22 @@ export const ipcClient = {
   /** 将磁盘上已有的 PDF 文件拷贝到 Zotero 附件 */
   exportPdfToZotero: (zoteroItemKey: string, sourceFilePath: string, targetFilename: string) =>
     safeInvoke<ZoteroExportResult>(IPC_COMMANDS.EXPORT_PDF_TO_ZOTERO, { zoteroItemKey, sourceFilePath, targetFilename }),
+
+  // -------------------------------------------------------------------------
+  // M. 精读模式
+  // -------------------------------------------------------------------------
+
+  /** 保存精读全文 */
+  saveDeepReadText: (documentId: string, text: string) =>
+    safeInvoke<DeepReadStatus>(IPC_COMMANDS.SAVE_DEEP_READ_TEXT, { documentId, text }),
+
+  /** 清除精读文本 */
+  clearDeepReadText: (documentId: string) =>
+    safeInvoke<DeepReadStatus>(IPC_COMMANDS.CLEAR_DEEP_READ_TEXT, { documentId }),
+
+  /** 查询精读状态 */
+  getDeepReadStatus: (documentId: string) =>
+    safeInvoke<DeepReadStatus>(IPC_COMMANDS.GET_DEEP_READ_STATUS, { documentId }),
 };
 
 // ---------------------------------------------------------------------------

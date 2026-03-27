@@ -4,7 +4,8 @@ import { useDocumentStore } from '../../stores/useDocumentStore';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { ipcClient } from '../../lib/ipc-client';
-import { Sparkles, MessageSquare, Trash2 } from 'lucide-react';
+import { extractPdfText } from '../../lib/pdf-text-extractor';
+import { Sparkles, MessageSquare, Trash2, BookOpen, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import shibaChatUrl from '../../assets/shiba/shiba-chat.png';
 
@@ -25,6 +26,8 @@ export const ChatPanel: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const dragLeaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [deepReadEnabled, setDeepReadEnabled] = useState(false);
+  const [deepReadLoading, setDeepReadLoading] = useState(false);
 
   // 自动滚动到底部
   useEffect(() => {
@@ -32,6 +35,53 @@ export const ChatPanel: React.FC = () => {
   }, [messages]);
 
   const currentDocument = useDocumentStore((s) => s.currentDocument);
+
+  // 切换文档时测试精读状态
+  useEffect(() => {
+    if (!currentDocument) {
+      setDeepReadEnabled(false);
+      return;
+    }
+    ipcClient.getDeepReadStatus(currentDocument.documentId).then((status) => {
+      setDeepReadEnabled(status.enabled);
+    }).catch(() => setDeepReadEnabled(false));
+  }, [currentDocument?.documentId]);
+
+  // 精读开关
+  const toggleDeepRead = useCallback(async () => {
+    if (!currentDocument) return;
+    if (deepReadLoading) return;
+
+    if (deepReadEnabled) {
+      // 关闭精读
+      try {
+        await ipcClient.clearDeepReadText(currentDocument.documentId);
+        setDeepReadEnabled(false);
+      } catch (err) {
+        console.error('关闭精读失败:', err);
+      }
+      return;
+    }
+
+    // 开启精读：提取全文并存入后端
+    setDeepReadLoading(true);
+    try {
+      const result = await extractPdfText(currentDocument.filePath, {
+        maxPages: 9999,
+        maxChars: 500_000,
+      });
+      if (!result.text.trim()) {
+        console.warn('精读模式：PDF 可能是扫描件，无法提取文本');
+        return;
+      }
+      await ipcClient.saveDeepReadText(currentDocument.documentId, result.text);
+      setDeepReadEnabled(true);
+    } catch (err) {
+      console.error('开启精读失败:', err);
+    } finally {
+      setDeepReadLoading(false);
+    }
+  }, [currentDocument, deepReadEnabled, deepReadLoading]);
 
   // 发送消息
   const handleSend = useCallback(async (content: string, contextQuote?: string) => {
@@ -130,15 +180,34 @@ export const ChatPanel: React.FC = () => {
           <Sparkles size={16} className="text-[var(--color-primary)]" />
           <span className="font-semibold text-sm text-[var(--color-text)]">AI 助手</span>
         </div>
-        {messages.length > 0 && (
+        <div className="flex items-center gap-1">
+          {/* 精读模式开关 */}
           <button
-            onClick={clearChat}
-            className="p-1.5 rounded-md hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)] transition-colors"
-            title="清空对话"
+            onClick={toggleDeepRead}
+            disabled={!currentDocument || deepReadLoading}
+            className={`p-1.5 rounded-md transition-colors ${
+              deepReadEnabled
+                ? 'bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25'
+                : 'hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)]'
+            } disabled:opacity-40 disabled:cursor-not-allowed`}
+            title={deepReadEnabled ? '关闭精读模式' : '开启精读模式（提取全文作为 AI 上下文）'}
           >
-            <Trash2 size={14} />
+            {deepReadLoading ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <BookOpen size={14} />
+            )}
           </button>
-        )}
+          {messages.length > 0 && (
+            <button
+              onClick={clearChat}
+              className="p-1.5 rounded-md hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)] transition-colors"
+              title="清空对话"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 消息列表 */}

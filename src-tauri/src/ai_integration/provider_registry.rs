@@ -11,6 +11,15 @@ use crate::{
     storage::provider_settings,
 };
 
+use serde::Serialize;
+
+/// 多消息对话中的单条消息
+#[derive(Debug, Clone, Serialize)]
+pub struct PromptMessage {
+    pub role: String,
+    pub content: String,
+}
+
 /// Provider 运行时配置
 #[derive(Debug, Clone)]
 pub struct ProviderRuntimeConfig {
@@ -160,36 +169,55 @@ pub fn normalize_base_url(provider: ProviderId, base_url: &str) -> String {
     url.to_string().trim_end_matches('/').to_string()
 }
 
-/// 构建流式请求
+/// 构建流式请求（支持多消息数组）
 pub fn build_stream_request(
     client: &Client,
     config: &ProviderRuntimeConfig,
-    prompt: &str,
+    messages: &[PromptMessage],
 ) -> RequestBuilder {
     match config.provider {
-        ProviderId::Openai => client
-            .post(format!(
-                "{}/chat/completions",
-                config.base_url.trim_end_matches('/')
-            ))
-            .bearer_auth(&config.api_key)
-            .json(&json!({
-                "model": config.model,
-                "stream": true,
-                "stream_options": { "include_usage": true },
-                "messages": [
-                    { "role": "user", "content": prompt }
-                ]
-            })),
+        ProviderId::Openai => {
+            // OpenAI / DeepSeek: 直接映射 messages 数组
+            let api_messages: Vec<Value> = messages
+                .iter()
+                .map(|m| json!({ "role": m.role, "content": m.content }))
+                .collect();
+            client
+                .post(format!(
+                    "{}/chat/completions",
+                    config.base_url.trim_end_matches('/')
+                ))
+                .bearer_auth(&config.api_key)
+                .json(&json!({
+                    "model": config.model,
+                    "stream": true,
+                    "stream_options": { "include_usage": true },
+                    "messages": api_messages
+                }))
+        }
         ProviderId::Claude => {
+            // Claude: 提取 system role 到顶层 system 字段，其余放 messages
+            let system_text: Option<String> = messages
+                .iter()
+                .filter(|m| m.role == "system")
+                .map(|m| m.content.clone())
+                .reduce(|a, b| format!("{}\n\n{}", a, b));
+            let api_messages: Vec<Value> = messages
+                .iter()
+                .filter(|m| m.role != "system")
+                .map(|m| json!({ "role": m.role, "content": m.content }))
+                .collect();
+
             let mut payload = json!({
                 "model": config.model,
                 "stream": true,
                 "max_tokens": 2048,
-                "messages": [
-                    { "role": "user", "content": prompt }
-                ]
+                "messages": api_messages
             });
+
+            if let Some(sys) = system_text {
+                payload["system"] = json!(sys);
+            }
 
             if supports_claude_extended_thinking(&config.model) {
                 payload["thinking"] = json!({
@@ -207,23 +235,46 @@ pub fn build_stream_request(
                 .header("anthropic-version", "2023-06-01")
                 .json(&payload)
         }
-        ProviderId::Gemini => client
-            .post(format!(
-                "{}/models/{}:streamGenerateContent?alt=sse&key={}",
-                config.base_url.trim_end_matches('/'),
-                config.model,
-                config.api_key
-            ))
-            .json(&json!({
-                "contents": [
-                    {
-                        "role": "user",
-                        "parts": [
-                            { "text": prompt }
-                        ]
-                    }
-                ]
-            })),
+        ProviderId::Gemini => {
+            // Gemini: 提取 system role 到 systemInstruction，其余放 contents
+            let system_text: Option<String> = messages
+                .iter()
+                .filter(|m| m.role == "system")
+                .map(|m| m.content.clone())
+                .reduce(|a, b| format!("{}\n\n{}", a, b));
+            let contents: Vec<Value> = messages
+                .iter()
+                .filter(|m| m.role != "system")
+                .map(|m| {
+                    // Gemini 用 "model" 而非 "assistant"
+                    let gemini_role = if m.role == "assistant" {
+                        "model"
+                    } else {
+                        &m.role
+                    };
+                    json!({
+                        "role": gemini_role,
+                        "parts": [{ "text": m.content }]
+                    })
+                })
+                .collect();
+
+            let mut payload = json!({ "contents": contents });
+            if let Some(sys) = system_text {
+                payload["systemInstruction"] = json!({
+                    "parts": [{ "text": sys }]
+                });
+            }
+
+            client
+                .post(format!(
+                    "{}/models/{}:streamGenerateContent?alt=sse&key={}",
+                    config.base_url.trim_end_matches('/'),
+                    config.model,
+                    config.api_key
+                ))
+                .json(&payload)
+        }
     }
 }
 

@@ -923,6 +923,16 @@ export interface ZoteroExportResult {
 }
 
 // ---------------------------------------------------------------------------
+// M. 精读模式 DTO
+// ---------------------------------------------------------------------------
+
+/** 精读状态返回值（对齐 deep_read.rs::DeepReadStatus） */
+export interface DeepReadStatus {
+  enabled: boolean;
+  charCount: number | null;
+}
+
+// ---------------------------------------------------------------------------
 // Command 名称常量（便于前端 IPC Client 引用）
 // ---------------------------------------------------------------------------
 
@@ -1016,6 +1026,10 @@ export const IPC_COMMANDS = {
   EXPORT_SUMMARY_TO_OBSIDIAN: "export_summary_to_obsidian",
   EXPORT_CHATS_TO_OBSIDIAN: "export_chats_to_obsidian",
   DETECT_OBSIDIAN_VAULTS: "detect_obsidian_vaults",
+  // M. 精读模式
+  SAVE_DEEP_READ_TEXT: "save_deep_read_text",
+  CLEAR_DEEP_READ_TEXT: "clear_deep_read_text",
+  GET_DEEP_READ_STATUS: "get_deep_read_status",
 } as const;
 
 /** Tauri Event 名称常量 */

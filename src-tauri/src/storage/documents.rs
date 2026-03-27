@@ -187,6 +187,43 @@ pub fn soft_delete(connection: &Connection, document_id: &str) -> rusqlite::Resu
     Ok(affected_rows > 0)
 }
 
+/// 保存精读全文到 documents 表
+pub fn save_deep_read_text(
+    connection: &Connection,
+    document_id: &str,
+    text: &str,
+) -> rusqlite::Result<bool> {
+    let updated = connection.execute(
+        "UPDATE documents SET deep_read_text = ?1 WHERE document_id = ?2",
+        params![text, document_id],
+    )?;
+    Ok(updated > 0)
+}
+
+/// 清除精读文本
+pub fn clear_deep_read_text(connection: &Connection, document_id: &str) -> rusqlite::Result<bool> {
+    let updated = connection.execute(
+        "UPDATE documents SET deep_read_text = NULL WHERE document_id = ?1",
+        params![document_id],
+    )?;
+    Ok(updated > 0)
+}
+
+/// 读取精读文本（不加载整个 DocumentRecord）
+pub fn get_deep_read_text(
+    connection: &Connection,
+    document_id: &str,
+) -> rusqlite::Result<Option<String>> {
+    connection
+        .query_row(
+            "SELECT deep_read_text FROM documents WHERE document_id = ?1",
+            params![document_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map(|v| v.flatten())
+}
+
 /// 最近打开文档列表
 pub fn list_recent(connection: &Connection, limit: u32) -> rusqlite::Result<Vec<DocumentRecord>> {
     let mut statement = connection.prepare(
@@ -271,8 +308,9 @@ mod tests {
     use crate::models::DocumentSourceType;
 
     use super::{
-        get_by_id, list_recent, list_with_filters, soft_delete, toggle_favorite, upsert,
-        DocumentFilter, UpsertDocumentParams,
+        clear_deep_read_text, get_by_id, get_deep_read_text, list_recent, list_with_filters,
+        save_deep_read_text, soft_delete, toggle_favorite, upsert, DocumentFilter,
+        UpsertDocumentParams,
     };
 
     fn setup_connection() -> Connection {
@@ -293,7 +331,8 @@ mod tests {
                   created_at TEXT NOT NULL,
                   last_opened_at TEXT NOT NULL,
                   is_favorite INTEGER NOT NULL DEFAULT 0,
-                  is_deleted INTEGER NOT NULL DEFAULT 0
+                  is_deleted INTEGER NOT NULL DEFAULT 0,
+                  deep_read_text TEXT
                 );
 
                 CREATE TABLE translation_jobs (
@@ -461,5 +500,31 @@ mod tests {
         .unwrap();
         assert_eq!(empty_state.len(), 1);
         assert_eq!(empty_state[0].document_id, plain.document_id);
+    }
+
+    #[test]
+    fn save_and_read_deep_read_text() {
+        let connection = setup_connection();
+        let doc = insert_document(&connection, "deep", "Deep Read", "2026-03-27T10:00:00Z");
+
+        // 初始为 None
+        assert_eq!(
+            get_deep_read_text(&connection, &doc.document_id).unwrap(),
+            None
+        );
+
+        // 保存全文
+        assert!(save_deep_read_text(&connection, &doc.document_id, "论文全文内容").unwrap());
+        assert_eq!(
+            get_deep_read_text(&connection, &doc.document_id).unwrap(),
+            Some("论文全文内容".to_string())
+        );
+
+        // 清除
+        assert!(clear_deep_read_text(&connection, &doc.document_id).unwrap());
+        assert_eq!(
+            get_deep_read_text(&connection, &doc.document_id).unwrap(),
+            None
+        );
     }
 }

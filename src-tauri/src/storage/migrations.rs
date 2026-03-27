@@ -21,6 +21,7 @@ const ADD_TRANSLATION_TABLES_SQL: &str =
     include_str!("../../migrations/007_add_translation_tables.sql");
 const OBSIDIAN_CONFIG_SQL: &str = include_str!("../../migrations/008_obsidian_config.sql");
 const PERF_INDEXES_SQL: &str = include_str!("../../migrations/009_perf_indexes.sql");
+const DEEP_READ_SQL: &str = include_str!("../../migrations/010_deep_read.sql");
 
 struct Migration {
     version: i64,
@@ -73,6 +74,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 9,
         name: "perf_indexes",
         sql: PERF_INDEXES_SQL,
+    },
+    Migration {
+        version: 10,
+        name: "deep_read",
+        sql: DEEP_READ_SQL,
     },
 ];
 
@@ -135,7 +141,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 9);
+        assert_eq!(current_version(&connection).unwrap(), 10);
         assert_eq!(
             table_exists(&connection, "documents"),
             true,
@@ -190,6 +196,10 @@ mod tests {
             table_exists(&connection, "obsidian_config"),
             "obsidian_config should exist after migration"
         );
+        assert!(
+            column_exists(&connection, "documents", "deep_read_text"),
+            "documents.deep_read_text should exist after migration"
+        );
     }
 
     #[test]
@@ -199,10 +209,10 @@ mod tests {
         run(&connection).unwrap();
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 9);
+        assert_eq!(current_version(&connection).unwrap(), 10);
         assert_eq!(
             migration_row_count(&connection),
-            9,
+            10,
             "latest migrations should only be recorded once"
         );
     }
@@ -214,7 +224,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 9);
+        assert_eq!(current_version(&connection).unwrap(), 10);
         assert_eq!(
             provider_setting_count(&connection),
             3,

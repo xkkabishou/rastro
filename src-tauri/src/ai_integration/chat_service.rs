@@ -9,12 +9,12 @@ use uuid::Uuid;
 
 use crate::{
     ai_integration::{
-        provider_registry, usage_meter, AiIntegration, AskAiRequest, GenerateSummaryRequest,
-        StreamHandleResult,
+        provider_registry::{self, PromptMessage},
+        usage_meter, AiIntegration, AskAiRequest, GenerateSummaryRequest, StreamHandleResult,
     },
     errors::{AppError, AppErrorCode},
     models::{ChatRole, ProviderId, SummaryPromptProfile, UsageFeature},
-    storage::{chat_messages, chat_sessions, usage_events},
+    storage::{chat_messages, chat_sessions, documents, usage_events},
 };
 
 struct PreparedStream {
@@ -23,8 +23,19 @@ struct PreparedStream {
     provider: ProviderId,
     model: String,
     started_at: String,
-    prompt: String,
+    messages: Vec<PromptMessage>,
     document_id: String,
+}
+
+impl PreparedStream {
+    /// 拼接所有消息内容用于 fallback token 估算
+    fn combined_input_text(&self) -> String {
+        self.messages
+            .iter()
+            .map(|m| m.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 }
 
 #[derive(Debug)]
@@ -112,7 +123,7 @@ fn process_sse_data_line<R: tauri::Runtime>(
             usage_meter::UsageSnapshot::fallback(
                 prepared.provider,
                 &prepared.model,
-                &prepared.prompt,
+                &prepared.combined_input_text(),
                 full_text,
             )
         });
@@ -182,7 +193,7 @@ pub async fn start_chat<R: tauri::Runtime + 'static>(
         provider_registry::resolve_runtime_config(&ai, input.provider, input.model.clone())?;
     let started_at = Utc::now().to_rfc3339();
     let session_title = Some(truncate_title(&input.user_message));
-    let prompt = build_chat_prompt(&input);
+    let messages = build_chat_messages(&ai, &input)?;
 
     let session_id = {
         let connection = ai.storage.connection();
@@ -252,7 +263,7 @@ pub async fn start_chat<R: tauri::Runtime + 'static>(
         input.document_id,
         session_id,
         started_at,
-        prompt,
+        messages,
         UsageFeature::Chat,
     )
     .await
@@ -292,7 +303,15 @@ pub async fn start_summary_flow<R: tauri::Runtime + 'static>(
         input.document_id,
         session_id,
         started_at,
-        build_summary_prompt(&input.file_path, &input.source_text, input.prompt_profile, input.custom_prompt.as_deref()),
+        vec![PromptMessage {
+            role: "user".to_string(),
+            content: build_summary_prompt(
+                &input.file_path,
+                &input.source_text,
+                input.prompt_profile,
+                input.custom_prompt.as_deref(),
+            ),
+        }],
         UsageFeature::Summary,
     )
     .await
@@ -307,7 +326,7 @@ async fn start_stream<R: tauri::Runtime + 'static>(
     document_id: String,
     session_id: String,
     started_at: String,
-    prompt: String,
+    messages: Vec<PromptMessage>,
     feature: UsageFeature,
 ) -> Result<StreamHandleResult, AppError> {
     let prepared = PreparedStream {
@@ -316,7 +335,7 @@ async fn start_stream<R: tauri::Runtime + 'static>(
         provider,
         model,
         started_at,
-        prompt,
+        messages,
         document_id,
     };
 
@@ -447,7 +466,7 @@ async fn run_stream_request<R: tauri::Runtime>(
         Some(prepared.model.clone()),
     )?;
 
-    let response = provider_registry::build_stream_request(&ai.client, &config, &prepared.prompt)
+    let response = provider_registry::build_stream_request(&ai.client, &config, &prepared.messages)
         .send()
         .await?;
 
@@ -516,7 +535,7 @@ async fn run_stream_request<R: tauri::Runtime>(
                             usage_meter::UsageSnapshot::fallback(
                                 prepared.provider,
                                 &prepared.model,
-                                &prepared.prompt,
+                                &prepared.combined_input_text(),
                                 &full_text,
                             )
                         });
@@ -536,15 +555,54 @@ async fn run_stream_request<R: tauri::Runtime>(
     }
 }
 
-fn build_chat_prompt(input: &AskAiRequest) -> String {
-    match &input.context_quote {
+/// 构建多消息数组：可选 system（精读全文）+ 历史消息 + 当前 user 消息
+fn build_chat_messages(
+    ai: &AiIntegration,
+    input: &AskAiRequest,
+) -> Result<Vec<PromptMessage>, AppError> {
+    let mut messages: Vec<PromptMessage> = Vec::new();
+
+    // 1. 精读模式：注入 system 角色的全文
+    {
+        let connection = ai.storage.connection();
+        if let Some(full_text) = documents::get_deep_read_text(&connection, &input.document_id)? {
+            messages.push(PromptMessage {
+                role: "system".to_string(),
+                content: format!(
+                    "你是一位学术研究助手。以下是当前论文的全文内容，请基于这些内容回答用户的问题。\n\n---\n{}",
+                    full_text
+                ),
+            });
+        }
+    }
+
+    // 2. 加载历史消息（如果是已有 session）
+    if let Some(ref session_id) = input.session_id {
+        let connection = ai.storage.connection();
+        let history = chat_messages::list_by_session(&connection, session_id)?;
+        for msg in history {
+            messages.push(PromptMessage {
+                role: msg.role.clone(),
+                content: msg.content_md.clone(),
+            });
+        }
+    }
+
+    // 3. 当前用户消息
+    let user_content = match &input.context_quote {
         Some(quote) if !quote.trim().is_empty() => format!(
             "请基于以下引用段落回答问题。\n\n引用：\n{}\n\n问题：{}",
             quote.trim(),
             input.user_message.trim()
         ),
         _ => input.user_message.trim().to_string(),
-    }
+    };
+    messages.push(PromptMessage {
+        role: "user".to_string(),
+        content: user_content,
+    });
+
+    Ok(messages)
 }
 
 fn build_summary_prompt(
