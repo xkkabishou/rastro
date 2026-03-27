@@ -35,17 +35,18 @@ export const ChatPanel: React.FC = () => {
   }, [messages]);
 
   const currentDocument = useDocumentStore((s) => s.currentDocument);
+  const currentDocumentId = currentDocument?.documentId;
 
   // 切换文档时测试精读状态
   useEffect(() => {
-    if (!currentDocument) {
+    if (!currentDocumentId) {
       setDeepReadEnabled(false);
       return;
     }
-    ipcClient.getDeepReadStatus(currentDocument.documentId).then((status) => {
+    ipcClient.getDeepReadStatus(currentDocumentId).then((status) => {
       setDeepReadEnabled(status.enabled);
     }).catch(() => setDeepReadEnabled(false));
-  }, [currentDocument?.documentId]);
+  }, [currentDocumentId]);
 
   // 精读开关
   const toggleDeepRead = useCallback(async () => {

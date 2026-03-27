@@ -17,6 +17,7 @@ import { useDocumentStore } from '../../stores/useDocumentStore';
 import { useAnnotationStore } from '../../stores/useAnnotationStore';
 import { useAnnotationShortcuts } from '../../lib/useAnnotationShortcuts';
 import { selectionToAnnotationRects } from '../../lib/annotation-coords';
+import { resolveTranslatedPdfUrl, toProgressPercentage } from '../../lib/useTranslationPoller';
 
 import shibaReadingUrl from '../../assets/shiba/shiba-reading.png';
 import shibaLoadingUrl from '../../assets/shiba/shiba-loading.png';
@@ -325,17 +326,7 @@ const resetPdfViewerDocument = (pdfViewer: PdfJsViewer, linkService: PDFLinkServ
   linkService.setDocument(null);
 };
 
-const resolveTranslatedPdfUrl = (
-  paths: { translatedPdfPath?: string; bilingualPdfPath?: string } | null | undefined,
-) => {
-  const filePath = paths?.translatedPdfPath ?? paths?.bilingualPdfPath ?? null;
-  return filePath ? convertFileSrc(filePath) : null;
-};
 
-const toProgressPercentage = (progress: number) => {
-  const normalized = progress > 1 ? progress / 100 : progress;
-  return Math.round(Math.min(100, Math.max(0, normalized * 100)));
-};
 
 /** PdfViewer 主组件 */
 export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
@@ -396,6 +387,9 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
 
   // 当前文档（标注和翻译都需要，提前声明避免引用顺序问题）
   const currentDocument = useDocumentStore((s) => s.currentDocument);
+  const currentDocumentId = currentDocument?.documentId;
+  const cachedTranslatedPdfPath = currentDocument?.cachedTranslation?.translatedPdfPath;
+  const cachedBilingualPdfPath = currentDocument?.cachedTranslation?.bilingualPdfPath;
 
   // 标注快捷键
   useAnnotationShortcuts();
@@ -852,9 +846,9 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   useEffect(() => {
     setTranslatedPdfUrl(resolveTranslatedPdfUrl(currentDocument?.cachedTranslation));
   }, [
-    currentDocument?.documentId,
-    currentDocument?.cachedTranslation?.translatedPdfPath,
-    currentDocument?.cachedTranslation?.bilingualPdfPath,
+    currentDocumentId,
+    cachedTranslatedPdfPath,
+    cachedBilingualPdfPath,
     setTranslatedPdfUrl,
   ]);
 
@@ -926,6 +920,8 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       return;
     }
   }, [currentDocument?.documentId, setTranslatedPdfUrl, translationJob]);
+
+  const activeJobId = translationJob?.jobId;
 
   useEffect(() => {
     if (!currentDocument || !translationJob) {
@@ -1000,11 +996,11 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       }
     };
   }, [
-    currentDocument?.documentId,
+    currentDocumentId,
     setTranslatedPdfUrl,
     setTranslationJob,
     setTranslationProgress,
-    translationJob?.jobId,
+    activeJobId,
   ]);
 
   const isTranslating = translationJob?.status === 'running' || translationJob?.status === 'queued';
