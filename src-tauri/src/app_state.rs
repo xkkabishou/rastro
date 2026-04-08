@@ -45,7 +45,8 @@ impl AppState {
         fs::create_dir_all(&data_dir)?;
 
         let storage = Storage::new_file(data_dir.join("app.db"))?;
-        let keychain = KeychainService::new();
+        let keychain = KeychainService::new(&data_dir);
+        keychain.migrate_from_macos_keychain();
         let ai_integration = AiIntegration::new(storage.clone(), keychain.clone())?;
         let translation_status = Arc::new(Mutex::new(TranslationEngineStatus {
             running: false,

@@ -606,7 +606,7 @@ mod tests {
     fn build_test_state() -> AppState {
         let data_dir = temp_dir("ipc-document-test");
         let storage = Storage::new_in_memory().unwrap();
-        let keychain = KeychainService::new();
+        let keychain = KeychainService::new(&std::env::temp_dir());
         let ai_integration = AiIntegration::new(storage.clone(), keychain.clone()).unwrap();
         let translation_status = Arc::new(Mutex::new(TranslationEngineStatus {
             running: false,

@@ -55,7 +55,12 @@
     ],
     "macOS": {
       "signingIdentity": null
-    }
+    },
+    "resources": [
+      "../antigravity_translate/**/*.py",
+      "../rastro_translation_engine/**/*.py",
+      "../rastro_notebooklm_engine/**/*.py"
+    ]
   },
   "plugins": {}
 }

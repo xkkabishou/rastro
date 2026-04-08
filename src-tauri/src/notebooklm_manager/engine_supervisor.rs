@@ -342,61 +342,102 @@ impl EngineSupervisor {
         if let Ok(root) = std::env::var("RASTRO_PROJECT_ROOT") {
             return PathBuf::from(root);
         }
+
+        // 打包后的 macOS .app bundle：
+        // 可执行文件位于 Rastro.app/Contents/MacOS/Rastro
+        // 资源文件位于 Rastro.app/Contents/Resources/_up_/
+        // （Tauri 将 ../xxx 的资源打包到 _up_/xxx）
+        if cfg!(not(debug_assertions)) {
+            if let Ok(exe) = std::env::current_exe() {
+                if let Some(macos_dir) = exe.parent() {
+                    let contents_dir = macos_dir.parent().unwrap_or(macos_dir);
+                    let resources_up = contents_dir.join("Resources").join("_up_");
+                    if resources_up.exists() {
+                        return resources_up;
+                    }
+                    let resources_dir = contents_dir.join("Resources");
+                    if resources_dir.exists() {
+                        return resources_dir;
+                    }
+                }
+            }
+        }
+
         let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         cargo_dir.parent().unwrap_or(&cargo_dir).to_path_buf()
     }
 
     fn preflight_python(&self) -> Result<String, AppError> {
+        // 构建候选 Python 路径列表（按优先级排序）：
+        // 1. 环境变量显式指定（若设置则仅用此路径，不再 fallback）
+        // 2. 项目 .venv
+        // 3. PATH 中的 python3
+        // 4. Homebrew 常见安装路径（打包后 .app 的 PATH 可能不含 Homebrew）
         let project_root = self.project_root();
         let venv_python = project_root.join(".venv").join("bin").join("python3");
 
-        let python = if std::env::var("RASTRO_NOTEBOOKLM_ENGINE_PYTHON").is_ok() {
-            std::env::var("RASTRO_NOTEBOOKLM_ENGINE_PYTHON").unwrap_or_default()
-        } else if venv_python.exists() {
-            venv_python.to_string_lossy().to_string()
-        } else {
-            "python3".to_string()
-        };
+        // 环境变量显式指定时，视为用户明确选择，不再 fallback 到其他候选
+        let candidates: Vec<String> =
+            if let Ok(explicit) = std::env::var("RASTRO_NOTEBOOKLM_ENGINE_PYTHON") {
+                vec![explicit]
+            } else {
+                let mut list = Vec::new();
+                if venv_python.exists() {
+                    list.push(venv_python.to_string_lossy().to_string());
+                }
+                list.push("python3".to_string());
+                // macOS Homebrew 路径（打包后的 .app 环境 PATH 受限，需显式探测）
+                for brew_path in [
+                    "/opt/homebrew/bin/python3", // Apple Silicon
+                    "/usr/local/bin/python3",    // Intel Mac
+                ] {
+                    if !list.contains(&brew_path.to_string())
+                        && std::path::Path::new(brew_path).exists()
+                    {
+                        list.push(brew_path.to_string());
+                    }
+                }
+                list
+            };
 
-        let version_output = Command::new(&python)
-            .arg("--version")
-            .output()
-            .map_err(|_| {
-                AppError::new(
+        // 逐个候选探测，返回第一个版本 ≥ 3.12 的解释器
+        let mut last_version_text = String::new();
+        let mut last_python = String::new();
+        let python = 'probe: {
+            for candidate in &candidates {
+                let Ok(output) = Command::new(candidate).arg("--version").output() else {
+                    continue;
+                };
+                if !output.status.success() {
+                    continue;
+                }
+                let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let ver = if ver.is_empty() {
+                    String::from_utf8_lossy(&output.stderr).trim().to_string()
+                } else {
+                    ver
+                };
+                last_python = candidate.clone();
+                last_version_text = ver.clone();
+                if version_is_supported(&ver) {
+                    break 'probe candidate.clone();
+                }
+            }
+            // 所有候选都不满足
+            if last_version_text.is_empty() {
+                return Err(AppError::new(
                     AppErrorCode::PythonNotFound,
-                    "未找到 Python 3 解释器，请先安装 Python 3.12",
+                    "未找到 Python 3 解释器，请先安装 Python 3.12+",
                     false,
-                )
-            })?;
-
-        let version_text = String::from_utf8_lossy(&version_output.stdout)
-            .trim()
-            .to_string();
-        let version_text = if version_text.is_empty() {
-            String::from_utf8_lossy(&version_output.stderr)
-                .trim()
-                .to_string()
-        } else {
-            version_text
-        };
-
-        if !version_output.status.success() {
-            return Err(AppError::new(
-                AppErrorCode::PythonNotFound,
-                "无法执行 Python 解释器，请检查安装与 PATH 配置",
-                false,
-            )
-            .with_detail("python", python.clone()));
-        }
-
-        if !version_is_supported(&version_text) {
+                ));
+            }
             return Err(AppError::new(
                 AppErrorCode::PythonVersionMismatch,
-                format!("需要 Python 3.12+，当前版本为 {version_text}"),
+                format!("需要 Python 3.12+，当前版本为 {last_version_text}"),
                 false,
             )
-            .with_detail("python", python.clone()));
-        }
+            .with_detail("python", last_python));
+        };
 
         let pythonpath = project_root.to_string_lossy().to_string();
         for module_name in ["rastro_notebooklm_engine", "notebooklm"] {

@@ -662,6 +662,7 @@ mod tests {
     };
 
     use super::{run_stream_request, PreparedStream, StreamOutcome};
+    use crate::ai_integration::provider_registry::PromptMessage;
 
     #[derive(Clone)]
     struct MockState;
@@ -753,7 +754,7 @@ mod tests {
     async fn mock_provider_stream_writes_usage_event() {
         let address = boot_mock_server().await;
         let storage = Storage::new_in_memory().unwrap();
-        let keychain = KeychainService::new();
+        let keychain = KeychainService::new(&std::env::temp_dir());
         let ai = AiIntegration::new(storage.clone(), keychain.clone()).unwrap();
 
         {
@@ -812,7 +813,7 @@ mod tests {
     async fn run_stream_request_returns_error_when_provider_finishes_without_text() {
         let address = boot_empty_stream_server().await;
         let storage = Storage::new_in_memory().unwrap();
-        let keychain = KeychainService::new();
+        let keychain = KeychainService::new(&std::env::temp_dir());
         let ai = AiIntegration::new(storage.clone(), keychain.clone()).unwrap();
 
         {
@@ -834,7 +835,10 @@ mod tests {
             provider: ProviderId::Openai,
             model: "claude-sonnet-4-6".to_string(),
             started_at: chrono::Utc::now().to_rfc3339(),
-            prompt: "hello".to_string(),
+            messages: vec![PromptMessage {
+                role: "user".to_string(),
+                content: "hello".to_string(),
+            }],
             document_id: "document-empty".to_string(),
         };
 
@@ -857,7 +861,7 @@ mod tests {
     async fn run_stream_request_consumes_last_sse_payload_without_trailing_newline() {
         let address = boot_stream_without_trailing_newline_server().await;
         let storage = Storage::new_in_memory().unwrap();
-        let keychain = KeychainService::new();
+        let keychain = KeychainService::new(&std::env::temp_dir());
         let ai = AiIntegration::new(storage.clone(), keychain.clone()).unwrap();
 
         {
@@ -879,7 +883,10 @@ mod tests {
             provider: ProviderId::Openai,
             model: "gpt-4o-mini".to_string(),
             started_at: chrono::Utc::now().to_rfc3339(),
-            prompt: "hello".to_string(),
+            messages: vec![PromptMessage {
+                role: "user".to_string(),
+                content: "hello".to_string(),
+            }],
             document_id: "document-tail".to_string(),
         };
 
@@ -899,7 +906,7 @@ mod tests {
     #[tokio::test]
     async fn start_chat_rejects_session_from_another_document() {
         let storage = Storage::new_in_memory().unwrap();
-        let keychain = KeychainService::new();
+        let keychain = KeychainService::new(&std::env::temp_dir());
         let ai = AiIntegration::new(storage.clone(), keychain.clone()).unwrap();
         let timestamp = chrono::Utc::now().to_rfc3339();
 
