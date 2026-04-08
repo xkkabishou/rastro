@@ -1,6 +1,6 @@
 use std::{
     fs::{self, OpenOptions},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Child, Command, Stdio},
     sync::Arc,
     time::{Duration, Instant},
@@ -340,96 +340,174 @@ impl EngineSupervisor {
         Ok(())
     }
 
-    /// 推断项目根目录（engine_supervisor 所在 crate 的上两级目录）。
+    /// 推断 Python 模块所在根目录。
+    /// - 环境变量 RASTRO_PROJECT_ROOT 优先
+    /// - 打包后（release）：从可执行文件路径推算 .app/Contents/Resources/_up_/
+    ///   （Tauri 将 `../` 资源路径映射为 `_up_/` 子目录）
+    /// - 开发时：CARGO_MANIFEST_DIR 的父目录（项目根）
     fn project_root(&self) -> PathBuf {
-        // data_dir 通常是 <project>/src-tauri/target/... 的运行时路径，
-        // 但更可靠的方式是通过 CARGO_MANIFEST_DIR 编译时嵌入。
-        // 运行时回退：从 runtime_dir 向上查找包含 antigravity_translate 的目录。
         if let Ok(root) = std::env::var("RASTRO_PROJECT_ROOT") {
             return PathBuf::from(root);
         }
-        // 编译期嵌入的 Cargo.toml 所在目录 (src-tauri/)，取其父级即为项目根
+
+        // 打包后的 macOS .app bundle：
+        // 可执行文件位于 Rastro.app/Contents/MacOS/Rastro
+        // 资源文件位于 Rastro.app/Contents/Resources/_up_/
+        // （Tauri 将 ../xxx 的资源打包到 _up_/xxx）
+        if cfg!(not(debug_assertions)) {
+            if let Ok(exe) = std::env::current_exe() {
+                // exe = .../Contents/MacOS/Rastro
+                if let Some(macos_dir) = exe.parent() {
+                    let contents_dir = macos_dir.parent().unwrap_or(macos_dir);
+                    let resources_up = contents_dir.join("Resources").join("_up_");
+                    if resources_up.exists() {
+                        return resources_up;
+                    }
+                    // fallback: 直接 Resources/（以防未来 Tauri 行为变化）
+                    let resources_dir = contents_dir.join("Resources");
+                    if resources_dir.exists() {
+                        return resources_dir;
+                    }
+                }
+            }
+        }
+
+        // 开发模式：编译期嵌入的 Cargo.toml 所在目录 (src-tauri/)，取其父级即为项目根
         let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         cargo_dir.parent().unwrap_or(&cargo_dir).to_path_buf()
     }
 
     fn preflight_python(&self) -> Result<String, AppError> {
-        // 优先使用项目内 .venv 的 Python，自动化零配置
+        // 构建候选 Python 路径列表（按优先级排序）：
+        // 1. 环境变量显式指定（若设置则仅用此路径，不再 fallback）
+        // 2. 项目 .venv
+        // 3. PATH 中的 python3
+        // 4. Homebrew 常见安装路径（打包后 .app 的 PATH 可能不含 Homebrew）
+        //    包含版本化路径 python3.12 / python3.13 以覆盖多版本共存场景
         let project_root = self.project_root();
         let venv_python = project_root.join(".venv").join("bin").join("python3");
 
-        let python = if std::env::var("RASTRO_ENGINE_PYTHON").is_ok() {
-            std::env::var("RASTRO_ENGINE_PYTHON").unwrap()
-        } else if venv_python.exists() {
-            venv_python.to_string_lossy().to_string()
+        // 环境变量显式指定时，视为用户明确选择，不再 fallback 到其他候选
+        let candidates: Vec<String> = if let Ok(explicit) = std::env::var("RASTRO_ENGINE_PYTHON")
+        {
+            vec![explicit]
         } else {
-            "python3".to_string()
-        };
-
-        let version_output = Command::new(&python)
-            .arg("--version")
-            .output()
-            .map_err(|_| {
-                AppError::new(
-                    AppErrorCode::PythonNotFound,
-                    "未找到 Python 3 解释器，请先安装 Python 3.12",
-                    false,
-                )
-            })?;
-
-        let version_text = String::from_utf8_lossy(&version_output.stdout)
-            .trim()
-            .to_string();
-        let version_text = if version_text.is_empty() {
-            String::from_utf8_lossy(&version_output.stderr)
-                .trim()
-                .to_string()
-        } else {
-            version_text
-        };
-
-        if !version_output.status.success() {
-            return Err(AppError::new(
-                AppErrorCode::PythonNotFound,
-                "无法执行 Python 解释器，请检查安装与 PATH 配置",
-                false,
-            )
-            .with_detail("python", python.clone()));
-        }
-
-        if !version_is_supported(&version_text) {
-            return Err(AppError::new(
-                AppErrorCode::PythonVersionMismatch,
-                format!("需要 Python 3.12+，当前版本为 {version_text}"),
-                false,
-            )
-            .with_detail("python", python.clone()));
-        }
-
-        // 使用 PYTHONPATH 检测模块可用性（模块在项目根目录而非 site-packages）
-        let pythonpath = project_root.to_string_lossy().to_string();
-        for module_name in ["antigravity_translate", "rastro_translation_engine"] {
-            let status = Command::new(&python)
-                .env("PYTHONPATH", &pythonpath)
-                .args(["-c", &format!("import {module_name}")])
-                .status();
-
-            match status {
-                Ok(status) if status.success() => {}
-                _ => {
-                    return Err(AppError::new(
-                        AppErrorCode::PdfmathtranslateNotInstalled,
-                        format!(
-                            "缺少翻译运行依赖 {module_name}，请检查项目目录下是否存在该 Python 包"
-                        ),
-                        false,
-                    )
-                    .with_detail("python", python.clone())
-                    .with_detail("module", module_name.to_string())
-                    .with_detail("pythonpath", pythonpath.clone()));
+            let mut list = Vec::new();
+            if venv_python.exists() {
+                list.push(venv_python.to_string_lossy().to_string());
+            }
+            list.push("python3".to_string());
+            // macOS Homebrew 路径（打包后的 .app 环境 PATH 受限，需显式探测）
+            // 包含版本化路径，因为 python3 可能指向没装依赖的最新版本
+            for brew_path in [
+                "/opt/homebrew/bin/python3",    // Apple Silicon
+                "/opt/homebrew/bin/python3.13",
+                "/opt/homebrew/bin/python3.12",
+                "/usr/local/bin/python3",       // Intel Mac
+                "/usr/local/bin/python3.13",
+                "/usr/local/bin/python3.12",
+            ] {
+                if !list.contains(&brew_path.to_string())
+                    && std::path::Path::new(brew_path).exists()
+                {
+                    list.push(brew_path.to_string());
                 }
             }
-        }
+            list
+        };
+
+        // 逐个候选探测，返回第一个版本 ≥ 3.9 且能导入所需模块的解释器
+        let pythonpath = project_root.to_string_lossy().to_string();
+        let required_modules = [
+            "antigravity_translate",
+            "rastro_translation_engine",
+            "babeldoc",
+        ];
+
+        let mut last_version_text = String::new();
+        let mut last_python = String::new();
+        let mut version_ok_but_modules_missing: Option<(String, String)> = None;
+
+        let python = 'probe: {
+            for candidate in &candidates {
+                let Ok(output) = Command::new(candidate).arg("--version").output() else {
+                    continue;
+                };
+                if !output.status.success() {
+                    continue;
+                }
+                let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let ver = if ver.is_empty() {
+                    String::from_utf8_lossy(&output.stderr).trim().to_string()
+                } else {
+                    ver
+                };
+                last_python = candidate.clone();
+                last_version_text = ver.clone();
+                if !version_is_supported(&ver) {
+                    continue;
+                }
+
+                // 版本满足，检查模块可用性
+                let mut all_modules_ok = true;
+                let mut missing_module = String::new();
+                for module_name in &required_modules {
+                    let status = Command::new(candidate)
+                        .env("PYTHONPATH", &pythonpath)
+                        .args(["-c", &format!("import {module_name}")])
+                        .status();
+                    match status {
+                        Ok(s) if s.success() => {}
+                        _ => {
+                            all_modules_ok = false;
+                            missing_module = module_name.to_string();
+                            break;
+                        }
+                    }
+                }
+
+                if all_modules_ok {
+                    break 'probe candidate.clone();
+                }
+
+                // 记录第一个版本满足但模块缺失的候选，用于最终报错
+                if version_ok_but_modules_missing.is_none() {
+                    version_ok_but_modules_missing =
+                        Some((candidate.clone(), missing_module));
+                }
+            }
+
+            // 所有候选都不满足
+            if last_version_text.is_empty() {
+                return Err(AppError::new(
+                    AppErrorCode::PythonNotFound,
+                    "未找到 Python 3 解释器，请先安装 Python 3.9+",
+                    false,
+                ));
+            }
+
+            // 有版本满足但模块缺失的候选 → 报模块缺失
+            if let Some((py, module)) = version_ok_but_modules_missing {
+                return Err(AppError::new(
+                    AppErrorCode::PdfmathtranslateNotInstalled,
+                    format!(
+                        "缺少翻译运行依赖 {module}，请检查项目目录下是否存在该 Python 包"
+                    ),
+                    false,
+                )
+                .with_detail("python", py)
+                .with_detail("module", module)
+                .with_detail("pythonpath", pythonpath.clone()));
+            }
+
+            // 所有候选版本都不够
+            return Err(AppError::new(
+                AppErrorCode::PythonVersionMismatch,
+                format!("需要 Python 3.9+，当前版本为 {last_version_text}"),
+                false,
+            )
+            .with_detail("python", last_python));
+        };
 
         Ok(python)
     }
@@ -477,37 +555,16 @@ impl EngineSupervisor {
         command.env("XDG_CACHE_HOME", cache_dir.to_string_lossy().to_string());
 
         // macOS GUI 应用的 PATH 非常有限（不含 ~/.local/bin 等），
-        // 需要手动扩展 PATH 并探测 pdf2zh 路径
+        // 需要手动扩展 PATH
         let home_dir = std::env::var("HOME").unwrap_or_default();
         let extra_paths = [
             format!("{home_dir}/.local/bin"),
-            format!("{home_dir}/.local/share/uv/tools/pdf2zh-next/bin"),
             "/usr/local/bin".to_string(),
             "/opt/homebrew/bin".to_string(),
         ];
         let system_path = std::env::var("PATH").unwrap_or_default();
         let extended_path = format!("{}:{}", extra_paths.join(":"), system_path);
         command.env("PATH", &extended_path);
-
-        // 探测 pdf2zh 可执行文件路径
-        if std::env::var("AG_PDF2ZH_EXE").is_ok() {
-            // 用户显式设置了，直接传递
-            command.env("AG_PDF2ZH_EXE", std::env::var("AG_PDF2ZH_EXE").unwrap());
-        } else {
-            // 在常见路径中搜索
-            let candidates = [
-                format!("{home_dir}/.local/bin/pdf2zh"),
-                format!("{home_dir}/.local/share/uv/tools/pdf2zh-next/bin/pdf2zh"),
-                "/usr/local/bin/pdf2zh".to_string(),
-                "/opt/homebrew/bin/pdf2zh".to_string(),
-            ];
-            for candidate in &candidates {
-                if Path::new(candidate).exists() {
-                    command.env("AG_PDF2ZH_EXE", candidate);
-                    break;
-                }
-            }
-        }
 
         let child = command.spawn().map_err(|error| {
             AppError::new(
@@ -637,7 +694,7 @@ fn version_is_supported(version_text: &str) -> bool {
         .and_then(|value| value.parse::<u32>().ok())
         .unwrap_or_default();
 
-    major > 3 || (major == 3 && minor >= 12)
+    major > 3 || (major == 3 && minor >= 9)
 }
 
 fn open_until_duration_string(open_until: Instant, now: Instant) -> String {
@@ -673,10 +730,11 @@ mod tests {
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
-    fn python_version_guard_accepts_312_plus() {
+    fn python_version_guard_accepts_39_plus() {
+        assert!(version_is_supported("Python 3.9.6"));
         assert!(version_is_supported("Python 3.12.1"));
         assert!(version_is_supported("Python 3.13.0"));
-        assert!(!version_is_supported("Python 3.11.9"));
+        assert!(!version_is_supported("Python 3.8.10"));
     }
 
     #[test]
@@ -765,7 +823,7 @@ mod tests {
             "python-version-mismatch",
             r#"#!/bin/sh
 if [ "$1" = "--version" ]; then
-  echo "Python 3.11.9"
+  echo "Python 3.8.10"
   exit 0
 fi
 exit 0
@@ -795,10 +853,14 @@ if [ "$1" = "--version" ]; then
   exit 0
 fi
 if [ "$1" = "-c" ]; then
-  if [ "$2" = "import pdf2zh" ]; then
-    exit 0
-  fi
-  exit 1
+  case "$2" in
+    "import antigravity_translate"|"import rastro_translation_engine")
+      exit 0
+      ;;
+    "import babeldoc")
+      exit 1
+      ;;
+  esac
 fi
 exit 0
 "#,

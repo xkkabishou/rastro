@@ -69,15 +69,15 @@ const ERROR_STEP_MAP: Record<PythonSetupErrorCode, SetupStep[]> = {
   ],
   PDFMATHTRANSLATE_NOT_INSTALLED: [
     {
-      title: '安装 PDFMathTranslate',
-      description: 'PDFMathTranslate 是核心翻译引擎，通过 pip 安装：',
-      command: 'pip3 install pdf2zh',
+      title: '创建虚拟环境并安装依赖',
+      description: '翻译引擎需要 BabelDOC 和相关依赖。在项目目录下执行：',
+      command: 'python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt',
       icon: 'download',
     },
     {
       title: '验证安装',
-      description: '安装完成后，验证 PDFMathTranslate 可用：',
-      command: 'pdf2zh --version',
+      description: '安装完成后，验证 BabelDOC 可用：',
+      command: '.venv/bin/python3 -c "import babeldoc; print(babeldoc.__version__)"',
       icon: 'terminal',
     },
   ],
@@ -94,7 +94,7 @@ const ERROR_TITLE_MAP: Record<PythonSetupErrorCode, string> = {
 const ERROR_DESC_MAP: Record<PythonSetupErrorCode, string> = {
   PYTHON_NOT_FOUND: 'PDF 翻译功能需要 Python 运行环境。请按照以下步骤安装。',
   PYTHON_VERSION_MISMATCH: '当前 Python 版本不满足要求（需要 3.12+）。请升级后重试。',
-  PDFMATHTRANSLATE_NOT_INSTALLED: '翻译引擎 PDFMathTranslate 尚未安装。请按以下步骤安装。',
+  PDFMATHTRANSLATE_NOT_INSTALLED: '翻译引擎依赖尚未安装。请按以下步骤安装。',
 };
 
 // ---------------------------------------------------------------------------
