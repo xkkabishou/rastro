@@ -22,6 +22,8 @@ const ADD_TRANSLATION_TABLES_SQL: &str =
 const OBSIDIAN_CONFIG_SQL: &str = include_str!("../../migrations/008_obsidian_config.sql");
 const PERF_INDEXES_SQL: &str = include_str!("../../migrations/009_perf_indexes.sql");
 const DEEP_READ_SQL: &str = include_str!("../../migrations/010_deep_read.sql");
+const DROP_NOTEBOOKLM_ARTIFACTS_SQL: &str =
+    include_str!("../../migrations/011_drop_notebooklm_artifacts.sql");
 
 struct Migration {
     version: i64,
@@ -79,6 +81,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 10,
         name: "deep_read",
         sql: DEEP_READ_SQL,
+    },
+    Migration {
+        version: 11,
+        name: "drop_notebooklm_artifacts",
+        sql: DROP_NOTEBOOKLM_ARTIFACTS_SQL,
     },
 ];
 
@@ -141,7 +148,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 10);
+        assert_eq!(current_version(&connection).unwrap(), 11);
         assert_eq!(
             table_exists(&connection, "documents"),
             true,
@@ -169,8 +176,8 @@ mod tests {
             "document_summaries should exist after migration"
         );
         assert!(
-            table_exists(&connection, "notebooklm_artifacts"),
-            "notebooklm_artifacts should exist after migration"
+            !table_exists(&connection, "notebooklm_artifacts"),
+            "notebooklm_artifacts should be dropped by migration 011"
         );
         assert!(
             column_exists(&connection, "provider_settings", "masked_key"),
@@ -209,10 +216,10 @@ mod tests {
         run(&connection).unwrap();
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 10);
+        assert_eq!(current_version(&connection).unwrap(), 11);
         assert_eq!(
             migration_row_count(&connection),
-            10,
+            11,
             "latest migrations should only be recorded once"
         );
     }
@@ -224,7 +231,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 10);
+        assert_eq!(current_version(&connection).unwrap(), 11);
         assert_eq!(
             provider_setting_count(&connection),
             3,

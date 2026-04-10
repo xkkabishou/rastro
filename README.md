@@ -61,11 +61,6 @@
 - 导出摘要/对话到 Obsidian
 - 自定义导出模板
 
-### 🧪 NotebookLM 集成
-- 创建/管理 Notebook
-- 附加当前 PDF 到 Notebook
-- 生成 AI 制品（摘要、FAQ 等）
-
 ---
 
 ## 技术栈
@@ -172,7 +167,6 @@ npm run test         # 运行前端测试 (Vitest)
 - AI 问答与摘要（8 个）
 - Provider 配置（7 个）
 - Zotero 集成（7 个）
-- NotebookLM 集成（11 个）
 - 标注系统（5 个）
 - 精读模式（3 个）
 - 更多...

@@ -4,7 +4,6 @@ pub mod ai;
 pub mod annotations;
 pub mod deep_read;
 pub mod document;
-pub mod notebooklm;
 pub mod obsidian;
 pub mod settings;
 pub mod title_translation;

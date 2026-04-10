@@ -43,7 +43,7 @@ interface StatusIcon {
 
 /**
  * 收集文档关联的状态 icon 列表
- * 🌐 已翻译 | 📝 有 AI 总结 | 🧠 有 NotebookLM 产物 | ⭐ 已收藏
+ * 🌐 已翻译 | 📝 有 AI 总结 | ⭐ 已收藏
  */
 function collectStatusIcons(doc: DocumentSnapshot): StatusIcon[] {
   const icons: StatusIcon[] = [];
@@ -53,14 +53,6 @@ function collectStatusIcons(doc: DocumentSnapshot): StatusIcon[] {
   }
   if (doc.hasSummary) {
     icons.push({ emoji: '📝', title: '有 AI 总结' });
-  }
-  // artifactCount 大于翻译+总结所贡献的数量时，说明有 NotebookLM 产物
-  const translationCount = doc.cachedTranslation?.available ? 1 : 0;
-  const summaryCount = doc.hasSummary ? 1 : 0;
-  // 原件 PDF 本身占 1 个产物位
-  const otherArtifacts = doc.artifactCount - 1 - translationCount - summaryCount;
-  if (otherArtifacts > 0) {
-    icons.push({ emoji: '🧠', title: 'NotebookLM 产物' });
   }
   if (doc.isFavorite) {
     icons.push({ emoji: '⭐', title: '已收藏' });

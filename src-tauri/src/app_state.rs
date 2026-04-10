@@ -7,12 +7,8 @@ use parking_lot::Mutex;
 use crate::{
     ai_integration::AiIntegration,
     errors::AppError,
-    ipc::{
-        notebooklm::NotebookLMEngineStatus, translation::TranslationEngineStatus,
-        zotero::ZoteroStatusDto,
-    },
+    ipc::{translation::TranslationEngineStatus, zotero::ZoteroStatusDto},
     keychain::KeychainService,
-    notebooklm_manager::NotebookLMManager,
     storage::Storage,
     translation_manager::TranslationManager,
 };
@@ -27,9 +23,6 @@ pub struct AppState {
     pub ai_integration: AiIntegration,
     pub translation_manager: TranslationManager,
     pub translation_status: Arc<Mutex<TranslationEngineStatus>>,
-    pub notebooklm_manager: NotebookLMManager,
-    #[allow(dead_code)] // 为 NotebookLM 引擎管理预留
-    pub notebooklm_status: Arc<Mutex<NotebookLMEngineStatus>>,
     pub zotero_status: Arc<Mutex<ZoteroStatusDto>>,
     #[allow(dead_code)] // 运行时动态标志位，后续功能将使用
     pub runtime_flags: Arc<Mutex<HashMap<String, String>>>,
@@ -62,16 +55,6 @@ impl AppState {
             keychain.clone(),
             translation_status.clone(),
         )?;
-        let notebooklm_status = Arc::new(Mutex::new(NotebookLMEngineStatus {
-            running: false,
-            pid: None,
-            port: 8891,
-            engine_version: None,
-            circuit_breaker_open: false,
-            last_health_check: None,
-        }));
-        let notebooklm_manager =
-            NotebookLMManager::new(data_dir.clone(), notebooklm_status.clone())?;
 
         Ok(Self {
             data_dir,
@@ -80,8 +63,6 @@ impl AppState {
             ai_integration,
             translation_manager,
             translation_status,
-            notebooklm_manager,
-            notebooklm_status,
             zotero_status: Arc::new(Mutex::new(ZoteroStatusDto {
                 detected: false,
                 database_path: None,

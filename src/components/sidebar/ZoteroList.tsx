@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText, BookOpen, Loader2, AlertCircle,
   RefreshCw, ChevronRight,
-  Library, Hash, Globe, Brain, StickyNote,
+  Library, Hash, Globe, StickyNote,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { ipcClient } from '../../lib/ipc-client';
@@ -166,8 +166,6 @@ function artifactMeta(kind: string): { icon: React.ReactNode; color: string; lab
       return { icon: <Globe size={12} />, color: '#1976D2', label: '翻译 PDF' };
     case 'ai_summary':
       return { icon: <StickyNote size={12} />, color: '#F57C00', label: 'AI 总结' };
-    case 'notebooklm_mindmap':
-      return { icon: <Brain size={12} />, color: '#7B1FA2', label: '思维导图' };
     default:
       return { icon: <FileText size={12} />, color: '#78909C', label: kind };
   }

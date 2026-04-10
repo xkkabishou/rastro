@@ -142,7 +142,7 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
         openDocumentInViewer(doc);
         break;
       default:
-        // NotebookLM 产物或其他产物 — 在 Finder 中打开
+        // 其他产物 — 在 Finder 中打开
         if (artifact.filePath) {
           ipcClient.revealInFinder(artifact.filePath).catch((err) => {
             console.error('打开产物失败:', err);
@@ -449,7 +449,7 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
         }
 
         default: {
-          // 其他操作暂未实现（NotebookLM 相关）
+          // 其他未实现的操作
           console.log('[ContextMenu] 未实现的操作:', action, node.type, docId);
           break;
         }

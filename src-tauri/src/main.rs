@@ -1,5 +1,5 @@
 // Rastro 后端入口
-// 注册所有 25 个 #[tauri::command] 到 Tauri Builder
+// 注册所有 #[tauri::command] 到 Tauri Builder
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ai_integration;
@@ -9,7 +9,6 @@ mod errors;
 mod ipc;
 mod keychain;
 mod models;
-mod notebooklm_manager;
 mod storage;
 mod translation_manager;
 mod zotero_connector;
@@ -102,42 +101,30 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             ipc::zotero::open_zotero_attachment,
             ipc::zotero::export_md_to_zotero,
             ipc::zotero::export_pdf_to_zotero,
-            // J. NotebookLM 集成 (11 个)
-            ipc::notebooklm::notebooklm_get_status,
-            ipc::notebooklm::notebooklm_begin_login,
-            ipc::notebooklm::notebooklm_open_external,
-            ipc::notebooklm::notebooklm_logout,
-            ipc::notebooklm::notebooklm_list_notebooks,
-            ipc::notebooklm::notebooklm_create_notebook,
-            ipc::notebooklm::notebooklm_attach_current_pdf,
-            ipc::notebooklm::notebooklm_generate_artifact,
-            ipc::notebooklm::notebooklm_get_task,
-            ipc::notebooklm::notebooklm_list_artifacts,
-            ipc::notebooklm::notebooklm_download_artifact,
-            // K. 标注 (5 个)
+            // J. 标注 (5 个)
             ipc::annotations::save_annotation,
             ipc::annotations::update_annotation,
             ipc::annotations::delete_annotation,
             ipc::annotations::list_annotations,
             ipc::annotations::list_annotations_by_page,
-            // L. 翻译 Provider 配置与翻译 (6 个)
+            // K. 翻译 Provider 配置与翻译 (6 个)
             ipc::translation_settings::list_translation_provider_configs,
             ipc::translation_settings::save_translation_provider_key,
             ipc::translation_settings::set_active_translation_provider,
             ipc::translation_settings::update_translation_provider_config,
             ipc::translation_settings::test_translation_connection,
             ipc::translation_settings::translate_text,
-            // M. 标题翻译缓存 (2 个)
+            // L. 标题翻译缓存 (2 个)
             ipc::title_translation::get_title_translation,
             ipc::title_translation::batch_translate_titles,
-            // N. Obsidian 笔记同步 (6 个)
+            // M. Obsidian 笔记同步 (6 个)
             ipc::obsidian::get_obsidian_config,
             ipc::obsidian::save_obsidian_config,
             ipc::obsidian::validate_obsidian_vault,
             ipc::obsidian::export_summary_to_obsidian,
             ipc::obsidian::export_chats_to_obsidian,
             ipc::obsidian::detect_obsidian_vaults,
-            // O. 精读模式 (3 个)
+            // N. 精读模式 (3 个)
             ipc::deep_read::save_deep_read_text,
             ipc::deep_read::clear_deep_read_text,
             ipc::deep_read::get_deep_read_status,

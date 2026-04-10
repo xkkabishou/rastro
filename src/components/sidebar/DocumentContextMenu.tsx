@@ -23,11 +23,7 @@ export type ContextMenuAction =
   // 二级节点（AI 总结）操作
   | 'view_summary'
   | 'regenerate_summary'
-  | 'export_summary_md'
-  // 二级节点（NotebookLM 产物）操作
-  | 'open_artifact'
-  | 'download_artifact'
-  | 'delete_artifact';
+  | 'export_summary_md';
 
 // ---------------------------------------------------------------------------
 // 菜单项类型
@@ -130,16 +126,6 @@ function buildArtifactMenuItems(
       { label: '重新生成', action: 'regenerate_summary' },
       { type: 'separator' },
       { label: '导出为 Markdown', action: 'export_summary_md' },
-    ];
-  }
-
-  // NotebookLM 产物
-  if (kind.startsWith('notebooklm_')) {
-    return [
-      { label: '打开', action: 'open_artifact' },
-      { label: '下载', action: 'download_artifact', disabled: !!artifact.filePath },
-      { type: 'separator' },
-      { label: '删除', action: 'delete_artifact', danger: true },
     ];
   }
 

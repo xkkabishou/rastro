@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { X, MessageSquare, Settings, BookOpen, Globe, Highlighter } from 'lucide-react';
+import { X, MessageSquare, Settings, BookOpen, Highlighter } from 'lucide-react';
 import { ChatPanel } from '../chat-panel/ChatPanel';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { SummaryPanel } from '../summary/SummaryPanel';
-import { NotebookLMView } from '../notebooklm/NotebookLMView';
 import { AnnotationPanel } from '../annotations/AnnotationPanel';
 
-type PanelTab = 'chat' | 'annotations' | 'settings' | 'summary' | 'notebooklm';
+type PanelTab = 'chat' | 'annotations' | 'settings' | 'summary';
 
 interface RightPanelProps {
   isOpen: boolean;
@@ -68,12 +67,6 @@ export const RightPanel = ({ isOpen, onToggle, activeTab: controlledTab, onTabCh
             onClick={() => setActiveTab('summary')}
           />
           <PanelTabButton
-            icon={<Globe size={14} />}
-            label="NLM"
-            active={activeTab === 'notebooklm'}
-            onClick={() => setActiveTab('notebooklm')}
-          />
-          <PanelTabButton
             icon={<Highlighter size={14} />}
             label="标注"
             active={activeTab === 'annotations'}
@@ -99,7 +92,6 @@ export const RightPanel = ({ isOpen, onToggle, activeTab: controlledTab, onTabCh
         {activeTab === 'chat' && <ChatPanel />}
         {activeTab === 'annotations' && <AnnotationPanel />}
         {activeTab === 'summary' && <SummaryPanel />}
-        {activeTab === 'notebooklm' && <NotebookLMView />}
         {activeTab === 'settings' && <SettingsPanel />}
       </div>
     </aside>

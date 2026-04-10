@@ -263,7 +263,6 @@ mod tests {
         app_state::AppState,
         keychain::KeychainService,
         models::{ArtifactKind, DocumentSourceType},
-        notebooklm_manager::NotebookLMManager,
         storage::{documents, translation_artifacts, translation_jobs, Storage},
         translation_manager::TranslationManager,
     };
@@ -418,18 +417,6 @@ mod tests {
             translation_status.clone(),
         )
         .unwrap();
-        let notebooklm_status = Arc::new(ParkingMutex::new(
-            crate::ipc::notebooklm::NotebookLMEngineStatus {
-                running: false,
-                pid: None,
-                port: 8891,
-                engine_version: None,
-                circuit_breaker_open: false,
-                last_health_check: None,
-            },
-        ));
-        let notebooklm_manager =
-            NotebookLMManager::new(data_dir.clone(), notebooklm_status.clone()).unwrap();
 
         AppState {
             data_dir,
@@ -438,8 +425,6 @@ mod tests {
             ai_integration,
             translation_manager,
             translation_status,
-            notebooklm_manager,
-            notebooklm_status,
             zotero_status: Arc::new(ParkingMutex::new(crate::ipc::zotero::ZoteroStatusDto {
                 detected: false,
                 database_path: None,

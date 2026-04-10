@@ -1,7 +1,7 @@
 // 文档产物聚合查询
 #![allow(dead_code)]
 
-use rusqlite::{params, Connection};
+use rusqlite::Connection;
 use serde::Serialize;
 
 use crate::{
@@ -32,17 +32,16 @@ pub struct ArtifactCount {
     pub has_translation: bool,
     pub translation_count: u32,
     pub has_summary: bool,
-    pub notebooklm_count: u32,
 }
 
 impl ArtifactCount {
     /// 返回文档在侧栏中可见的总产物数。
     pub fn total_count(&self) -> u32 {
-        self.translation_count + u32::from(self.has_summary) + self.notebooklm_count
+        self.translation_count + u32::from(self.has_summary)
     }
 }
 
-/// 聚合返回文档原件、翻译缓存、AI 总结与 NotebookLM 产物。
+/// 聚合返回文档原件、翻译缓存与 AI 总结。
 pub fn list_artifacts_for_document(
     connection: &Connection,
     document_id: &str,
@@ -118,35 +117,6 @@ pub fn list_artifacts_for_document(
         });
     }
 
-    let mut statement = connection.prepare(
-        "SELECT artifact_id, document_id, artifact_kind, title, file_path, file_size_bytes, created_at
-         FROM notebooklm_artifacts
-         WHERE document_id = ?1
-         ORDER BY created_at DESC",
-    )?;
-    let notebooklm_rows = statement.query_map(params![document.document_id], |row| {
-        Ok(DocumentArtifactDto {
-            artifact_id: row.get("artifact_id")?,
-            document_id: row.get("document_id")?,
-            kind: format!("notebooklm_{}", row.get::<_, String>("artifact_kind")?),
-            title: row
-                .get::<_, Option<String>>("title")?
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| {
-                    notebooklm_title(&row.get::<_, String>("artifact_kind").unwrap_or_default())
-                        .to_string()
-                }),
-            file_path: row.get("file_path")?,
-            content_preview: None,
-            provider: None,
-            model: None,
-            file_size: row.get("file_size_bytes")?,
-            created_at: row.get("created_at")?,
-            updated_at: row.get("created_at")?,
-        })
-    })?;
-    artifacts.extend(notebooklm_rows.collect::<Result<Vec<_>, _>>()?);
-
     artifacts.sort_by(|left, right| {
         right
             .created_at
@@ -157,7 +127,7 @@ pub fn list_artifacts_for_document(
     Ok(artifacts)
 }
 
-/// 统计文档的翻译 / 总结 / NotebookLM 产物数量。
+/// 统计文档的翻译与总结产物数量。
 pub fn count_artifacts_for_document(
     connection: &Connection,
     document_id: &str,
@@ -180,19 +150,11 @@ pub fn count_artifacts_for_document(
     };
 
     let has_summary = document_summaries::get_by_document_id(connection, document_id)?.is_some();
-    let notebooklm_count = connection.query_row(
-        "SELECT COUNT(*)
-         FROM notebooklm_artifacts
-         WHERE document_id = ?1",
-        params![document_id],
-        |row| row.get::<_, i64>(0),
-    )?;
 
     Ok(ArtifactCount {
         has_translation: translation_count > 0,
         translation_count,
         has_summary,
-        notebooklm_count: u32::try_from(notebooklm_count).unwrap_or(u32::MAX),
     })
 }
 
@@ -201,18 +163,6 @@ fn translation_title(kind: &str) -> &'static str {
         "translated_pdf" => "翻译 PDF",
         "bilingual_pdf" => "双语对照 PDF",
         _ => "翻译产物",
-    }
-}
-
-fn notebooklm_title(kind: &str) -> &'static str {
-    match kind {
-        "mindmap" => "NotebookLM 思维导图",
-        "slides" => "NotebookLM 演示文稿",
-        "quiz" => "NotebookLM 测验",
-        "flashcards" => "NotebookLM 闪卡",
-        "audio" => "NotebookLM 音频概览",
-        "report" => "NotebookLM 报告",
-        _ => "NotebookLM 产物",
     }
 }
 
@@ -323,28 +273,6 @@ mod tests {
                 "gpt-4o",
             )
             .unwrap();
-            connection
-                .execute(
-                    "INSERT INTO notebooklm_artifacts (
-                        artifact_id,
-                        document_id,
-                        artifact_kind,
-                        title,
-                        file_path,
-                        file_size_bytes,
-                        created_at
-                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                    params![
-                        "nb-1",
-                        document.document_id,
-                        "mindmap",
-                        "Mindmap",
-                        "/tmp/mindmap.html",
-                        256_u64,
-                        timestamp,
-                    ],
-                )
-                .unwrap();
         }
 
         let connection = storage.connection();
@@ -357,7 +285,6 @@ mod tests {
         assert!(kinds.contains(&"original_pdf"));
         assert!(kinds.contains(&"translated_pdf"));
         assert!(kinds.contains(&"ai_summary"));
-        assert!(kinds.contains(&"notebooklm_mindmap"));
 
         let summary = artifacts
             .iter()

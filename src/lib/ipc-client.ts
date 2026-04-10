@@ -21,16 +21,6 @@ import {
   CancelTranslationInput,
   CancelTranslationResult,
   LoadCachedTranslationInput,
-  // C2. NotebookLM
-  NotebookLMStatus,
-  NotebookLMAuthStatus,
-  NotebookSummary,
-  NotebookLMTask,
-  NotebookArtifactSummary,
-  CreateNotebookInput,
-  AttachCurrentPdfInput,
-  GenerateArtifactInput,
-  DownloadArtifactInput,
   // D. AI 问答与总结
   AskAiInput,
   AIStreamHandle,
@@ -188,54 +178,6 @@ export const ipcClient = {
     safeInvoke<TranslationJobDto | null>(IPC_COMMANDS.LOAD_CACHED_TRANSLATION, { ...input }),
 
   // =========================================================================
-  // C2. NotebookLM 集成
-  // =========================================================================
-
-  /** 获取 NotebookLM 当前状态 */
-  getNotebookLMStatus: () =>
-    safeInvoke<NotebookLMStatus>(IPC_COMMANDS.NOTEBOOKLM_GET_STATUS),
-
-  /** 启动 NotebookLM 登录流程 */
-  beginNotebookLMLogin: () =>
-    safeInvoke<NotebookLMAuthStatus>(IPC_COMMANDS.NOTEBOOKLM_BEGIN_LOGIN),
-
-  /** 用系统默认浏览器打开 NotebookLM */
-  openNotebookLMExternal: () =>
-    safeInvoke<void>(IPC_COMMANDS.NOTEBOOKLM_OPEN_EXTERNAL),
-
-  /** 清理 NotebookLM 登录态 */
-  logoutNotebookLM: () =>
-    safeInvoke<NotebookLMAuthStatus>(IPC_COMMANDS.NOTEBOOKLM_LOGOUT),
-
-  /** 列出 NotebookLM notebooks */
-  listNotebookLMNotebooks: () =>
-    safeInvoke<NotebookSummary[]>(IPC_COMMANDS.NOTEBOOKLM_LIST_NOTEBOOKS),
-
-  /** 创建 NotebookLM notebook */
-  createNotebookLMNotebook: (input: CreateNotebookInput) =>
-    safeInvoke<NotebookSummary>(IPC_COMMANDS.NOTEBOOKLM_CREATE_NOTEBOOK, { input }),
-
-  /** 上传当前 PDF 到 NotebookLM */
-  attachCurrentPdfToNotebookLM: (input: AttachCurrentPdfInput) =>
-    safeInvoke<NotebookLMTask>(IPC_COMMANDS.NOTEBOOKLM_ATTACH_CURRENT_PDF, { input }),
-
-  /** 触发 NotebookLM 产物生成 */
-  generateNotebookLMArtifact: (input: GenerateArtifactInput) =>
-    safeInvoke<NotebookLMTask>(IPC_COMMANDS.NOTEBOOKLM_GENERATE_ARTIFACT, { input }),
-
-  /** 查询 NotebookLM 任务 */
-  getNotebookLMTask: (taskId: string) =>
-    safeInvoke<NotebookLMTask>(IPC_COMMANDS.NOTEBOOKLM_GET_TASK, { taskId }),
-
-  /** 列出 NotebookLM 产物 */
-  listNotebookLMArtifacts: (notebookId: string) =>
-    safeInvoke<NotebookArtifactSummary[]>(IPC_COMMANDS.NOTEBOOKLM_LIST_ARTIFACTS, { notebookId }),
-
-  /** 下载 NotebookLM 产物 */
-  downloadNotebookLMArtifact: (input: DownloadArtifactInput) =>
-    safeInvoke<NotebookArtifactSummary>(IPC_COMMANDS.NOTEBOOKLM_DOWNLOAD_ARTIFACT, { input }),
-
-  // =========================================================================
   // D. AI 问答与总结
   // =========================================================================
 
@@ -327,7 +269,7 @@ export const ipcClient = {
   // V2: 文档工作空间
   // =========================================================================
 
-  /** 获取文献下所有产物（翻译/总结/NotebookLM） */
+  /** 获取文献下所有产物（翻译/总结） */
   listDocumentArtifacts: (documentId: string) =>
     safeInvoke<DocumentArtifactDto[]>(IPC_COMMANDS.LIST_DOCUMENT_ARTIFACTS, { documentId }),
 

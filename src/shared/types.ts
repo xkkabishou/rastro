@@ -46,12 +46,6 @@ export type ArtifactKind =
   | "translated_pdf"
   | "bilingual_pdf"
   | "ai_summary"
-  | "notebooklm_mindmap"
-  | "notebooklm_slides"
-  | "notebooklm_quiz"
-  | "notebooklm_flashcards"
-  | "notebooklm_audio"
-  | "notebooklm_report"
   | "figure_report"
   | "manifest";
 
@@ -95,15 +89,6 @@ export type AppErrorCode =
   | "PYTHON_NOT_FOUND"
   | "PYTHON_VERSION_MISMATCH"
   | "PDFMATHTRANSLATE_NOT_INSTALLED"
-  // NotebookLM 相关
-  | "NOTEBOOKLM_AUTH_REQUIRED"
-  | "NOTEBOOKLM_AUTH_EXPIRED"
-  | "NOTEBOOKLM_ENGINE_UNAVAILABLE"
-  | "NOTEBOOKLM_UPLOAD_FAILED"
-  | "NOTEBOOKLM_GENERATION_FAILED"
-  | "NOTEBOOKLM_DOWNLOAD_FAILED"
-  | "NOTEBOOKLM_RATE_LIMITED"
-  | "NOTEBOOKLM_UNKNOWN"
   // 翻译任务相关
   | "TRANSLATION_FAILED"
   | "TRANSLATION_CANCELLED"
@@ -166,7 +151,7 @@ export interface DocumentSnapshot {
   hasSummary: boolean;
   /** v2: 是否已收藏 */
   isFavorite: boolean;
-  /** v2: 文档关联的产物总数（翻译+总结+NotebookLM） */
+  /** v2: 文档关联的产物总数（翻译+总结） */
   artifactCount: number;
   lastOpenedAt: string;
 }
@@ -298,98 +283,6 @@ export interface LoadCachedTranslationInput {
   documentId: string;
   provider?: ProviderId;
   model?: string;
-}
-
-// ---------------------------------------------------------------------------
-// C2. NotebookLM 集成
-// ---------------------------------------------------------------------------
-
-export type NotebookLMArtifactType =
-  | "mind-map"
-  | "slide-deck"
-  | "quiz"
-  | "flashcards"
-  | "audio-overview"
-  | "report";
-
-export type NotebookLMTaskStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled";
-
-export interface NotebookLMEngineStatus {
-  running: boolean;
-  pid?: number;
-  port: number;
-  engineVersion?: string;
-  circuitBreakerOpen: boolean;
-  lastHealthCheck?: string;
-}
-
-export interface NotebookLMAuthStatus {
-  authenticated: boolean;
-  authExpired: boolean;
-  lastAuthAt?: string | null;
-  lastError?: string | null;
-}
-
-export interface NotebookSummary {
-  id: string;
-  title: string;
-  sourceCount: number;
-  updatedAt?: string | null;
-}
-
-export interface NotebookLMTask {
-  id: string;
-  kind: "upload" | "generate" | "download";
-  artifactType?: NotebookLMArtifactType | null;
-  status: NotebookLMTaskStatus;
-  progressMessage?: string | null;
-  errorCode?: AppErrorCode | null;
-  errorMessage?: string | null;
-  notebookId?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface NotebookArtifactSummary {
-  id: string;
-  notebookId: string;
-  type: NotebookLMArtifactType;
-  title: string;
-  downloadStatus: "not-downloaded" | "downloaded" | "failed";
-  localPath?: string | null;
-  createdAt?: string | null;
-}
-
-export interface NotebookLMStatus {
-  engine: NotebookLMEngineStatus;
-  auth: NotebookLMAuthStatus;
-  notebooks: NotebookSummary[];
-}
-
-export interface CreateNotebookInput {
-  title: string;
-  description?: string;
-}
-
-export interface AttachCurrentPdfInput {
-  notebookId: string;
-  pdfPath: string;
-}
-
-export interface GenerateArtifactInput {
-  notebookId: string;
-  artifactType: NotebookLMArtifactType;
-}
-
-export interface DownloadArtifactInput {
-  artifactId: string;
-  artifactType: NotebookLMArtifactType;
-  title: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -952,18 +845,6 @@ export const IPC_COMMANDS = {
   GET_TRANSLATION_JOB: "get_translation_job",
   CANCEL_TRANSLATION: "cancel_translation",
   LOAD_CACHED_TRANSLATION: "load_cached_translation",
-  // C2. NotebookLM 集成
-  NOTEBOOKLM_GET_STATUS: "notebooklm_get_status",
-  NOTEBOOKLM_BEGIN_LOGIN: "notebooklm_begin_login",
-  NOTEBOOKLM_OPEN_EXTERNAL: "notebooklm_open_external",
-  NOTEBOOKLM_LOGOUT: "notebooklm_logout",
-  NOTEBOOKLM_LIST_NOTEBOOKS: "notebooklm_list_notebooks",
-  NOTEBOOKLM_CREATE_NOTEBOOK: "notebooklm_create_notebook",
-  NOTEBOOKLM_ATTACH_CURRENT_PDF: "notebooklm_attach_current_pdf",
-  NOTEBOOKLM_GENERATE_ARTIFACT: "notebooklm_generate_artifact",
-  NOTEBOOKLM_GET_TASK: "notebooklm_get_task",
-  NOTEBOOKLM_LIST_ARTIFACTS: "notebooklm_list_artifacts",
-  NOTEBOOKLM_DOWNLOAD_ARTIFACT: "notebooklm_download_artifact",
   // D. AI 问答与总结
   ASK_AI: "ask_ai",
   CANCEL_AI_STREAM: "cancel_ai_stream",

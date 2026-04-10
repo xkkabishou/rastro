@@ -396,29 +396,6 @@ fn batch_enrich_snapshots(
         }
     }
 
-    // 批量查询 notebooklm 产物数量
-    let mut notebooklm_counts: HashMap<String, u32> = HashMap::new();
-    {
-        let sql = format!(
-            "SELECT document_id, COUNT(*) as cnt
-             FROM notebooklm_artifacts
-             WHERE document_id IN ({})
-             GROUP BY document_id",
-            placeholders
-        );
-        let mut statement = connection.prepare(&sql)?;
-        let params: Vec<&dyn rusqlite::types::ToSql> = doc_ids.iter()
-            .map(|id| id as &dyn rusqlite::types::ToSql)
-            .collect();
-        let rows = statement.query_map(params.as_slice(), |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
-        })?;
-        for row_result in rows {
-            let (doc_id, count) = row_result?;
-            notebooklm_counts.insert(doc_id, count);
-        }
-    }
-
     // 富化快照：加载最新 job 的产物详情
     let mut job_artifacts: HashMap<String, Vec<translation_artifacts::TranslationArtifactRecord>> = HashMap::new();
     for (doc_id, job) in &latest_jobs {
@@ -452,8 +429,7 @@ fn batch_enrich_snapshots(
 
         let has_summary = summary_doc_ids.contains(&record.document_id);
         let translation_count = translation_artifact_counts.get(&record.document_id).copied().unwrap_or(0);
-        let notebooklm_count = notebooklm_counts.get(&record.document_id).copied().unwrap_or(0);
-        let artifact_count = translation_count + u32::from(has_summary) + notebooklm_count;
+        let artifact_count = translation_count + u32::from(has_summary);
 
         snapshots.push(DocumentSnapshot {
             document_id: record.document_id,
@@ -496,13 +472,9 @@ mod tests {
     use crate::{
         ai_integration::AiIntegration,
         app_state::AppState,
-        ipc::{
-            notebooklm::NotebookLMEngineStatus, translation::TranslationEngineStatus,
-            zotero::ZoteroStatusDto,
-        },
+        ipc::{translation::TranslationEngineStatus, zotero::ZoteroStatusDto},
         keychain::KeychainService,
         models::DocumentSourceType,
-        notebooklm_manager::NotebookLMManager,
         storage::Storage,
         translation_manager::TranslationManager,
     };
@@ -623,16 +595,6 @@ mod tests {
             translation_status.clone(),
         )
         .unwrap();
-        let notebooklm_status = Arc::new(Mutex::new(NotebookLMEngineStatus {
-            running: false,
-            pid: None,
-            port: 8891,
-            engine_version: None,
-            circuit_breaker_open: false,
-            last_health_check: None,
-        }));
-        let notebooklm_manager =
-            NotebookLMManager::new(data_dir.clone(), notebooklm_status.clone()).unwrap();
 
         AppState {
             data_dir,
@@ -641,8 +603,6 @@ mod tests {
             ai_integration,
             translation_manager,
             translation_status,
-            notebooklm_manager,
-            notebooklm_status,
             zotero_status: Arc::new(Mutex::new(ZoteroStatusDto {
                 detected: false,
                 database_path: None,

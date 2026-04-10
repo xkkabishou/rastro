@@ -14,12 +14,6 @@ export function artifactIcon(kind: string): string {
     case 'translated_pdf': return '🌐';
     case 'bilingual_pdf': return '🌐';
     case 'ai_summary': return '📝';
-    case 'notebooklm_mindmap': return '🧠';
-    case 'notebooklm_slides': return '📊';
-    case 'notebooklm_quiz': return '❓';
-    case 'notebooklm_flashcards': return '🗂️';
-    case 'notebooklm_audio': return '🎧';
-    case 'notebooklm_report': return '📋';
     default: return '📎';
   }
 }
