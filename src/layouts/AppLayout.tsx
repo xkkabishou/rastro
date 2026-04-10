@@ -88,6 +88,16 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => {
     return () => mql.removeEventListener('change', handleMediaChange);
   }, []);
 
+  // 侧栏状态切换时的安全守卫：确保 is-resizing body 类和 isResizing 状态
+  // 不会因为 ResizeHandle 在拖拽中意外卸载而残留
+  useEffect(() => {
+    if (isResizing) return;
+    // 没有活跃拖拽但 body 仍带有 is-resizing 类 → 清理
+    if (document.body.classList.contains('is-resizing')) {
+      document.body.classList.remove('is-resizing');
+    }
+  }, [isSidebarOpen, isResizing]);
+
   // -------------------------------------------------------------------------
   // 拖拽处理
   // -------------------------------------------------------------------------
@@ -174,7 +184,13 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => {
       <Sidebar
         isOpen={isSidebarOpen}
         isMobile={isMobile}
-        onToggle={() => setSidebarOpen(!isSidebarOpen)}
+        onToggle={() => {
+          // 切换侧栏时强制清理拖拽状态，防止 z-50 覆盖层残留阻挡交互
+          if (isResizing) {
+            setIsResizing(false);
+          }
+          setSidebarOpen(!isSidebarOpen);
+        }}
         width={sidebarWidth}
         isResizing={isResizing}
       />
@@ -226,7 +242,13 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.85 }}
                 transition={{ duration: 0.2, ease: 'easeOut' }}
-                onClick={() => setSidebarOpen(true)}
+                onClick={() => {
+                  // 重新打开侧栏时同样清理残留拖拽状态
+                  if (isResizing) {
+                    setIsResizing(false);
+                  }
+                  setSidebarOpen(true);
+                }}
                 className="p-2 rounded-lg bg-[var(--color-bg-overlay)] backdrop-blur-lg shadow-sm border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] transition-colors"
                 aria-label="打开侧边栏"
               >

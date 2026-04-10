@@ -117,11 +117,24 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
       case 'translated_pdf':
       case 'bilingual_pdf':
         if (artifact.filePath) {
-          // 先打开文档（设置原文 URL），再设置翻译 URL
-          openDocumentInViewer(doc);
-          useDocumentStore.getState().setTranslatedPdfUrl(convertFileSrc(artifact.filePath));
-          // 切换到译文视图（bilingualMode=false 表示显示译文）
-          useDocumentStore.getState().setBilingualMode(false);
+          // 先设置翻译 URL 和模式，再切换文档视图
+          // 避免 openDocumentInViewer → setCurrentDocument 在中间状态触发
+          // activePdfUrl 重新计算导致白屏
+          const translatedUrl = convertFileSrc(artifact.filePath);
+          const store = useDocumentStore.getState();
+          const isSameDoc = store.currentDocument?.documentId === doc.documentId;
+          if (isSameDoc) {
+            // 同文档：直接设置翻译 URL，无需重新加载文档
+            store.setTranslatedPdfUrl(translatedUrl);
+            store.setBilingualMode(false);
+          } else {
+            // 不同文档：先打开文档（会重置 translatedPdfUrl），再设置
+            openDocumentInViewer(doc);
+            // setCurrentDocument 对不同文档会重置 translatedPdfUrl=null，
+            // 需要在同一微任务中重新设置
+            useDocumentStore.getState().setTranslatedPdfUrl(translatedUrl);
+            useDocumentStore.getState().setBilingualMode(false);
+          }
         }
         break;
       case 'ai_summary':

@@ -547,12 +547,15 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       setTotalPages(0);
       setCurrentPage(1);
       setIsLoading(false);
+      setPageElements([]);
       return;
     }
 
     let cancelled = false;
     let loadingTask: PDFDocumentLoadingTask | null = null;
 
+    // 先清空 pageElements，防止 createPortal 渲染到即将被移除的旧 DOM 节点
+    setPageElements([]);
     setPdf(null);
     setTotalPages(0);
     setCurrentPage(1);
@@ -1197,8 +1200,22 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
           return;
         }
 
+        // 优先使用当前 ref（防止 pdf.js 重排后 scrollContainer 闭包引用失效）
+        const currentScrollContainer = viewerContainerRef.current ?? scrollContainer;
+        const rangeNode = range.commonAncestorContainer as Node;
+        // 检查选区是否在可视区内：
+        // 1. 优先使用 debug snapshot 的判断（若启用）
+        // 2. 检查选区节点是否在当前 scrollContainer 内
+        // 3. 回退：检查选区祖先是否在任一 .textLayer 内
+        //    （处理 pdf.js 重排后文本层 DOM 被重建的边界情况）
+        const isInScrollContainer = currentScrollContainer.contains(rangeNode);
+        const isInTextLayer = !isInScrollContainer && !!(
+          rangeNode.nodeType === Node.ELEMENT_NODE
+            ? (rangeNode as Element).closest('.textLayer')
+            : rangeNode.parentElement?.closest('.textLayer')
+        );
         const selectionInsideViewer = debugSnapshot?.selectionInsideViewer
-          ?? scrollContainer.contains(range.commonAncestorContainer as Node);
+          ?? (isInScrollContainer || isInTextLayer);
         if (!selectionInsideViewer) {
           setSelectionPopup(null);
           return;
@@ -1258,8 +1275,17 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       if (activeTool) {
         const selection = window.getSelection();
         const text = selection?.toString().trim() || '';
-        if (text.length >= 2 && scrollContainer) {
-          const rects = selectionToAnnotationRects(selection!, scrollContainer);
+        // 使用当前 ref 而非闭包捕获的 scrollContainer，防止布局切换后 ref 失效
+        const currentContainer = viewerContainerRef.current ?? scrollContainer;
+        if (text.length >= 2 && currentContainer) {
+          const rects = selectionToAnnotationRects(selection!, currentContainer);
+          if (rects.length === 0) {
+            console.warn('[标注] 无法从当前选区解析出页面矩形，跳过创建', {
+              textLength: text.length,
+              hasContainer: !!currentContainer,
+              pagesInContainer: currentContainer.querySelectorAll('.page').length,
+            });
+          }
           if (rects.length > 0) {
             // 跨页标注暂不支持
             const pageNumbers = new Set(rects.map((r) => r.pageNumber));
