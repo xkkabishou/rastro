@@ -201,11 +201,17 @@ export const ObsidianSettings: React.FC = () => {
       </div>
 
       {/* 文件夹结构说明 */}
-      <div className="pt-1 border-t border-[var(--color-border)]">
+      <div className="pt-1 border-t border-[var(--color-border)] space-y-0.5">
         <p className="text-[10px] text-[var(--color-text-quaternary)] leading-relaxed">
           文件结构：
           <code className="px-1 py-0.5 rounded bg-[var(--color-bg-tertiary)] text-[9px]">
-            Vault/文献笔记/&#123;文献名&#125;/总结.md
+            Vault/&#123;文献名&#125;_总结.md
+          </code>
+        </p>
+        <p className="text-[10px] text-[var(--color-text-quaternary)] leading-relaxed">
+          论文评析：
+          <code className="px-1 py-0.5 rounded bg-[var(--color-bg-tertiary)] text-[9px]">
+            Vault/&#123;文献名&#125;_论文评析.md
           </code>
         </p>
       </div>

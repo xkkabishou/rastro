@@ -793,20 +793,6 @@ export interface ExportSummaryResult {
   filePath: string;
 }
 
-/** 聊天导出请求参数 */
-export interface ExportChatsInput {
-  documentId: string;
-  title: string;
-  sessionIds: string[];
-}
-
-/** 聊天导出结果 */
-export interface ExportChatsResult {
-  success: boolean;
-  exportedCount: number;
-  filePaths: string[];
-}
-
 /** 自动检测到的 Obsidian Vault */
 export interface DetectedVault {
   path: string;
@@ -910,7 +896,6 @@ export const IPC_COMMANDS = {
   SAVE_OBSIDIAN_CONFIG: "save_obsidian_config",
   VALIDATE_OBSIDIAN_VAULT: "validate_obsidian_vault",
   EXPORT_SUMMARY_TO_OBSIDIAN: "export_summary_to_obsidian",
-  EXPORT_CHATS_TO_OBSIDIAN: "export_chats_to_obsidian",
   DETECT_OBSIDIAN_VAULTS: "detect_obsidian_vaults",
   // M. 精读模式
   SAVE_DEEP_READ_TEXT: "save_deep_read_text",

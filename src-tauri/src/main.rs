@@ -117,12 +117,11 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             // L. 标题翻译缓存 (2 个)
             ipc::title_translation::get_title_translation,
             ipc::title_translation::batch_translate_titles,
-            // M. Obsidian 笔记同步 (6 个)
+            // M. Obsidian 笔记同步 (5 个)
             ipc::obsidian::get_obsidian_config,
             ipc::obsidian::save_obsidian_config,
             ipc::obsidian::validate_obsidian_vault,
             ipc::obsidian::export_summary_to_obsidian,
-            ipc::obsidian::export_chats_to_obsidian,
             ipc::obsidian::detect_obsidian_vaults,
             // N. 精读模式 (3 个)
             ipc::deep_read::save_deep_read_text,

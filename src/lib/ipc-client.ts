@@ -80,7 +80,6 @@ import {
   ObsidianConfigDto,
   ValidateVaultResult,
   ExportSummaryResult,
-  ExportChatsResult,
   DetectedVault,
   ZoteroExportResult,
   // M. 精读模式
@@ -410,10 +409,6 @@ export const ipcClient = {
   /** 导出总结到 Obsidian */
   exportSummaryToObsidian: (documentId: string, title: string, contentMd: string, summaryType?: string) =>
     safeInvoke<ExportSummaryResult>(IPC_COMMANDS.EXPORT_SUMMARY_TO_OBSIDIAN, { documentId, title, contentMd, summaryType }),
-
-  /** 批量导出聊天到 Obsidian */
-  exportChatsToObsidian: (documentId: string, title: string, sessionIds: string[]) =>
-    safeInvoke<ExportChatsResult>(IPC_COMMANDS.EXPORT_CHATS_TO_OBSIDIAN, { documentId, title, sessionIds }),
 
   /** 自动检测本机 Obsidian Vault 列表 */
   detectObsidianVaults: () =>

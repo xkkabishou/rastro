@@ -1,7 +1,7 @@
 // Obsidian 集成状态管理
 import { create } from 'zustand';
 import { ipcClient } from '../lib/ipc-client';
-import type { ObsidianConfigDto, ValidateVaultResult, ExportSummaryResult, ExportChatsResult } from '../shared/types';
+import type { ObsidianConfigDto, ValidateVaultResult, ExportSummaryResult } from '../shared/types';
 
 interface ObsidianState {
   // 配置
@@ -28,8 +28,6 @@ interface ObsidianActions {
   validateVault: (path: string) => Promise<ValidateVaultResult>;
   /** 导出总结到 Obsidian */
   exportSummary: (documentId: string, title: string, contentMd: string, summaryType?: string) => Promise<ExportSummaryResult | null>;
-  /** 导出聊天记录到 Obsidian */
-  exportChats: (documentId: string, title: string, sessionIds: string[]) => Promise<ExportChatsResult | null>;
   /** 自动同步（静默执行） */
   autoSyncSummary: (documentId: string, title: string, contentMd: string) => Promise<void>;
 }
@@ -107,20 +105,6 @@ export const useObsidianStore = create<ObsidianState & ObsidianActions>((set, ge
     try {
       const result = await ipcClient.exportSummaryToObsidian(documentId, title, contentMd, summaryType);
       set({ lastExportResult: result });
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '导出失败';
-      set({ exportError: message });
-      return null;
-    } finally {
-      set({ isExporting: false });
-    }
-  },
-
-  exportChats: async (documentId, title, sessionIds) => {
-    set({ isExporting: true, exportError: null });
-    try {
-      const result = await ipcClient.exportChatsToObsidian(documentId, title, sessionIds);
       return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : '导出失败';

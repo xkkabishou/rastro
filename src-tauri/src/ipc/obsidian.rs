@@ -1,4 +1,4 @@
-// L. Obsidian 笔记同步 IPC Commands (5 个)
+// L. Obsidian 笔记同步 IPC Commands (4 个)
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -9,7 +9,7 @@ use tauri::State;
 use crate::{
     app_state::AppState,
     errors::AppError,
-    storage::{chat_messages, chat_sessions, obsidian_config},
+    storage::obsidian_config,
 };
 
 // ---------------------------------------------------------------------------
@@ -38,15 +38,6 @@ pub struct ValidateVaultResult {
 pub struct ExportSummaryResult {
     pub success: bool,
     pub file_path: String,
-}
-
-/// 聊天导出结果
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExportChatsResult {
-    pub success: bool,
-    pub exported_count: usize,
-    pub file_paths: Vec<String>,
 }
 
 /// 检测到的 Obsidian Vault
@@ -109,49 +100,23 @@ fn build_summary_markdown(
     )
 }
 
-/// 生成聊天记录的 front matter + 内容
-fn build_chat_markdown(
-    title: &str,
-    session_id: &str,
-    document_id: &str,
-    messages: &[chat_messages::ChatMessageRecord],
-) -> String {
-    let now = Local::now().to_rfc3339();
-    let mut md = format!(
-        "---\ntitle: \"{} - 对话记录\"\ntype: chat\nsource: rastro\nsession_id: \"{}\"\nexported_at: {}\ndocument_id: \"{}\"\n---\n\n",
-        title.replace('"', "\\\""),
-        session_id,
-        now,
-        document_id,
-    );
-
-    for msg in messages {
-        let role_label = match msg.role.as_str() {
-            "user" => "👤 用户",
-            "assistant" => "🤖 AI",
-            _ => "📋 系统",
-        };
-        md.push_str(&format!("## {}\n", role_label));
-
-        // 如果有上下文引用，显示引用块
-        if let Some(ref quote) = msg.context_quote {
-            if !quote.is_empty() {
-                md.push_str(&format!("> {}\n\n", quote.replace('\n', "\n> ")));
-            }
-        }
-
-        md.push_str(&msg.content_md);
-        md.push_str("\n\n---\n\n");
-    }
-
-    md
-}
-
-/// 获取文献文件夹路径
-fn get_literature_dir(vault_path: &str, title: &str) -> PathBuf {
-    Path::new(vault_path)
-        .join("文献笔记")
-        .join(sanitize_filename(title))
+/// 根据 summary_type 构造导出到 Obsidian 的最终文件路径
+///
+/// 规则：
+/// - `default`      → `{vault}/{sanitized_title}_总结.md`
+/// - `paper-review` → `{vault}/{sanitized_title}_论文评析.md`
+/// - 其他未知类型   → `{vault}/{sanitized_title}_总结_{type}.md`（兜底，防止新增 prompt profile 时 panic）
+///
+/// 设计约束：不再在 vault 路径下硬拼任何子目录（历史硬编码 `文献笔记/{title}/` 已废弃），
+/// 直接把文件放在用户配置的 Vault 路径根目录下，由用户自己控制目标目录。
+fn build_export_path(vault_path: &str, title: &str, summary_type: &str) -> PathBuf {
+    let safe_title = sanitize_filename(title);
+    let filename = match summary_type {
+        "default" => format!("{}_总结.md", safe_title),
+        "paper-review" => format!("{}_论文评析.md", safe_title),
+        other => format!("{}_总结_{}.md", safe_title, other),
+    };
+    Path::new(vault_path).join(filename)
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +209,13 @@ pub fn validate_obsidian_vault(
 }
 
 /// 导出总结到 Obsidian
+///
+/// 文件路径规则由 [`build_export_path`] 决定：
+/// - `{vault_path}/{title}_总结.md`（默认）
+/// - `{vault_path}/{title}_论文评析.md`（paper-review）
+/// - `{vault_path}/{title}_总结_{type}.md`（其他未知类型兜底）
+///
+/// 不再在 vault 下创建子目录——用户配置的 Vault 路径就是最终目标目录。
 #[tauri::command]
 pub fn export_summary_to_obsidian(
     state: State<'_, AppState>,
@@ -262,16 +234,12 @@ pub fn export_summary_to_obsidian(
     })?;
 
     let summary_type = summary_type.unwrap_or_else(|| "default".to_string());
-    let lit_dir = get_literature_dir(&vault_path, &title);
-    ensure_dir(&lit_dir)?;
+    let file_path = build_export_path(&vault_path, &title, &summary_type);
 
-    // 确定文件名：默认总结为"总结.md"，其他类型为"总结-{type}.md"
-    let filename = if summary_type == "default" {
-        "总结.md".to_string()
-    } else {
-        format!("总结-{}.md", summary_type)
-    };
-    let file_path = lit_dir.join(&filename);
+    // 确保 Vault 目录存在（通常已存在，只是防御性确认）
+    if let Some(parent) = file_path.parent() {
+        ensure_dir(parent)?;
+    }
 
     let md_content = build_summary_markdown(&title, &content_md, &summary_type, &document_id);
     fs::write(&file_path, md_content).map_err(|e| {
@@ -281,79 +249,6 @@ pub fn export_summary_to_obsidian(
     Ok(ExportSummaryResult {
         success: true,
         file_path: file_path.to_string_lossy().to_string(),
-    })
-}
-
-/// 批量导出聊天记录到 Obsidian
-#[tauri::command]
-pub fn export_chats_to_obsidian(
-    state: State<'_, AppState>,
-    document_id: String,
-    title: String,
-    session_ids: Vec<String>,
-) -> Result<ExportChatsResult, AppError> {
-    let vault_path = {
-        let connection = state.storage.connection();
-        obsidian_config::get_vault_path(&connection)?
-    };
-
-    let vault_path = vault_path.ok_or_else(|| {
-        AppError::internal("Obsidian Vault 路径未配置".to_string())
-    })?;
-
-    let lit_dir = get_literature_dir(&vault_path, &title);
-    ensure_dir(&lit_dir)?;
-
-    let mut exported_paths: Vec<String> = Vec::new();
-
-    for session_id in &session_ids {
-        // 获取会话信息和消息
-        let (session_record, messages) = {
-            let connection = state.storage.connection();
-            let sessions = chat_sessions::list_by_document(&connection, &document_id)?;
-            let session = sessions
-                .into_iter()
-                .find(|s| s.session_id == *session_id);
-
-            let msgs = chat_messages::list_by_session(&connection, session_id)?;
-            (session, msgs)
-        };
-
-        if messages.is_empty() {
-            continue;
-        }
-
-        // 从会话创建时间生成文件名
-        let timestamp = session_record
-            .as_ref()
-            .map(|s| s.created_at.clone())
-            .unwrap_or_else(|| Utc::now().to_rfc3339());
-
-        // 简化时间戳为文件名友好格式
-        let time_slug = timestamp
-            .chars()
-            .take(19)
-            .map(|c| match c {
-                ':' | 'T' => '-',
-                _ => c,
-            })
-            .collect::<String>();
-
-        let filename = format!("对话-{}.md", time_slug);
-        let file_path = lit_dir.join(&filename);
-
-        let md_content = build_chat_markdown(&title, session_id, &document_id, &messages);
-        fs::write(&file_path, &md_content).map_err(|e| {
-            AppError::internal(format!("写入聊天记录失败: {}", e))
-        })?;
-
-        exported_paths.push(file_path.to_string_lossy().to_string());
-    }
-
-    Ok(ExportChatsResult {
-        success: true,
-        exported_count: exported_paths.len(),
-        file_paths: exported_paths,
     })
 }
 
@@ -407,4 +302,105 @@ pub fn detect_obsidian_vaults() -> Result<Vec<DetectedVault>, AppError> {
     }
 
     Ok(vaults)
+}
+
+// ---------------------------------------------------------------------------
+// 单元测试
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -----------------------------------------------------------------------
+    // sanitize_filename 回归（已有逻辑）
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn sanitize_filename_replaces_illegal_chars() {
+        // 每个非法字符独立测试，避免数错下划线位数
+        for ch in ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'] {
+            let input = format!("a{}b", ch);
+            assert_eq!(
+                sanitize_filename(&input),
+                "a_b",
+                "字符 {:?} 应该被替换为下划线",
+                ch
+            );
+        }
+    }
+
+    #[test]
+    fn sanitize_filename_trims_whitespace() {
+        assert_eq!(sanitize_filename("  hello world  "), "hello world");
+    }
+
+    #[test]
+    fn sanitize_filename_truncates_over_80_chars() {
+        let long = "a".repeat(120);
+        let sanitized = sanitize_filename(&long);
+        assert_eq!(sanitized.chars().count(), 80);
+    }
+
+    #[test]
+    fn sanitize_filename_preserves_chinese() {
+        assert_eq!(sanitize_filename("猫儿山黑皮陶"), "猫儿山黑皮陶");
+    }
+
+    // -----------------------------------------------------------------------
+    // build_export_path：核心路径拼接规则
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn build_export_path_default_summary_type() {
+        // 默认总结：文件名为 {title}_总结.md
+        let path = build_export_path("/tmp/vault", "猫儿山黑皮陶", "default");
+        assert_eq!(path, PathBuf::from("/tmp/vault/猫儿山黑皮陶_总结.md"));
+    }
+
+    #[test]
+    fn build_export_path_paper_review_uses_chinese_alias() {
+        // paper-review 类型：使用中文别名"论文评析"
+        let path = build_export_path("/tmp/vault", "Black Pottery Analysis", "paper-review");
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp/vault/Black Pottery Analysis_论文评析.md")
+        );
+    }
+
+    #[test]
+    fn build_export_path_unknown_type_falls_back_gracefully() {
+        // 未知类型：兜底为 {title}_总结_{type}.md，避免新增 prompt profile 时 panic
+        let path = build_export_path("/tmp/vault", "Doc", "future-type");
+        assert_eq!(path, PathBuf::from("/tmp/vault/Doc_总结_future-type.md"));
+    }
+
+    #[test]
+    fn build_export_path_sanitizes_illegal_chars_in_title() {
+        // 标题里含 / 和 *：必须被替换，而不是把 / 当成子路径分隔符
+        let path = build_export_path("/tmp/vault", "foo/bar*baz", "default");
+        assert_eq!(path, PathBuf::from("/tmp/vault/foo_bar_baz_总结.md"));
+    }
+
+    #[test]
+    fn build_export_path_does_not_add_hardcoded_subdir() {
+        // 回归测试：历史 bug 是在 vault 下硬拼 "文献笔记/{title}/"，
+        // 修复后不应该再出现这个子目录，也不应该出现"文献笔记"字样（除非用户自己在 vault 路径里已经包含）
+        let path = build_export_path("/tmp/vault", "X", "default");
+        assert_eq!(path, PathBuf::from("/tmp/vault/X_总结.md"));
+        // 明确不应有嵌套子目录
+        assert_eq!(path.components().count(), 4); // /, tmp, vault, X_总结.md
+    }
+
+    #[test]
+    fn build_export_path_user_vault_with_wenxian_suffix_no_duplication() {
+        // 回归测试：用户的 vault 路径已经包含"文献笔记"时，不应再被重复拼接
+        let path = build_export_path("/Users/alias/笔记/文献笔记", "猫儿山黑皮陶", "default");
+        assert_eq!(
+            path,
+            PathBuf::from("/Users/alias/笔记/文献笔记/猫儿山黑皮陶_总结.md")
+        );
+        // 双重 "文献笔记" 是之前的 bug 形态，这里必须只出现一次
+        let as_str = path.to_string_lossy();
+        assert_eq!(as_str.matches("文献笔记").count(), 1);
+    }
 }
