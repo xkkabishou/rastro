@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { ipcClient } from '../../lib/ipc-client';
-import { BookOpen, Loader2, RefreshCw, FileText, Download, Check, BookMarked } from 'lucide-react';
+import { BookOpen, Loader2, RefreshCw, FileText, Upload, Check } from 'lucide-react';
 import { CalloutBlockquote } from '../ui/Callout';
 import {
   DEFAULT_SUMMARY_SOURCE_CHARS,
@@ -33,15 +33,12 @@ export const SummaryPanel: React.FC = () => {
   const contentRef = useRef<HTMLDivElement>(null);
   const documentId = currentDocument?.documentId;
 
-  // Obsidian 导出状态
+  // 统一"同步到笔记库"状态（同时覆盖 Obsidian + Zotero）
   const obsidianConfig = useObsidianStore((s) => s.config);
   const exportSummary = useObsidianStore((s) => s.exportSummary);
-  const isExportingObsidian = useObsidianStore((s) => s.isExporting);
-  const [obsidianSuccess, setObsidianSuccess] = useState(false);
-
-  // Zotero 导出状态
-  const [isExportingZotero, setIsExportingZotero] = useState(false);
-  const [zoteroSuccess, setZoteroSuccess] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   // T2.4.5: 文档切换时自动加载已保存的总结
   useEffect(() => {
@@ -107,40 +104,65 @@ export const SummaryPanel: React.FC = () => {
     }
   }, [currentDocument, failStream, isGenerating, setActiveStreamId, startGeneration]);
 
-  // 导出到 Obsidian
-  const handleExportToObsidian = useCallback(async () => {
-    if (!currentDocument || !summaryContent) return;
-    const result = await exportSummary(
-      currentDocument.documentId,
-      currentDocument.title || '未命名文献',
-      summaryContent,
-    );
-    if (result?.success) {
-      setObsidianSuccess(true);
-      setTimeout(() => setObsidianSuccess(false), 2000);
-    }
-  }, [currentDocument, summaryContent, exportSummary]);
+  // 当前可用的同步目标（Obsidian / Zotero / 两者）
+  const syncTargets = useMemo(() => {
+    const targets: ('obsidian' | 'zotero')[] = [];
+    if (obsidianConfig.vaultPath) targets.push('obsidian');
+    if (currentDocument?.zoteroItemKey) targets.push('zotero');
+    return targets;
+  }, [obsidianConfig.vaultPath, currentDocument?.zoteroItemKey]);
 
-  // 导出到 Zotero
-  const handleExportToZotero = useCallback(async () => {
-    if (!currentDocument?.zoteroItemKey || !summaryContent) return;
-    setIsExportingZotero(true);
-    try {
-      const result = await ipcClient.exportMdToZotero(
-        currentDocument.zoteroItemKey,
-        '总结.md',
-        summaryContent,
-      );
-      if (result?.success) {
-        setZoteroSuccess(true);
-        setTimeout(() => setZoteroSuccess(false), 2000);
+  // 统一"同步到笔记库"按钮：并行写入所有已配置的目标
+  const handleSyncToLibrary = useCallback(async () => {
+    if (!currentDocument || !summaryContent || syncTargets.length === 0) return;
+    setIsSyncing(true);
+    setSyncError(null);
+
+    const title = currentDocument.title || '未命名文献';
+    const results = await Promise.allSettled(
+      syncTargets.map((target) => {
+        if (target === 'obsidian') {
+          return exportSummary(currentDocument.documentId, title, summaryContent);
+        }
+        return ipcClient.exportMdToZotero(
+          currentDocument.zoteroItemKey!,
+          '总结.md',
+          summaryContent,
+        );
+      }),
+    );
+
+    // 收集失败的目标名
+    const failures: string[] = [];
+    results.forEach((result, index) => {
+      const targetLabel = syncTargets[index] === 'obsidian' ? 'Obsidian' : 'Zotero';
+      if (result.status === 'rejected') {
+        console.error(`[同步] ${targetLabel} 失败:`, result.reason);
+        failures.push(targetLabel);
+      } else if (result.status === 'fulfilled' && !result.value?.success) {
+        console.error(`[同步] ${targetLabel} 返回失败:`, result.value);
+        failures.push(targetLabel);
       }
-    } catch (err) {
-      console.error('[Zotero] 导出总结失败:', err);
-    } finally {
-      setIsExportingZotero(false);
+    });
+
+    setIsSyncing(false);
+
+    if (failures.length === 0) {
+      setSyncSuccess(true);
+      setTimeout(() => setSyncSuccess(false), 2000);
+    } else if (failures.length < syncTargets.length) {
+      // 部分成功：仍然短暂显示成功，但记录错误
+      setSyncError(`${failures.join('、')} 同步失败，其他目标已成功`);
+      setSyncSuccess(true);
+      setTimeout(() => {
+        setSyncSuccess(false);
+        setSyncError(null);
+      }, 3000);
+    } else {
+      setSyncError(`${failures.join('、')} 同步失败`);
+      setTimeout(() => setSyncError(null), 3000);
     }
-  }, [currentDocument, summaryContent]);
+  }, [currentDocument, summaryContent, syncTargets, exportSummary]);
 
   // 自动滚动到底部
   useEffect(() => {
@@ -149,9 +171,17 @@ export const SummaryPanel: React.FC = () => {
     }
   }, [summaryContent]);
 
-  // 是否显示导出按钮
-  const showObsidianExport = obsidianConfig.vaultPath && hasGenerated && !isGenerating && summaryContent;
-  const showZoteroExport = currentDocument?.zoteroItemKey && hasGenerated && !isGenerating && summaryContent;
+  // 是否显示统一同步按钮：已生成总结 + 至少有一个可用目标
+  const showSyncButton = hasGenerated && !isGenerating && summaryContent && syncTargets.length > 0;
+
+  // 根据可用目标组合 tooltip 文案
+  const syncTooltip = useMemo(() => {
+    if (syncError) return syncError;
+    if (syncTargets.length === 2) return '同步到笔记库（Obsidian + Zotero）';
+    if (syncTargets[0] === 'obsidian') return '同步到 Obsidian';
+    if (syncTargets[0] === 'zotero') return '同步到 Zotero 附件';
+    return '同步';
+  }, [syncTargets, syncError]);
 
   return (
     <div className="flex flex-col h-full">
@@ -162,37 +192,24 @@ export const SummaryPanel: React.FC = () => {
           <span className="font-semibold text-sm text-[var(--color-text)]">文献总结</span>
         </div>
         <div className="flex items-center gap-1">
-          {/* 导出到 Zotero 按钮 */}
-          {showZoteroExport && (
+          {/* 统一同步到笔记库按钮（Obsidian + Zotero 合并） */}
+          {showSyncButton && (
             <button
-              onClick={handleExportToZotero}
-              disabled={isExportingZotero}
-              className="p-1.5 rounded-md hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)] disabled:opacity-50 transition-colors"
-              title="同步到 Zotero 附件"
+              onClick={handleSyncToLibrary}
+              disabled={isSyncing}
+              className={`p-1.5 rounded-md hover:bg-[var(--color-hover)] disabled:opacity-50 transition-colors ${
+                syncError && !syncSuccess
+                  ? 'text-red-400'
+                  : 'text-[var(--color-text-tertiary)]'
+              }`}
+              title={syncTooltip}
             >
-              {zoteroSuccess ? (
+              {syncSuccess ? (
                 <Check size={14} className="text-emerald-500" />
-              ) : isExportingZotero ? (
+              ) : isSyncing ? (
                 <Loader2 size={14} className="animate-spin" />
               ) : (
-                <BookMarked size={14} />
-              )}
-            </button>
-          )}
-          {/* 导出到 Obsidian 按钮 */}
-          {showObsidianExport && (
-            <button
-              onClick={handleExportToObsidian}
-              disabled={isExportingObsidian}
-              className="p-1.5 rounded-md hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)] disabled:opacity-50 transition-colors"
-              title="导出到 Obsidian"
-            >
-              {obsidianSuccess ? (
-                <Check size={14} className="text-emerald-500" />
-              ) : isExportingObsidian ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Download size={14} />
+                <Upload size={14} />
               )}
             </button>
           )}
