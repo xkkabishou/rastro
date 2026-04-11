@@ -24,18 +24,18 @@ export type SyncTarget = 'obsidian' | 'zotero';
  * 规则：
  * - 有 syncError 时，优先显示错误
  * - 无错误时，根据可用目标生成基础文案
- * - 默认始终追加覆盖提醒：再次同步将覆盖同名文件
+ * - 默认始终追加覆盖提醒：会覆盖同名文件
  */
 export function getSyncTooltip(syncTargets: SyncTarget[], syncError: string | null): string {
   if (syncError) return syncError;
   if (syncTargets.length === 2) {
-    return '同步到笔记库（Obsidian + Zotero，再次同步将覆盖同名文件）';
+    return '同步到笔记库（Obsidian + Zotero，会覆盖同名文件）';
   }
   if (syncTargets[0] === 'obsidian') {
-    return '同步到 Obsidian（再次同步将覆盖同名文件）';
+    return '同步到 Obsidian（会覆盖同名文件）';
   }
   if (syncTargets[0] === 'zotero') {
-    return '同步到 Zotero 附件（再次同步将覆盖同名文件）';
+    return '同步到 Zotero 附件（会覆盖同名文件）';
   }
   return '同步';
 }

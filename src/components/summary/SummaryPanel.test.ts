@@ -4,19 +4,19 @@ import { getSyncTooltip } from './SummaryPanel';
 describe('getSyncTooltip', () => {
   it('Obsidian 单目标时默认 tooltip 包含覆盖提醒', () => {
     expect(getSyncTooltip(['obsidian'], null)).toBe(
-      '同步到 Obsidian（再次同步将覆盖同名文件）',
+      '同步到 Obsidian（会覆盖同名文件）',
     );
   });
 
   it('Zotero 单目标时默认 tooltip 包含覆盖提醒', () => {
     expect(getSyncTooltip(['zotero'], null)).toBe(
-      '同步到 Zotero 附件（再次同步将覆盖同名文件）',
+      '同步到 Zotero 附件（会覆盖同名文件）',
     );
   });
 
   it('双目标时默认 tooltip 包含覆盖提醒', () => {
     expect(getSyncTooltip(['obsidian', 'zotero'], null)).toBe(
-      '同步到笔记库（Obsidian + Zotero，再次同步将覆盖同名文件）',
+      '同步到笔记库（Obsidian + Zotero，会覆盖同名文件）',
     );
   });
 
