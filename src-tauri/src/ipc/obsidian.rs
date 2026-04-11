@@ -9,7 +9,7 @@ use tauri::State;
 use crate::{
     app_state::AppState,
     errors::AppError,
-    storage::obsidian_config,
+    storage::{obsidian_config, title_translations},
 };
 
 // ---------------------------------------------------------------------------
@@ -98,6 +98,21 @@ fn build_summary_markdown(
         document_id,
         content_md,
     )
+}
+
+/// 从缓存的翻译结果中挑选用于文件名的显示标题
+///
+/// 优先级：
+/// 1. 若有非空的中文译名 → 使用译名
+/// 2. 否则 → 回退到原标题
+///
+/// 这是一个纯函数，外层负责数据库查询；这样便于单元测试而不需要搭建数据库 fixture。
+fn pick_display_title(original: &str, cached_translation: Option<&str>) -> String {
+    cached_translation
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .unwrap_or_else(|| original.to_string())
 }
 
 /// 根据 summary_type 构造导出到 Obsidian 的最终文件路径
@@ -211,9 +226,13 @@ pub fn validate_obsidian_vault(
 /// 导出总结到 Obsidian
 ///
 /// 文件路径规则由 [`build_export_path`] 决定：
-/// - `{vault_path}/{title}_总结.md`（默认）
-/// - `{vault_path}/{title}_论文评析.md`（paper-review）
-/// - `{vault_path}/{title}_总结_{type}.md`（其他未知类型兜底）
+/// - `{vault_path}/{display_title}_总结.md`（默认）
+/// - `{vault_path}/{display_title}_论文评析.md`（paper-review）
+/// - `{vault_path}/{display_title}_总结_{type}.md`（其他未知类型兜底）
+///
+/// `display_title` 优先使用 `title_translations` 表里缓存的中文译名；
+/// 若无缓存则回退到原 `title`。frontmatter 里的 `title` 字段保留原文，
+/// 方便 Obsidian Dataview 通过原英文标题查询。
 ///
 /// 不再在 vault 下创建子目录——用户配置的 Vault 路径就是最终目标目录。
 #[tauri::command]
@@ -224,23 +243,31 @@ pub fn export_summary_to_obsidian(
     content_md: String,
     summary_type: Option<String>,
 ) -> Result<ExportSummaryResult, AppError> {
-    let vault_path = {
+    // 一次性拿到 vault 路径 + 中文译名缓存（单次数据库连接）
+    let (vault_path_opt, cached_translation) = {
         let connection = state.storage.connection();
-        obsidian_config::get_vault_path(&connection)?
+        let vault_path = obsidian_config::get_vault_path(&connection)?;
+        let hash = title_translations::hash_title(&title);
+        let record = title_translations::get_by_hash(&connection, &hash)?;
+        (vault_path, record.map(|r| r.translated_title))
     };
 
-    let vault_path = vault_path.ok_or_else(|| {
+    let vault_path = vault_path_opt.ok_or_else(|| {
         AppError::internal("Obsidian Vault 路径未配置".to_string())
     })?;
 
+    // 选择用于文件名的显示标题（优先中文译名）
+    let display_title = pick_display_title(&title, cached_translation.as_deref());
+
     let summary_type = summary_type.unwrap_or_else(|| "default".to_string());
-    let file_path = build_export_path(&vault_path, &title, &summary_type);
+    let file_path = build_export_path(&vault_path, &display_title, &summary_type);
 
     // 确保 Vault 目录存在（通常已存在，只是防御性确认）
     if let Some(parent) = file_path.parent() {
         ensure_dir(parent)?;
     }
 
+    // frontmatter 里仍使用原 title，保留原文以便 Dataview 查询
     let md_content = build_summary_markdown(&title, &content_md, &summary_type, &document_id);
     fs::write(&file_path, md_content).map_err(|e| {
         AppError::internal(format!("写入文件失败: {}", e))
@@ -344,6 +371,45 @@ mod tests {
     #[test]
     fn sanitize_filename_preserves_chinese() {
         assert_eq!(sanitize_filename("猫儿山黑皮陶"), "猫儿山黑皮陶");
+    }
+
+    // -----------------------------------------------------------------------
+    // pick_display_title：选择用于文件名的显示标题（优先中文译名）
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn pick_display_title_uses_cached_translation_when_present() {
+        // 缓存有中文译名 → 使用译名作为显示标题
+        let display = pick_display_title("Black Pottery Analysis", Some("黑陶分析"));
+        assert_eq!(display, "黑陶分析");
+    }
+
+    #[test]
+    fn pick_display_title_falls_back_to_original_when_no_translation() {
+        // 缓存没有译名 → 回退到原标题
+        let display = pick_display_title("Black Pottery Analysis", None);
+        assert_eq!(display, "Black Pottery Analysis");
+    }
+
+    #[test]
+    fn pick_display_title_falls_back_when_translation_is_empty_string() {
+        // 缓存里的译名是空字符串 → 应该回退，不用空字符串做文件名
+        let display = pick_display_title("Black Pottery", Some(""));
+        assert_eq!(display, "Black Pottery");
+    }
+
+    #[test]
+    fn pick_display_title_falls_back_when_translation_is_whitespace_only() {
+        // 缓存里的译名只有空白字符 → 也应该回退
+        let display = pick_display_title("Black Pottery", Some("   \t\n  "));
+        assert_eq!(display, "Black Pottery");
+    }
+
+    #[test]
+    fn pick_display_title_preserves_chinese_original_when_translation_missing() {
+        // 原标题本身就是中文（Zotero 中文条目），无译名时保持原样
+        let display = pick_display_title("猫儿山黑皮陶研究", None);
+        assert_eq!(display, "猫儿山黑皮陶研究");
     }
 
     // -----------------------------------------------------------------------
