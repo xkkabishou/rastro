@@ -16,6 +16,30 @@ import { useDocumentStore } from '../../stores/useDocumentStore';
 import { useSummaryStore } from '../../stores/useSummaryStore';
 import { useObsidianStore } from '../../stores/useObsidianStore';
 
+export type SyncTarget = 'obsidian' | 'zotero';
+
+/**
+ * 生成统一同步按钮的 tooltip 文案。
+ *
+ * 规则：
+ * - 有 syncError 时，优先显示错误
+ * - 无错误时，根据可用目标生成基础文案
+ * - 默认始终追加覆盖提醒：再次同步将覆盖同名文件
+ */
+export function getSyncTooltip(syncTargets: SyncTarget[], syncError: string | null): string {
+  if (syncError) return syncError;
+  if (syncTargets.length === 2) {
+    return '同步到笔记库（Obsidian + Zotero，再次同步将覆盖同名文件）';
+  }
+  if (syncTargets[0] === 'obsidian') {
+    return '同步到 Obsidian（再次同步将覆盖同名文件）';
+  }
+  if (syncTargets[0] === 'zotero') {
+    return '同步到 Zotero 附件（再次同步将覆盖同名文件）';
+  }
+  return '同步';
+}
+
 /** AI 文献总结面板 */
 export const SummaryPanel: React.FC = () => {
   const currentDocument = useDocumentStore((state) => state.currentDocument);
@@ -175,13 +199,10 @@ export const SummaryPanel: React.FC = () => {
   const showSyncButton = hasGenerated && !isGenerating && summaryContent && syncTargets.length > 0;
 
   // 根据可用目标组合 tooltip 文案
-  const syncTooltip = useMemo(() => {
-    if (syncError) return syncError;
-    if (syncTargets.length === 2) return '同步到笔记库（Obsidian + Zotero）';
-    if (syncTargets[0] === 'obsidian') return '同步到 Obsidian';
-    if (syncTargets[0] === 'zotero') return '同步到 Zotero 附件';
-    return '同步';
-  }, [syncTargets, syncError]);
+  const syncTooltip = useMemo(
+    () => getSyncTooltip(syncTargets, syncError),
+    [syncTargets, syncError],
+  );
 
   return (
     <div className="flex flex-col h-full">
