@@ -1,8 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { ipcClient } from '../../lib/ipc-client';
 import { BookOpen, Loader2, RefreshCw, FileText, Download, Check, BookMarked } from 'lucide-react';
+import { CalloutBlockquote } from '../ui/Callout';
 import {
   DEFAULT_SUMMARY_SOURCE_CHARS,
   DEFAULT_SUMMARY_SOURCE_PAGES,
@@ -239,7 +243,11 @@ export const SummaryPanel: React.FC = () => {
         ) : (
           <div className="p-4">
             <div className={`markdown-body text-sm ${isGenerating ? 'streaming-cursor' : ''}`}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                components={{ blockquote: CalloutBlockquote }}
+              >
                 {summaryContent || ' '}
               </ReactMarkdown>
             </div>

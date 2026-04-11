@@ -758,6 +758,11 @@ export interface AiStreamFinishedPayload {
   streamId: string;
   sessionId: string;
   messageId: string;
+  /**
+   * 后端对 Summary 场景完成后处理（如 Callout 前缀规范化）后的完整 Markdown。
+   * 仅当后处理实际改写了内容时才出现；前端收到后应整体替换流式累积的原始内容。
+   */
+  normalizedContent?: string;
 }
 
 /** ai://stream-failed 事件 payload */

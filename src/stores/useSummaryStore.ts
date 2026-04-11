@@ -22,7 +22,7 @@ interface SummaryState {
     delta: string,
     kind?: AiStreamChunkPayload['kind'],
   ) => void;
-  finishStream: (streamId: string) => void;
+  finishStream: (streamId: string, normalizedContent?: string) => void;
   failStream: (streamId: string | null, errorMessage: string) => void;
   resetSummary: () => void;
   /** T2.4.5: 加载已保存的总结 */
@@ -72,14 +72,24 @@ export const useSummaryStore = create<SummaryState>((set, get) => ({
     });
   },
 
-  finishStream: (streamId) => {
+  finishStream: (streamId, normalizedContent) => {
     const state = get();
     if (state.activeStreamId !== streamId) return;
 
-    set({
-      isGenerating: false,
-      activeStreamId: null,
-    });
+    // 若后端返回了规范化后的完整内容（如 Callout 前缀已补齐），
+    // 优先用它整体替换流式累积的原始内容，再做后续持久化与同步。
+    if (normalizedContent && normalizedContent.trim()) {
+      set({
+        summaryContent: normalizedContent,
+        isGenerating: false,
+        activeStreamId: null,
+      });
+    } else {
+      set({
+        isGenerating: false,
+        activeStreamId: null,
+      });
+    }
 
     // T2.4.5: 生成完成后自动持久化保存
     const { summaryContent, currentDocumentId } = get();
@@ -176,7 +186,7 @@ void ipcEvents.onAiStreamChunk((payload) => {
 void ipcEvents.onAiStreamFinished((payload) => {
   const state = useSummaryStore.getState();
   if (state.activeStreamId === payload.streamId) {
-    state.finishStream(payload.streamId);
+    state.finishStream(payload.streamId, payload.normalizedContent);
   }
 });
 

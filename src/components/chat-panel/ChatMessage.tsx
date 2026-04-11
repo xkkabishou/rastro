@@ -1,10 +1,14 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import type { ChatMessage as ChatMessageType } from '../../stores/useChatStore';
 import { Quote, Brain } from 'lucide-react';
 import shibaUserUrl from '../../assets/shiba/shiba-user.png';
 import shibaAiUrl from '../../assets/shiba/shiba-ai.png';
+import { CalloutBlockquote } from '../ui/Callout';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -54,7 +58,11 @@ export const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message }) 
                 </summary>
                 <div className="border-t border-[var(--color-border)] px-3 py-2">
                   <div className="markdown-body text-xs text-[var(--color-text-secondary)]">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                      components={{ blockquote: CalloutBlockquote }}
+                    >
                       {thinkingContent}
                     </ReactMarkdown>
                   </div>
@@ -63,7 +71,11 @@ export const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message }) 
             )}
 
             <div className={`markdown-body text-sm ${message.isStreaming ? 'streaming-cursor' : ''}`}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                components={{ blockquote: CalloutBlockquote }}
+              >
                 {message.content || ' '}
               </ReactMarkdown>
             </div>

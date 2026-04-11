@@ -373,6 +373,18 @@ async fn run_stream_task<R: tauri::Runtime + 'static>(
             thinking,
             usage,
         }) => {
+            // Summary 场景下对 Markdown 做后处理：
+            // 1. frontmatter 规范化（剥掉 ```yaml 栅栏、删除引言套话）
+            // 2. Callout 前缀规范化（补齐漏写的 `> ` 前缀）
+            // 聊天等其他场景保持原文。
+            let final_text = if matches!(feature, UsageFeature::Summary) {
+                let step1 = normalize_frontmatter_fencing(&text);
+                normalize_callout_prefixes(&step1)
+            } else {
+                text.clone()
+            };
+            let normalized_changed = final_text != text;
+
             let finished_at = Utc::now().to_rfc3339();
             let message_result = {
                 let connection = ai.storage.connection();
@@ -381,7 +393,7 @@ async fn run_stream_task<R: tauri::Runtime + 'static>(
                     &chat_messages::CreateChatMessageParams {
                         session_id: prepared.session_id.clone(),
                         role: ChatRole::Assistant.as_str().to_string(),
-                        content_md: text.clone(),
+                        content_md: final_text.clone(),
                         thinking_md: thinking.clone(),
                         context_quote: None,
                         input_tokens: usage.input_tokens as u32,
@@ -420,15 +432,23 @@ async fn run_stream_task<R: tauri::Runtime + 'static>(
 
             match message_result {
                 Ok(message) => {
-                    let _ = app.emit(
-                        "ai://stream-finished",
-                        json!({
-                            "streamId": prepared.stream_id,
-                            "sessionId": prepared.session_id,
-                            "messageId": message.message_id,
-                            "documentId": prepared.document_id,
-                        }),
-                    );
+                    // Summary 场景且后处理实际修改了内容时，在 payload 中
+                    // 返回规范化后的完整 Markdown，便于前端整体替换显示。
+                    let mut payload = json!({
+                        "streamId": prepared.stream_id,
+                        "sessionId": prepared.session_id,
+                        "messageId": message.message_id,
+                        "documentId": prepared.document_id,
+                    });
+                    if matches!(feature, UsageFeature::Summary) && normalized_changed {
+                        if let Some(obj) = payload.as_object_mut() {
+                            obj.insert(
+                                "normalizedContent".to_string(),
+                                json!(final_text.clone()),
+                            );
+                        }
+                    }
+                    let _ = app.emit("ai://stream-finished", payload);
                 }
                 Err(error) => {
                     let _ = app.emit(
@@ -636,6 +656,254 @@ fn truncate_title(value: &str) -> String {
     trimmed.chars().take(36).collect()
 }
 
+/// 合法的 Obsidian Callout 类型（全小写）
+const CALLOUT_TYPES: &[&str] = &[
+    "abstract",
+    "summary",
+    "tldr",
+    "info",
+    "todo",
+    "tip",
+    "hint",
+    "important",
+    "success",
+    "check",
+    "done",
+    "question",
+    "help",
+    "faq",
+    "warning",
+    "caution",
+    "attention",
+    "failure",
+    "fail",
+    "missing",
+    "danger",
+    "error",
+    "bug",
+    "example",
+    "quote",
+    "cite",
+    "note",
+];
+
+/// 检测某一行是否是 Callout 起始行（形如 `[!info] 标题` 或 `> [!info] 标题`）
+///
+/// 返回 Some("info") / Some("note") 等 callout 类型（若命中），否则 None
+fn detect_callout_type(line: &str) -> Option<&'static str> {
+    // 去掉开头可能已有的 "> " 前缀（幂等性检查）
+    let without_prefix = line.trim_start_matches("> ").trim_start_matches('>');
+    let trimmed = without_prefix.trim_start();
+    if !trimmed.starts_with("[!") {
+        return None;
+    }
+    // 查找 "]" 结束符
+    let close_bracket = trimmed.find(']')?;
+    let inner = &trimmed[2..close_bracket]; // 取出 [!xxx] 中的 xxx
+    let inner_lower = inner.to_ascii_lowercase();
+    CALLOUT_TYPES
+        .iter()
+        .copied()
+        .find(|ty| *ty == inner_lower.as_str())
+}
+
+/// 判断某一行是否会"终止"当前 callout 的延续：
+/// 空行 / ATX 标题 (`# ...`) / 新的 callout 起始 / 表格行（`|` 开头） /
+/// 分隔线 (`---` / `***` / `===`) / frontmatter 边界
+fn line_terminates_callout(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    // ATX 标题（#, ##, ### ...）
+    if trimmed.starts_with('#') {
+        return true;
+    }
+    // 表格行（以 | 开头或仅由 | - 空格组成的表格分隔行）
+    if trimmed.starts_with('|') {
+        return true;
+    }
+    // 水平分隔线
+    if trimmed == "---" || trimmed == "***" || trimmed == "===" {
+        return true;
+    }
+    // 新 callout 起始
+    if detect_callout_type(line).is_some() {
+        return true;
+    }
+    false
+}
+
+/// 规范化 Markdown 中的 Obsidian Callout 前缀
+///
+/// LLM 生成 callout 时经常丢失 `> ` 前缀，导致 `[!info] 标题` 变成普通段落。
+/// 本函数扫描整个文档，将未加前缀的 callout 起始行及其后续正文行补上 `> ` 前缀，
+/// 直到遇到终止条件（空行 / 标题 / 新 callout / 表格 / 分隔线 / frontmatter 边界）。
+///
+/// 已经带有 `> ` 前缀的行保持不变，保证幂等性。
+pub(crate) fn normalize_callout_prefixes(md: &str) -> String {
+    let mut lines: Vec<String> = md.lines().map(|l| l.to_string()).collect();
+    let mut i = 0;
+
+    // 跳过 frontmatter（首行 `---` 到对应的闭合 `---`）
+    if !lines.is_empty() && lines[0].trim() == "---" {
+        i = 1;
+        while i < lines.len() && lines[i].trim() != "---" {
+            i += 1;
+        }
+        if i < lines.len() {
+            i += 1; // 跳过闭合的 ---
+        }
+    }
+
+    while i < lines.len() {
+        let current = lines[i].clone();
+        // 检测是否是 callout 起始行（无论当前是否已有 `> ` 前缀）
+        if detect_callout_type(&current).is_some() {
+            // 如果当前行没有以 `>` 开头，补上 `> ` 前缀
+            if !current.trim_start().starts_with('>') {
+                lines[i] = format!("> {}", current);
+            }
+            // 向下扫描后续正文行，补前缀直到遇到终止条件
+            let mut j = i + 1;
+            while j < lines.len() {
+                let next = &lines[j];
+                if line_terminates_callout(next) {
+                    break;
+                }
+                if !next.trim_start().starts_with('>') {
+                    lines[j] = format!("> {}", next);
+                }
+                j += 1;
+            }
+            // 若本次 callout 的终止原因是"紧邻一个新 callout 起始"，
+            // 则在两者之间插入一个空行，防止 Markdown parser 把它们
+            // 合并为同一个 blockquote（否则前端 CalloutBlockquote
+            // 无法正确拆分渲染多个 callout）。
+            if j < lines.len() && detect_callout_type(&lines[j]).is_some() {
+                lines.insert(j, String::new());
+                // 新插入的空行占据索引 j，真正的下一个 callout 起始
+                // 现在位于 j + 1，下次循环从 j + 1 开始处理。
+                i = j + 1;
+            } else {
+                i = j;
+            }
+            continue;
+        }
+        i += 1;
+    }
+
+    lines.join("\n")
+}
+
+/// 判断一段候选 frontmatter 内容是否像真实的 frontmatter（至少含 2 个常见字段）
+fn content_looks_like_frontmatter(content: &[String]) -> bool {
+    const KNOWN_KEYS: &[&str] = &[
+        "title", "authors", "author", "year", "date", "tags", "source", "aliases",
+        "cssclasses", "publisher", "doi", "abstract", "keywords",
+    ];
+    let mut hit_count = 0;
+    for line in content {
+        let trimmed = line.trim();
+        if let Some(colon_idx) = trimmed.find(':') {
+            let key = trimmed[..colon_idx].trim().to_ascii_lowercase();
+            if KNOWN_KEYS.iter().any(|k| *k == key.as_str()) {
+                hit_count += 1;
+                if hit_count >= 2 {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// 规范化 Markdown 文档的 frontmatter 包装格式
+///
+/// LLM 有时会把 YAML frontmatter 输出成 `` ```yaml ... ``` `` 代码块，
+/// 而不是 Obsidian / Jekyll / Hugo 等工具需要的裸 `---...---` 边界。
+/// 本函数检测文档开头（可能带引言套话）是否存在 `` ```yaml `` 代码块，
+/// 若代码块内容看起来像 frontmatter（至少 2 个常见字段），则：
+///
+/// 1. 剥掉 `` ``` `` 栅栏
+/// 2. 用 `---...---` 包围内容
+/// 3. 删除代码块前的所有引言文本（如"这是一份..."套话）
+///
+/// 若文档已经是标准 `---...---` 格式、或没有 frontmatter、或代码块内容不像
+/// frontmatter，则保持原样返回（幂等性）。
+pub(crate) fn normalize_frontmatter_fencing(md: &str) -> String {
+    let lines: Vec<&str> = md.lines().collect();
+    if lines.is_empty() {
+        return md.to_string();
+    }
+
+    // 情况 A：已经是标准 `---...---` 格式（首个非空行是 `---`），不处理
+    let first_non_empty = lines.iter().position(|l| !l.trim().is_empty());
+    if let Some(idx) = first_non_empty {
+        if lines[idx].trim() == "---" {
+            return md.to_string();
+        }
+    }
+
+    // 情况 B：扫描前若干行（最多前 20 行），查找 ```yaml 代码块开头
+    let mut fence_start: Option<usize> = None;
+    let scan_limit = lines.len().min(20);
+    for (i, line) in lines.iter().enumerate().take(scan_limit) {
+        let trimmed = line.trim();
+        // 允许 ```yaml 或 ```yml（不区分大小写）
+        if trimmed.eq_ignore_ascii_case("```yaml") || trimmed.eq_ignore_ascii_case("```yml") {
+            fence_start = Some(i);
+            break;
+        }
+        // 遇到 H1 标题（# xxx）说明已经进入正文，停止扫描
+        if trimmed.starts_with("# ") {
+            break;
+        }
+    }
+
+    let fence_start = match fence_start {
+        Some(i) => i,
+        None => return md.to_string(), // 没找到 ```yaml，不处理
+    };
+
+    // 查找对应的闭合 ```
+    let mut fence_end: Option<usize> = None;
+    for (offset, line) in lines.iter().enumerate().skip(fence_start + 1) {
+        if line.trim() == "```" {
+            fence_end = Some(offset);
+            break;
+        }
+    }
+    let fence_end = match fence_end {
+        Some(i) => i,
+        None => return md.to_string(), // 代码块未闭合，不处理
+    };
+
+    // 提取代码块内容
+    let content: Vec<String> = lines[fence_start + 1..fence_end]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+    // 内容必须看起来像 frontmatter（至少 2 个常见字段）
+    if !content_looks_like_frontmatter(&content) {
+        return md.to_string();
+    }
+
+    // 构建新文档：--- + frontmatter 内容 + --- + 代码块后的所有内容
+    let mut result: Vec<String> = Vec::with_capacity(lines.len() + 2);
+    result.push("---".to_string());
+    for line in &content {
+        result.push(line.clone());
+    }
+    result.push("---".to_string());
+    for line in lines.iter().skip(fence_end + 1) {
+        result.push(line.to_string());
+    }
+
+    result.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use std::{net::SocketAddr, time::Duration};
@@ -661,11 +929,201 @@ mod tests {
         storage::{chat_messages, chat_sessions, documents, migration, provider_settings, Storage},
     };
 
-    use super::{run_stream_request, PreparedStream, StreamOutcome};
+    use super::{
+        normalize_callout_prefixes, normalize_frontmatter_fencing, run_stream_request,
+        PreparedStream, StreamOutcome,
+    };
     use crate::ai_integration::provider_registry::PromptMessage;
 
     #[derive(Clone)]
     struct MockState;
+
+    // ---------- normalize_callout_prefixes 测试 ----------
+
+    #[test]
+    fn normalize_adds_prefix_to_single_line_callout() {
+        let input = "[!info] 原料来源\n胎土以高岭土为主。";
+        let expected = "> [!info] 原料来源\n> 胎土以高岭土为主。";
+        assert_eq!(normalize_callout_prefixes(input), expected);
+    }
+
+    #[test]
+    fn normalize_handles_multiline_callout_until_blank_line() {
+        let input = "[!info] 烧成温度\n第一行内容。\n第二行内容。\n\n## 下一节";
+        let expected =
+            "> [!info] 烧成温度\n> 第一行内容。\n> 第二行内容。\n\n## 下一节";
+        assert_eq!(normalize_callout_prefixes(input), expected);
+    }
+
+    #[test]
+    fn normalize_handles_adjacent_callouts() {
+        let input = "[!info] 原料\n胎土高岭。\n[!info] 成型\n盘筑。";
+        // 相邻 callout 之间应自动插入空行，防止被 Markdown parser 合并
+        let expected = "> [!info] 原料\n> 胎土高岭。\n\n> [!info] 成型\n> 盘筑。";
+        assert_eq!(normalize_callout_prefixes(input), expected);
+    }
+
+    #[test]
+    fn normalize_inserts_blank_line_between_callouts_already_prefixed() {
+        // 即使 LLM 已经写了 `> ` 前缀，但相邻 callout 之间没有空行，
+        // 也应该被自动插入空行（避免前端合并渲染 bug）
+        let input = "> [!question] 第一个问题？\n> [!question] 第二个问题？";
+        let expected = "> [!question] 第一个问题？\n\n> [!question] 第二个问题？";
+        assert_eq!(normalize_callout_prefixes(input), expected);
+    }
+
+    #[test]
+    fn normalize_handles_three_adjacent_callouts() {
+        let input = "[!info] A\n[!info] B\n[!info] C";
+        let expected = "> [!info] A\n\n> [!info] B\n\n> [!info] C";
+        assert_eq!(normalize_callout_prefixes(input), expected);
+    }
+
+    #[test]
+    fn normalize_preserves_existing_blank_line_between_callouts() {
+        // 已有空行分隔的相邻 callout 不应该被加第二个空行（幂等性）
+        let input = "> [!info] A\n> 正文。\n\n> [!info] B\n> 正文。";
+        assert_eq!(normalize_callout_prefixes(input), input);
+    }
+
+    #[test]
+    fn normalize_is_idempotent_when_prefix_already_present() {
+        let input = "> [!info] 原料\n> 胎土高岭。\n\n其他文本。";
+        let output = normalize_callout_prefixes(input);
+        assert_eq!(output, input);
+    }
+
+    #[test]
+    fn normalize_stops_at_heading_boundary() {
+        let input = "[!info] 原料\n胎土高岭。\n## 下一节\n正文";
+        let expected = "> [!info] 原料\n> 胎土高岭。\n## 下一节\n正文";
+        assert_eq!(normalize_callout_prefixes(input), expected);
+    }
+
+    #[test]
+    fn normalize_skips_frontmatter() {
+        let input = "---\ntitle: 测试\ntags:\n  - x\n---\n\n# 标题\n\n[!abstract] 结论\n一句话。";
+        let expected =
+            "---\ntitle: 测试\ntags:\n  - x\n---\n\n# 标题\n\n> [!abstract] 结论\n> 一句话。";
+        assert_eq!(normalize_callout_prefixes(input), expected);
+    }
+
+    #[test]
+    fn normalize_stops_at_table_row() {
+        let input = "[!info] 样品\n样品来自某遗址。\n| 列1 | 列2 |\n|---|---|\n| a | b |";
+        let output = normalize_callout_prefixes(input);
+        // 表格行应该终止 callout，不被补前缀
+        assert!(output.starts_with("> [!info] 样品\n> 样品来自某遗址。\n| 列1 | 列2 |"));
+    }
+
+    #[test]
+    fn normalize_handles_mixed_case_callout_type() {
+        // [!Info] 大写形式也应被识别
+        let input = "[!Info] 标题\n内容。";
+        let expected = "> [!Info] 标题\n> 内容。";
+        assert_eq!(normalize_callout_prefixes(input), expected);
+    }
+
+    #[test]
+    fn normalize_ignores_unknown_bracket_tag() {
+        // [!foo] 不是合法 callout 类型，不应被处理
+        let input = "[!foo] 未知类型\n内容。";
+        let output = normalize_callout_prefixes(input);
+        assert_eq!(output, input);
+    }
+
+    #[test]
+    fn normalize_preserves_non_callout_content() {
+        let input = "# 标题\n\n普通段落。\n\n- 列表项\n\n更多段落。";
+        let output = normalize_callout_prefixes(input);
+        assert_eq!(output, input);
+    }
+
+    #[test]
+    fn normalize_handles_empty_input() {
+        assert_eq!(normalize_callout_prefixes(""), "");
+    }
+
+    // ---------- normalize_frontmatter_fencing 测试 ----------
+
+    #[test]
+    fn frontmatter_strips_yaml_fence_and_preamble() {
+        let input = "这是一份基于所提供论文摘录的科技考古精读笔记。\n\n```yaml\ntitle: \"测试论文\"\nauthors: \"张三, 李四\"\nyear: 2026\ntags: [\"黑陶\"]\n```\n\n# 标题\n\n正文内容。";
+        let output = normalize_frontmatter_fencing(input);
+        assert!(output.starts_with("---\ntitle: \"测试论文\""));
+        assert!(output.contains("authors: \"张三, 李四\""));
+        assert!(output.contains("\n---\n"));
+        assert!(output.contains("# 标题"));
+        assert!(!output.contains("```yaml"));
+        // 引言套话应该被删除
+        assert!(!output.contains("这是一份基于"));
+    }
+
+    #[test]
+    fn frontmatter_is_idempotent_when_already_dashed() {
+        let input = "---\ntitle: \"已规范\"\nauthors: \"张三\"\n---\n\n# 标题";
+        assert_eq!(normalize_frontmatter_fencing(input), input);
+    }
+
+    #[test]
+    fn frontmatter_does_not_touch_document_without_frontmatter() {
+        let input = "# 论文标题\n\n正文第一段。\n\n## 二级标题\n\n更多内容。";
+        assert_eq!(normalize_frontmatter_fencing(input), input);
+    }
+
+    #[test]
+    fn frontmatter_ignores_unrelated_yaml_code_block() {
+        // 代码块内容不像 frontmatter（只是示例 yaml 配置），不应被改动
+        let input = "# 标题\n\n参考下面的配置：\n\n```yaml\nport: 8080\nhost: localhost\n```\n\n说明。";
+        assert_eq!(normalize_frontmatter_fencing(input), input);
+    }
+
+    #[test]
+    fn frontmatter_strips_yml_variant_fence() {
+        // ```yml 也应该被识别（部分工具用这个扩展名）
+        let input = "```yml\ntitle: \"测试\"\nauthors: \"张三\"\n```\n\n# 标题";
+        let output = normalize_frontmatter_fencing(input);
+        assert!(output.starts_with("---\ntitle: \"测试\""));
+        assert!(!output.contains("```yml"));
+    }
+
+    #[test]
+    fn frontmatter_requires_two_known_fields() {
+        // 只有 1 个已知字段的代码块不应被改动
+        let input = "```yaml\ntitle: \"只有一个字段\"\n```\n\n# 标题";
+        assert_eq!(normalize_frontmatter_fencing(input), input);
+    }
+
+    #[test]
+    fn frontmatter_preserves_body_content() {
+        let input = "```yaml\ntitle: \"测试\"\nyear: 2026\ntags: [\"a\"]\n```\n\n# 标题\n\n## 章节 A\n\n> [!info] 注释\n> 正文内容\n\n| 列1 | 列2 |\n|---|---|\n| a | b |";
+        let output = normalize_frontmatter_fencing(input);
+        // 正文部分应该完整保留
+        assert!(output.contains("# 标题"));
+        assert!(output.contains("## 章节 A"));
+        assert!(output.contains("> [!info] 注释"));
+        assert!(output.contains("| 列1 | 列2 |"));
+    }
+
+    #[test]
+    fn frontmatter_handles_empty_input() {
+        assert_eq!(normalize_frontmatter_fencing(""), "");
+    }
+
+    #[test]
+    fn frontmatter_pipeline_with_callout_normalization() {
+        // 模拟真实 LLM 输出：引言 + yaml 代码块 + 漏 `> ` 前缀的 callout
+        let input = "这是一份笔记。\n\n```yaml\ntitle: \"测试\"\nauthors: \"张三\"\nyear: 2026\n```\n\n# 标题\n\n[!abstract] 结论\n一句话说明。\n\n## 下一节";
+        let step1 = normalize_frontmatter_fencing(input);
+        let step2 = normalize_callout_prefixes(&step1);
+        // 第一步：去掉引言和栅栏
+        assert!(step2.starts_with("---\ntitle: \"测试\""));
+        assert!(!step2.contains("这是一份笔记"));
+        assert!(!step2.contains("```yaml"));
+        // 第二步：callout 补前缀
+        assert!(step2.contains("> [!abstract] 结论"));
+        assert!(step2.contains("> 一句话说明。"));
+    }
 
     async fn openai_stream(
         State(_state): State<MockState>,
