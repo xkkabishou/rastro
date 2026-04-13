@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 1
+- **Total Sessions**: 2
 - **Last Active**: 2026-04-14
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~86 | Active |
+| `journal-1.md` | ~155 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 2 | 2026-04-14 | PDF 标注消失 bug 路线 X 重构 + CLAUDE.md 精简 | `df1e657`, `7cccc56` |
 | 1 | 2026-04-14 | 修复原文 PDF 视图残留翻译件 + 补齐 Zotero 产物右键菜单接线 | `e0433bd` |
 <!-- @@@/auto:session-history -->
 

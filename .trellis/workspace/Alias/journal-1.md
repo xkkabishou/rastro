@@ -84,3 +84,72 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: PDF 标注消失 bug 路线 X 重构 + CLAUDE.md 精简
+
+**Date**: 2026-04-14
+**Task**: PDF 标注消失 bug 路线 X 重构 + CLAUDE.md 精简
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 涉及改动
+
+| 类别 | 描述 |
+|-----|------|
+| Bug 修复 | PDF 缩放/侧栏 resize 后标注消失（已人工测试通过） |
+| 文档精简 | CLAUDE.md -551 行，编码细节下沉到 .trellis/spec/ |
+| Spec 新增 | `react-pitfalls.md` 新增「createPortal into Third-Party Managed DOM」一节（未追踪，已本地写入） |
+
+## Bug 根因与路线 X 方案
+
+**根因**：pdfjs 5.5 的 `PDFPageView.reset()` 在 scale 变化时硬编码白名单，`node.remove()` 掉 `.page` 下所有非白名单子节点。原 `createPortal(AnnotationOverlay, pageEl)` 方案被整层扫掉，React unmount 时 removeChild 找不到节点抛 DOMException，触发 ErrorBoundary 白屏。
+
+**路线 X 方案**：把 AnnotationOverlay 从 Portal 挂载改为 `viewerContainerRef`（滚动容器）内的兄弟节点，绝对定位跟随 `.page` 的 `getBoundingClientRect`。pdfjs 完全碰不到覆盖层 DOM。
+
+**关键实现点**：
+- 位置换算：`pageBox.top - parentBox.top + parentEl.scrollTop`，同时抵消滚动偏移与 `.pdfViewer` 的 `margin-inline: auto` 居中
+- 布局同步三触发源：`scalechanging`（最早信号防闪烁）/ `pagerendered`（canvas 重绘完）/ `ResizeObserver(viewerRef)`（字体加载兜底）
+- 单纯每页 ResizeObserver 不够——第 N 页 resize 时 N+1 之后的 sibling 的 observer 不会触发，必须用 parent 级 `layoutVersion` 广播
+
+## Updated Files
+
+**路线 X (df1e657)**
+- `src/components/pdf-viewer/AnnotationOverlay.tsx` — 新增 pageEl/parentEl/layoutVersion props；useLayoutEffect 相对 parentEl 同步 rect；calcAnchor 的 closest('.page') 改为 closest('[data-annotation-overlay]')
+- `src/components/pdf-viewer/PdfViewer.tsx` — 新增 layoutVersion state + 三触发源；JSX 去掉 createPortal 改为兄弟节点；移除 createPortal import
+
+**CLAUDE.md 精简 (7cccc56)**
+- `CLAUDE.md` — 移除技术栈/毛玻璃细则/图标设计语言等大段内容，保留模块/业务/命名约定/AI 使用指引，补充 .trellis/spec/ 引用指针
+
+## 后续待办
+
+- `.trellis/spec/frontend/react-pitfalls.md` 的「Portal into Third-Party Managed DOM」一节已写入但目录未追踪，笨蛋的 Trellis spec 策略决定后再处理
+- CLAUDE.md 精简后留下 `.trellis/spec/...` 引用路径，依赖 spec 目录的可访问性
+
+## 顺带发现（未修，记录备忘）
+
+记忆文件 `known-bugs.md` 已把路线 X 标为「已实施并人工测试通过」，移除"待验证"标记
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `df1e657` | (see git log) |
+| `7cccc56` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
