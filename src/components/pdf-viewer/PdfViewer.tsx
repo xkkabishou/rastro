@@ -585,7 +585,22 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
 
     return () => {
       cancelled = true;
-      void loadingTask?.destroy();
+      // 1. 先让 pdfjs viewer 放弃旧 document 引用，同步取消 pending RenderTask
+      const activeViewer = pdfViewerRef.current;
+      const activeLinkService = linkServiceRef.current;
+      if (activeViewer && activeLinkService) {
+        resetPdfViewerDocument(activeViewer, activeLinkService);
+      }
+      // 2. 推迟 loadingTask 销毁到下一个宏任务。
+      //    setDocument(null) 只能同步取消 RenderTask，但已发出的 page.getXXX() /
+      //    getAnnotations() / getTextContent() 等异步调用无法撤回；这些 in-flight
+      //    promise 在下一轮事件循环才 settle。若立即 destroy loadingTask，
+      //    它们 resolve 时会访问已销毁的 PDFDocumentProxy，抛 "The object can
+      //    not be found here."（尤其在侧栏 resize 触发高频 scale 重绘之后复现）。
+      const taskToDestroy = loadingTask;
+      setTimeout(() => {
+        void taskToDestroy?.destroy();
+      }, 0);
     };
   }, [url]);
 
