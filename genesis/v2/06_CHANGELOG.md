@@ -9,6 +9,20 @@
 
 ---
 
+## 2026-04-14 - AI 总结右键菜单精简 ✂️
+
+- [CHANGE] `DocumentContextMenu.tsx` AI 总结菜单项从 3 项收窄为 2 项：`重新生成` / `删除总结`
+- [REMOVE] `ContextMenuAction` 联合类型中删除 `view_summary`、`export_summary_md`
+- [REMOVE] `Sidebar.tsx` 中 `case 'view_summary'` 与 `case 'export_summary_md'` 分支（共约 40 行）
+- [REMOVE] `Sidebar.tsx` 中仅服务于导出功能的 `save`（plugin-dialog）、`invoke`（api/core）未用 import
+- [ADD] `ContextMenuAction` 新增 `delete_summary`；`Sidebar.tsx` 新增 `case 'delete_summary'` 分支，带二次确认 + 产物缓存失效 + 文档快照刷新 + Summary 面板重置
+- [UPDATE] `ZoteroList.tsx` 注释同步 action 枚举清单
+- [UPDATE] `01_PRD.md` §US-015 第 153 行验收标准更新；`05_TASKS.md` T2.4.6 描述与验收重写
+- **原因**: 产品决策变更 — "查看总结" 与单击产物节点功能重复；"导出为 Markdown" 使用频次低；新增 "删除总结" 对齐 "删除翻译" 的操作闭环
+- **后端契约零改动**: `delete_document_summary` IPC 与 `ipcClient.deleteDocumentSummary` 均已存在，仅前端接线
+
+---
+
 ## 2026-04-10 - 移除 NotebookLM 集成 🗑️
 
 - [REMOVE] 前端：`src/components/notebooklm/`、`useNotebookLMStore.ts`、`notebooklm-client.ts`、`notebooklm-automation.ts`

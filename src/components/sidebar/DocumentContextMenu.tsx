@@ -21,9 +21,8 @@ export type ContextMenuAction =
   | 'retranslate'
   | 'delete_translation'
   // 二级节点（AI 总结）操作
-  | 'view_summary'
   | 'regenerate_summary'
-  | 'export_summary_md';
+  | 'delete_summary';
 
 // ---------------------------------------------------------------------------
 // 菜单项类型
@@ -122,10 +121,9 @@ function buildArtifactMenuItems(
   // AI 总结
   if (kind === 'ai_summary') {
     return [
-      { label: '查看总结', action: 'view_summary' },
       { label: '重新生成', action: 'regenerate_summary' },
       { type: 'separator' },
-      { label: '导出为 Markdown', action: 'export_summary_md' },
+      { label: '删除总结', action: 'delete_summary', danger: true },
     ];
   }
 

@@ -531,7 +531,7 @@ export const ZoteroList: React.FC<ZoteroListProps> = ({
           position={{ x: artifactMenuState.x, y: artifactMenuState.y }}
           onAction={(action) => {
             // 复用 Sidebar 的 handleZoteroContextMenuAction；
-            // view_summary / regenerate_summary / export_summary_md /
+            // regenerate_summary / delete_summary /
             // view_translation_detail / retranslate / delete_translation
             // 等 action 在 Sidebar.handleContextMenuAction 里只依赖 doc，无需 artifact 上下文。
             onDocumentContextMenuAction?.(action, artifactMenuState.doc);

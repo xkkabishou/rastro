@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Menu, FolderOpen, AlertTriangle, BookOpen, FileText } from 'lucide-react';
 import shibaLogoUrl from '../../assets/shiba/shiba-logo.png';
-import { open, save } from '@tauri-apps/plugin-dialog';
-import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { DocumentTree } from './DocumentTree';
 import type { FlatNode } from './DocumentTree';
 import type { ContextMenuAction } from './DocumentContextMenu';
@@ -360,13 +360,6 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
 
         // ===== 二级节点 — AI 总结操作 (T2.4.6) =====
 
-        case 'view_summary': {
-          // T2.4.6: 查看总结 — 打开文档并加载已保存的总结
-          openDocumentInViewer(doc);
-          void useSummaryStore.getState().loadSavedSummary(docId);
-          break;
-        }
-
         case 'regenerate_summary': {
           // T2.4.6: 重新生成总结（确认框提示消耗 API 额度）
           setConfirmDialog({
@@ -423,35 +416,39 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
           break;
         }
 
-        case 'export_summary_md': {
-          // T2.4.6: 导出总结为 Markdown 文件
-          void (async () => {
-            try {
-              // 先获取总结内容
-              const summary = await ipcClient.getDocumentSummary(docId);
-              if (!summary?.contentMd?.trim()) {
-                console.warn('没有可导出的总结内容');
-                return;
+        case 'delete_summary': {
+          // T2.4.6: 删除总结（二次确认）
+          setConfirmDialog({
+            title: '确认删除总结',
+            message: '确定要删除此文档的 AI 总结吗？删除后需要时可以重新生成。',
+            onConfirm: async () => {
+              try {
+                const result = await ipcClient.deleteDocumentSummary(docId);
+                // 清除产物缓存并刷新
+                useDocumentStore.getState().invalidateArtifacts(docId);
+                await useDocumentStore.getState().loadArtifacts(docId, true);
+                await useDocumentStore.getState().refreshDocumentSnapshot(docId);
+                // 刷新文档列表（hasSummary 状态变化）
+                await loadRecentDocuments();
+                // 如果当前 Summary 面板显示的正是此文档，重置状态
+                const summaryState = useSummaryStore.getState();
+                if (summaryState.currentDocumentId === docId) {
+                  summaryState.resetSummary();
+                }
+                if (!result.deleted) {
+                  console.warn('[删除总结] 未找到可删除的总结');
+                }
+              } catch (err) {
+                console.error('删除总结失败:', err);
+                const msg = err && typeof err === 'object' && 'message' in err
+                  ? String((err as { message: string }).message)
+                  : '删除总结时发生错误';
+                alert(msg);
+              } finally {
+                setConfirmDialog(null);
               }
-
-              // 弹出保存对话框
-              const fileName = `${(doc.title || 'summary').replace(/[/\\:*?"<>|]/g, '_')}_summary.md`;
-              const filePath = await save({
-                defaultPath: fileName,
-                filters: [{ name: 'Markdown', extensions: ['md'] }],
-              });
-              if (!filePath) return;
-
-              // 使用 Tauri writeFile 写入
-              await invoke('plugin:fs|write_text_file', {
-                path: filePath,
-                contents: summary.contentMd,
-              });
-              console.log('[Summary] 导出成功:', filePath);
-            } catch (err) {
-              console.error('导出总结失败:', err);
-            }
-          })();
+            },
+          });
           break;
         }
 
