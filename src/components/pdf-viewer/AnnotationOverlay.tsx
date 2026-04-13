@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useCallback, useState, useLayoutEffect } from 'react';
 import { StickyNote } from 'lucide-react';
 import { useAnnotationStore } from '../../stores/useAnnotationStore';
 import { annotationRectsToCSS } from '../../lib/annotation-coords';
@@ -9,7 +9,14 @@ import type { AnnotationDto, AnnotationColor } from '../../shared/types';
 // ---------------------------------------------------------------------------
 
 interface AnnotationOverlayProps {
+  /** PDF 页码（1-based） */
   pageNumber: number;
+  /** 对应的 pdfjs `.page` 元素，用于读取真实 layout */
+  pageEl: HTMLElement;
+  /** 覆盖层挂载到的滚动容器（viewerContainerRef），用于坐标换算 */
+  parentEl: HTMLElement | null;
+  /** 外部触发布局同步的计数器（scalechanging / pagerendered 等事件递增） */
+  layoutVersion: number;
   onAnnotationContextMenu?: (annotation: AnnotationDto, event: React.MouseEvent) => void;
 }
 
@@ -35,10 +42,11 @@ const AnnotationItem: React.FC<{
 
   /** 从 DOM 实际渲染位置获取首尾锚点 */
   const calcAnchor = useCallback((e: React.MouseEvent) => {
-    const pageEl = (e.currentTarget as HTMLElement).closest('.page');
-    if (!pageEl) return undefined;
+    // 路线 X 改造：overlay 不再挂在 .page 内，改为查找最近的 overlay 根节点
+    const overlayRoot = (e.currentTarget as HTMLElement).closest('[data-annotation-overlay]');
+    if (!overlayRoot) return undefined;
     // 查找该标注的所有渲染矩形 DOM 元素
-    const allDivs = pageEl.querySelectorAll<HTMLElement>(
+    const allDivs = overlayRoot.querySelectorAll<HTMLElement>(
       `[data-ann-id="${annotation.annotationId}"]`,
     );
     if (allDivs.length === 0) return undefined;
@@ -171,29 +179,40 @@ AnnotationItem.displayName = 'AnnotationItem';
 // ---------------------------------------------------------------------------
 
 export const AnnotationOverlay: React.FC<AnnotationOverlayProps> = React.memo(
-  ({ pageNumber, onAnnotationContextMenu }) => {
+  ({ pageNumber, pageEl, parentEl, layoutVersion, onAnnotationContextMenu }) => {
     const annotationsByPage = useAnnotationStore((s) => s.annotationsByPage);
     const selectedAnnotationId = useAnnotationStore((s) => s.selectedAnnotationId);
     const selectAnnotation = useAnnotationStore((s) => s.selectAnnotation);
     const startEditingNote = useAnnotationStore((s) => s.startEditingNote);
 
-    const containerRef = useRef<HTMLDivElement>(null);
-    const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+    // 覆盖层相对 parentEl 的坐标与大小（路线 X：绝对定位跟随 .page）
+    const [rect, setRect] = useState<{ top: number; left: number; width: number; height: number }>(
+      { top: 0, left: 0, width: 0, height: 0 },
+    );
 
-    // 监听容器尺寸变化（跟随缩放）
-    useEffect(() => {
-      const el = containerRef.current;
-      if (!el) return;
+    // 同步覆盖层位置：用 getBoundingClientRect 相对 parentEl（viewerContainerRef）计算
+    // 自动处理 .pdfViewer 的 margin-auto 居中、容器内边距、滚动偏移等
+    useLayoutEffect(() => {
+      if (!pageEl || !parentEl) return;
 
-      const updateSize = () => {
-        setContainerSize({ width: el.offsetWidth, height: el.offsetHeight });
+      const syncRect = () => {
+        const parentBox = parentEl.getBoundingClientRect();
+        const pageBox = pageEl.getBoundingClientRect();
+        setRect({
+          top: pageBox.top - parentBox.top + parentEl.scrollTop,
+          left: pageBox.left - parentBox.left + parentEl.scrollLeft,
+          width: pageBox.width,
+          height: pageBox.height,
+        });
       };
-      updateSize();
+      syncRect();
 
-      const observer = new ResizeObserver(updateSize);
-      observer.observe(el);
+      // ResizeObserver 兜底：.page 本页自身尺寸变化（例如字体异步加载后的微调）
+      const observer = new ResizeObserver(syncRect);
+      observer.observe(pageEl);
       return () => observer.disconnect();
-    }, []);
+      // layoutVersion 变化时重新订阅 + 重新同步（scale 变化/pagerendered/viewer resize）
+    }, [pageEl, parentEl, layoutVersion]);
 
     const pageAnnotations = useMemo(
       () => annotationsByPage.get(pageNumber) || [],
@@ -202,16 +221,23 @@ export const AnnotationOverlay: React.FC<AnnotationOverlayProps> = React.memo(
 
     return (
       <div
-        ref={containerRef}
-        className="absolute inset-0 pointer-events-none"
-        style={{ zIndex: 3 }}
+        data-annotation-overlay={pageNumber}
+        className="pointer-events-none"
+        style={{
+          position: 'absolute',
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+          zIndex: 3,
+        }}
       >
-        {containerSize.width > 0 && pageAnnotations.map((ann) => (
+        {rect.width > 0 && pageAnnotations.map((ann) => (
           <AnnotationItem
             key={ann.annotationId}
             annotation={ann}
-            containerWidth={containerSize.width}
-            containerHeight={containerSize.height}
+            containerWidth={rect.width}
+            containerHeight={rect.height}
             isSelected={selectedAnnotationId === ann.annotationId}
             onSelect={selectAnnotation}
             onStartEditNote={startEditingNote}

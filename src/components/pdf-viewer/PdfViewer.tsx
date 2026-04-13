@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { PDFDocumentProxy, PDFDocumentLoadingTask } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { EventBus, PDFLinkService, PDFViewer as PdfJsViewer } from 'pdfjs-dist/legacy/web/pdf_viewer.mjs';
@@ -356,8 +355,11 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   const [fontDebug, setFontDebug] = useState<FontDebugSnapshot | null>(
     getPdfSelectionDebugEnabled() ? collectFontDebugSnapshot([], false) : null,
   );
-  // 标注: 页面容器元素跟踪（用于 Portal 注入 AnnotationOverlay）
+  // 标注: 页面容器元素跟踪（路线 X：用于渲染绝对定位覆盖层）
   const [pageElements, setPageElements] = useState<HTMLElement[]>([]);
+  // 标注覆盖层的布局同步信号：scalechanging / pagerendered / viewer resize 时递增
+  // 让每个 AnnotationOverlay 重新读取 .page 的 getBoundingClientRect
+  const [layoutVersion, setLayoutVersion] = useState(0);
 
   // 右键菜单
   const {
@@ -628,7 +630,7 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     });
     eventBus.on('pagesloaded', ({ pagesCount }: { pagesCount: number }) => {
       setTotalPages(pagesCount);
-      // 收集页面元素用于标注 Portal 注入
+      // 收集页面元素（路线 X：提供给外挂式 AnnotationOverlay 跟随定位）
       if (viewer) {
         const pages = Array.from(viewer.querySelectorAll<HTMLElement>('.page'));
         setPageElements(pages);
@@ -643,11 +645,22 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       referenceWidthRef.current = containerRef.current?.clientWidth ?? null;
       setScale(fitScale);
     });
+    // 标注层布局同步触发源（路线 X）
+    // - scalechanging: pdfjs 在 scale 变更开始时即触发（比 ResizeObserver 更早，避免闪烁）
+    // - pagerendered: reset() 后 canvas 重绘完成，此时 .page 尺寸已最终确定
+    const bumpLayoutVersion = () => setLayoutVersion((v) => v + 1);
+    eventBus.on('scalechanging', bumpLayoutVersion);
+    eventBus.on('pagerendered', bumpLayoutVersion);
+
+    // 监听 .pdfViewer 容器尺寸变化作为兜底（例如字体加载完成后的整体高度调整）
+    const viewerObserver = new ResizeObserver(bumpLayoutVersion);
+    viewerObserver.observe(viewer);
 
     pdfViewerRef.current = pdfViewer;
     linkServiceRef.current = linkService;
 
     return () => {
+      viewerObserver.disconnect();
       resetPdfViewerDocument(pdfViewer, linkService);
       pdfViewerRef.current = null;
       linkServiceRef.current = null;
@@ -1483,17 +1496,21 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
             ref={viewerRef}
             className="pdfViewer"
           />
-          {/* 标注渲染层 — Portal 注入每个页面 */}
+          {/* 标注渲染层 — 路线 X：绝对定位跟随 .page，挂在 viewer 容器外层
+              规避 pdfjs 5.5 PDFPageView.reset() 硬删 .page 白名单外子节点的问题
+              （缩放/resize 后标注消失的根因） */}
           {pageElements.map((pageEl) => {
             const pageNum = parseInt(pageEl.dataset.pageNumber || '0', 10);
             if (!pageNum) return null;
-            return createPortal(
+            return (
               <AnnotationOverlay
                 key={pageNum}
                 pageNumber={pageNum}
+                pageEl={pageEl}
+                parentEl={viewerContainerRef.current}
+                layoutVersion={layoutVersion}
                 onAnnotationContextMenu={handleAnnotationContextMenu}
-              />,
-              pageEl,
+              />
             );
           })}
         </div>
