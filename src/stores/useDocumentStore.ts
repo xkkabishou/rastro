@@ -16,6 +16,14 @@ function toProgressPercentage(progress: number): number {
   return Math.round(Math.min(100, Math.max(0, normalized * 100)));
 }
 
+/** 根据文档快照的 cachedTranslation 解析翻译 PDF 的 Tauri asset URL */
+function resolveCachedTranslationUrl(
+  cached: DocumentSnapshot['cachedTranslation'] | undefined,
+): string | null {
+  const filePath = cached?.translatedPdfPath ?? cached?.bilingualPdfPath ?? null;
+  return filePath ? convertFileSrc(filePath) : null;
+}
+
 function shouldSyncLiveTranslationJob(
   store: DocumentState,
   job: TranslationJobDto,
@@ -108,12 +116,16 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       return;
     }
 
+    // 不同文档切换：根据目标文档的 cachedTranslation 自动恢复翻译视图。
+    // 这里统一处理"打开文档时默认加载已有翻译"的意图，
+    // 下游（如 Sidebar.case 'original_pdf'）可以在 setCurrentDocument 之后
+    // 通过 setTranslatedPdfUrl(null) 显式覆盖，保证"点原文就看原文"的用户意图。
     set({
       currentDocument: doc,
       bilingualMode: false,
       translationJob: null,
       translationProgress: 0,
-      translatedPdfUrl: null,
+      translatedPdfUrl: resolveCachedTranslationUrl(doc?.cachedTranslation),
     });
 
     // 文档切换时：取消活跃流 + 清空聊天/总结

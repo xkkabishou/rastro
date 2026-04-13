@@ -14,7 +14,7 @@ import type {
   PagedZoteroItemsDto, DocumentArtifactDto, DocumentSnapshot,
 } from '../../shared/types';
 import { artifactIcon } from './ArtifactNode';
-import { DocumentMenu, type ContextMenuAction } from './DocumentContextMenu';
+import { DocumentMenu, ArtifactMenu, type ContextMenuAction } from './DocumentContextMenu';
 import { TitleTranslationTooltip } from './TitleTranslationTooltip';
 
 /* ======================================================================== */
@@ -211,6 +211,13 @@ export const ZoteroList: React.FC<ZoteroListProps> = ({
     doc: DocumentSnapshot;
     morphOrigin?: { x: number; y: number } | null;
   } | null>(null);
+  // 产物级右键菜单：翻译 PDF / AI 总结 / 原件 PDF 等
+  const [artifactMenuState, setArtifactMenuState] = useState<{
+    x: number;
+    y: number;
+    doc: DocumentSnapshot;
+    artifact: DocumentArtifactDto;
+  } | null>(null);
 
   const setCurrentDocument = useDocumentStore(s => s.setCurrentDocument);
   const setPdfUrl = useDocumentStore(s => s.setPdfUrl);
@@ -288,8 +295,13 @@ export const ZoteroList: React.FC<ZoteroListProps> = ({
   /* 点击产物 */
   const handleArtifactClick = useCallback((artifact: DocumentArtifactDto, doc: DocumentSnapshot) => {
     if (artifact.kind === 'original_pdf') {
+      // 先 setCurrentDocument（可能根据 cachedTranslation 恢复翻译视图），
+      // 再显式清零 translatedPdfUrl + bilingualMode；批处理后 null 胜出，
+      // 确保 activePdfUrl 回落到原文 URL。
       setCurrentDocument(doc);
       setPdfUrl(convertFileSrc(doc.filePath));
+      setTranslatedPdfUrl(null);
+      setBilingualMode(false);
     } else if (artifact.kind === 'translated_pdf' || artifact.kind === 'bilingual_pdf') {
       if (artifact.filePath) {
         // 先打开文档（设置原文 URL），再设置翻译 URL
@@ -304,6 +316,16 @@ export const ZoteroList: React.FC<ZoteroListProps> = ({
       // 总结的展示由其他组件处理
     }
   }, [setCurrentDocument, setPdfUrl, setTranslatedPdfUrl, setBilingualMode]);
+
+  /* 产物右键菜单（Zotero 视图下单独管理，因为这里没有 DocumentContextMenu 包装） */
+  const handleArtifactContextMenu = useCallback(
+    (event: React.MouseEvent, artifact: DocumentArtifactDto, doc: DocumentSnapshot) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setArtifactMenuState({ x: event.clientX, y: event.clientY, doc, artifact });
+    },
+    [],
+  );
 
   const handleItemContextMenu = useCallback(async (
     event: React.MouseEvent,
@@ -464,14 +486,16 @@ export const ZoteroList: React.FC<ZoteroListProps> = ({
                 isContextMenuOpen={contextMenuState !== null}
                 expandedIds={expandedIds} cache={cache} expandedItems={expandedItems} itemCache={itemCache}
                 onToggleCol={toggleCol} onLoadMore={loadItems} onToggleItem={toggleItem}
-                onItemContextMenu={handleItemContextMenu} onArtifactClick={handleArtifactClick} />
+                onItemContextMenu={handleItemContextMenu} onArtifactClick={handleArtifactClick}
+                onArtifactContextMenu={handleArtifactContextMenu} />
             ))}
             {uncatCount > 0 && (
               <CollectionNode node={null} uncatCount={uncatCount} depth={0} colorIdx={collections.length}
                 isContextMenuOpen={contextMenuState !== null}
                 expandedIds={expandedIds} cache={cache} expandedItems={expandedItems} itemCache={itemCache}
                 onToggleCol={toggleCol} onLoadMore={loadItems} onToggleItem={toggleItem}
-                onItemContextMenu={handleItemContextMenu} onArtifactClick={handleArtifactClick} />
+                onItemContextMenu={handleItemContextMenu} onArtifactClick={handleArtifactClick}
+                onArtifactContextMenu={handleArtifactContextMenu} />
             )}
           </div>
         )}
@@ -500,6 +524,22 @@ export const ZoteroList: React.FC<ZoteroListProps> = ({
           onClose={() => setContextMenuState(null)}
         />
       )}
+      {artifactMenuState && (
+        <ArtifactMenu
+          artifact={artifactMenuState.artifact}
+          doc={artifactMenuState.doc}
+          position={{ x: artifactMenuState.x, y: artifactMenuState.y }}
+          onAction={(action) => {
+            // 复用 Sidebar 的 handleZoteroContextMenuAction；
+            // view_summary / regenerate_summary / export_summary_md /
+            // view_translation_detail / retranslate / delete_translation
+            // 等 action 在 Sidebar.handleContextMenuAction 里只依赖 doc，无需 artifact 上下文。
+            onDocumentContextMenuAction?.(action, artifactMenuState.doc);
+            setArtifactMenuState(null);
+          }}
+          onClose={() => setArtifactMenuState(null)}
+        />
+      )}
     </div>
   );
 };
@@ -523,11 +563,12 @@ interface CollectionNodeProps {
   onToggleItem: (item: ZoteroItemDto) => void;
   onItemContextMenu: (event: React.MouseEvent, item: ZoteroItemDto) => void;
   onArtifactClick: (artifact: DocumentArtifactDto, doc: DocumentSnapshot) => void;
+  onArtifactContextMenu: (event: React.MouseEvent, artifact: DocumentArtifactDto, doc: DocumentSnapshot) => void;
 }
 
 const CollectionNode: React.FC<CollectionNodeProps> = ({
   node, uncatCount, depth, colorIdx, isContextMenuOpen, expandedIds, cache, expandedItems, itemCache,
-  onToggleCol, onLoadMore, onToggleItem, onItemContextMenu, onArtifactClick,
+  onToggleCol, onLoadMore, onToggleItem, onItemContextMenu, onArtifactClick, onArtifactContextMenu,
 }) => {
   const isUncat = node === null;
   const cid = isUncat ? null : node.collection.collectionId;
@@ -606,7 +647,8 @@ const CollectionNode: React.FC<CollectionNodeProps> = ({
                 isContextMenuOpen={isContextMenuOpen}
                 expandedIds={expandedIds} cache={cache} expandedItems={expandedItems} itemCache={itemCache}
                 onToggleCol={onToggleCol} onLoadMore={onLoadMore} onToggleItem={onToggleItem}
-                onItemContextMenu={onItemContextMenu} onArtifactClick={onArtifactClick} />
+                onItemContextMenu={onItemContextMenu} onArtifactClick={onArtifactClick}
+                onArtifactContextMenu={onArtifactContextMenu} />
             ))}
 
             {/* 骨架 */}
@@ -625,7 +667,8 @@ const CollectionNode: React.FC<CollectionNodeProps> = ({
                 expandedData={itemCache.get(item.itemKey)}
                 onToggle={() => onToggleItem(item)}
                 onContextMenu={(event) => onItemContextMenu(event, item)}
-                onArtifactClick={onArtifactClick} />
+                onArtifactClick={onArtifactClick}
+                onArtifactContextMenu={onArtifactContextMenu} />
             ))}
 
             {/* 加载更多 */}
@@ -665,10 +708,11 @@ interface ItemFolderProps {
   onToggle: () => void;
   onContextMenu: (event: React.MouseEvent) => void;
   onArtifactClick: (artifact: DocumentArtifactDto, doc: DocumentSnapshot) => void;
+  onArtifactContextMenu: (event: React.MouseEvent, artifact: DocumentArtifactDto, doc: DocumentSnapshot) => void;
 }
 
 const ItemFolder: React.FC<ItemFolderProps> = ({
-  item, accentColor, isExpanded, isContextMenuOpen, expandedData, onToggle, onContextMenu, onArtifactClick,
+  item, accentColor, isExpanded, isContextMenuOpen, expandedData, onToggle, onContextMenu, onArtifactClick, onArtifactContextMenu,
 }) => {
   const label = useMemo(() => zoteroItemLabel(item), [item]);
   const hasContent = expandedData && !expandedData.isLoading && expandedData.artifacts.length > 0;
@@ -857,6 +901,9 @@ const ItemFolder: React.FC<ItemFolderProps> = ({
                   onClick={(e) => {
                     e.stopPropagation();
                     if (expandedData.doc) onArtifactClick(artifact, expandedData.doc);
+                  }}
+                  onContextMenu={(e) => {
+                    if (expandedData.doc) onArtifactContextMenu(e, artifact, expandedData.doc);
                   }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8,

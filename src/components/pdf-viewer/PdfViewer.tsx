@@ -388,8 +388,6 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   // 当前文档（标注和翻译都需要，提前声明避免引用顺序问题）
   const currentDocument = useDocumentStore((s) => s.currentDocument);
   const currentDocumentId = currentDocument?.documentId;
-  const cachedTranslatedPdfPath = currentDocument?.cachedTranslation?.translatedPdfPath;
-  const cachedBilingualPdfPath = currentDocument?.cachedTranslation?.bilingualPdfPath;
 
   // 标注快捷键
   useAnnotationShortcuts();
@@ -846,14 +844,12 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   const setTranslationProgress = useDocumentStore((s) => s.setTranslationProgress);
   const setTranslatedPdfUrl = useDocumentStore((s) => s.setTranslatedPdfUrl);
 
-  useEffect(() => {
-    setTranslatedPdfUrl(resolveTranslatedPdfUrl(currentDocument?.cachedTranslation));
-  }, [
-    currentDocumentId,
-    cachedTranslatedPdfPath,
-    cachedBilingualPdfPath,
-    setTranslatedPdfUrl,
-  ]);
+  // 注意：原先这里有一个"根据 currentDocument.cachedTranslation 自动恢复 translatedPdfUrl"
+  // 的 effect，但它会在 Sidebar/ZoteroList 显式清零之后被依赖变化再次触发，
+  // 造成"第一次点原文 PDF 却加载翻译件"的 bug。
+  // 现已将"打开新文档时默认恢复翻译视图"的职责下沉到 useDocumentStore.setCurrentDocument
+  // 的不同文档分支，且翻译任务完成 / 手动触发翻译的路径均已主动 setTranslatedPdfUrl，
+  // 这个 effect 已属冗余，删除以消除 race。
 
   const handleTranslate = useCallback(async () => {
     if (!currentDocument) {

@@ -324,6 +324,44 @@ export const DocumentMenu: React.FC<DocumentMenuProps> = ({
 };
 
 // ---------------------------------------------------------------------------
+// ArtifactMenu — 产物级右键菜单（供 ZoteroList 等非 DocumentTree 场景直接使用）
+// ---------------------------------------------------------------------------
+
+interface ArtifactMenuProps {
+  artifact: DocumentArtifactDto;
+  doc: DocumentSnapshot;
+  position: { x: number; y: number };
+  morphOrigin?: { x: number; y: number } | null;
+  onAction: (action: ContextMenuAction) => void;
+  onClose: () => void;
+}
+
+export const ArtifactMenu: React.FC<ArtifactMenuProps> = ({
+  artifact,
+  doc,
+  position,
+  morphOrigin,
+  onAction,
+  onClose,
+}) => {
+  const menuItems = buildArtifactMenuItems(artifact, doc);
+
+  if (menuItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <ContextMenuPortal
+      items={menuItems}
+      position={position}
+      morphOrigin={morphOrigin}
+      onAction={onAction}
+      onClose={onClose}
+    />
+  );
+};
+
+// ---------------------------------------------------------------------------
 // DocumentContextMenu — 右键菜单容器
 // ---------------------------------------------------------------------------
 

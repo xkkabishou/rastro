@@ -111,9 +111,16 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
   // 点击产物节点
   const handleArtifactClick = useCallback((artifact: DocumentArtifactDto, doc: DocumentSnapshot) => {
     switch (artifact.kind) {
-      case 'original_pdf':
+      case 'original_pdf': {
+        // 先打开文档（触发 setCurrentDocument 根据 cachedTranslation 默认恢复翻译视图），
+        // 再显式清零 translatedPdfUrl + bilingualMode；由于在同一事件处理器里批处理，
+        // 最后一次 set 的 null 胜出，确保 activePdfUrl 回落到原文 URL。
         openDocumentInViewer(doc);
+        const store = useDocumentStore.getState();
+        store.setTranslatedPdfUrl(null);
+        store.setBilingualMode(false);
         break;
+      }
       case 'translated_pdf':
       case 'bilingual_pdf':
         if (artifact.filePath) {
