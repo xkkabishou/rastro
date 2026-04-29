@@ -1,0 +1,19 @@
+{"file": ".trellis/spec/backend/api-patterns.md", "reason": "IPC Command 写法、错误返回、AppError 封装"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "rusqlite 使用规范、事务、连接管理"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppError + AppErrorCode 一致性、retryable 语义"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "eprintln 日志规范、链路 ID"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Rust 测试、回归测试规范"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "serde rename_all、camelCase 映射"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Zustand store 拆分、selector 粒度、流式状态、监听器生命周期"}
+{"file": ".trellis/spec/frontend/react-pitfalls.md", "reason": "React 19 边界陷阱、useEffect 清理、内存泄漏防护"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 命名、依赖、cleanup 规范"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件拆分、props 设计、memo 策略"}
+{"file": ".trellis/spec/frontend/css-design.md", "reason": "Shiba Warm Palette 设计令牌、毛玻璃配方、颜色变量映射 (Wave 1 颜色统一直接依赖此文件)"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript strict、any 禁用、IPC DTO 字段对齐"}
+{"file": ".trellis/spec/frontend/ipc-tauri.md", "reason": "ipcClient/ipcEvents 调用与 listen/unlisten 生命周期"}
+{"file": ".trellis/spec/big-question/react-usestate-function.md", "reason": "Zustand 闭包陷阱、流式 RAF 缓冲修复"}
+{"file": ".trellis/spec/big-question/transaction-silent-failure.md", "reason": "翻译完成事务化、Wave 2 直接相关"}
+{"file": ".trellis/spec/shared/typescript.md", "reason": "TS 跨层规范"}
+{"file": ".trellis/spec/shared/code-quality.md", "reason": "命名、注释语言、模块拆分"}
+{"file": ".trellis/spec/shared/git-conventions.md", "reason": "三波 commit message 规范"}
+{"file": ".trellis/tasks/04-29-full-audit-fixes/prd.md", "reason": "本任务 PRD，含 28 项详细修复点和 ADR 决策"}

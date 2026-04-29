@@ -153,3 +153,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Wave1 P0修复 + 总结流截断/竞态/表格格式修复
+
+**Date**: 2026-04-29
+**Task**: Wave1 P0修复 + 总结流截断/竞态/表格格式修复
+**Branch**: `main`
+
+### Summary
+
+修复 summary 表格格式（heading+table compaction 检测）、总结截断（max_tokens 8192 + 超时 180s）、流完成竞态（activeStreamId auto-bind）、翻译错误码中文提示、设计系统冷色硬编码替换、SQLite spawn_blocking、RAF 缓冲清理、事件监听器 unlisteners、ChatMessage 双路径流式渲染、ChatPanel dragLeaveTimer cleanup、PDF 文本提取类型声明。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `99e1459` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

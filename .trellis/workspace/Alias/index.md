@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 2
-- **Last Active**: 2026-04-14
+- **Total Sessions**: 3
+- **Last Active**: 2026-04-29
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~155 | Active |
+| `journal-1.md` | ~188 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -27,8 +27,9 @@
 ## Session History
 
 <!-- @@@auto:session-history -->
-| # | Date | Title | Commits |
-|---|------|-------|---------|
+| # | Date | Title | Commits | Branch |
+|---|------|-------|---------|--------|
+| 3 | 2026-04-29 | Wave1 P0修复 + 总结流截断/竞态/表格格式修复 | `99e1459` | `main` |
 | 2 | 2026-04-14 | PDF 标注消失 bug 路线 X 重构 + CLAUDE.md 精简 | `df1e657`, `7cccc56` |
 | 1 | 2026-04-14 | 修复原文 PDF 视图残留翻译件 + 补齐 Zotero 产物右键菜单接线 | `e0433bd` |
 <!-- @@@/auto:session-history -->

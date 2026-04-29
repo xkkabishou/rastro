@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Rust 单测、cargo test、clippy 标准"}
+{"file": ".trellis/spec/backend/quality.md", "reason": "Rust 整体质量基线"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误码序列化一致性回归测试"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "日志链路 ID 检查"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端测试、构建、类型检查标准"}
+{"file": ".trellis/spec/frontend/quality.md", "reason": "前端整体质量基线"}
+{"file": ".trellis/spec/frontend/css-design.md", "reason": "设计系统硬编码扫描验收 (Wave 1 验收硬指标)"}
+{"file": ".trellis/spec/frontend/react-pitfalls.md", "reason": "useEffect 清理、内存泄漏复查"}
+{"file": ".trellis/spec/shared/code-quality.md", "reason": "命名、注释、模块拆分"}
+{"file": ".trellis/spec/shared/git-conventions.md", "reason": "commit message 与 PR 标题规范"}
+{"file": ".trellis/tasks/04-29-full-audit-fixes/prd.md", "reason": "Acceptance Criteria 与 DoD 复核"}
