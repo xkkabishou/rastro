@@ -18,6 +18,7 @@ import type { PDFDocumentLoadingTask } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 // PDFWorker 类型在 pdfjs-dist v5 中需要从主入口获取
 const { PDFWorker } = pdfjsLib;
+type MinimalReadResult = ReadableStreamReadResult<unknown>;
 
 // ---------------------------------------------------------------------------
 // ReadableStream 最小化 Polyfill
@@ -54,14 +55,13 @@ function isReadableStreamWorking(): boolean {
 /**
  * 最小化 ReadableStream polyfill — 仅覆盖 pdfjs 所需的子集
  */
-function createMinimalReadableStream() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return class MinimalReadableStream {
+function createMinimalReadableStream(): typeof ReadableStream {
+  class MinimalReadableStream {
     private _queue: unknown[] = [];
     private _closed = false;
     private _errored: unknown = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    private _waitResolve: ((result: any) => void) | null = null;
+    private _waitResolve: ((result: MinimalReadResult) => void) | null = null;
+    private _waitReject: ((reason?: unknown) => void) | null = null;
 
     constructor(underlyingSource?: {
       start?: (controller: unknown) => void;
@@ -74,6 +74,7 @@ function createMinimalReadableStream() {
           if (self._waitResolve) {
             const resolve = self._waitResolve;
             self._waitResolve = null;
+            self._waitReject = null;
             resolve({ value: chunk, done: false });
           } else {
             self._queue.push(chunk);
@@ -84,15 +85,17 @@ function createMinimalReadableStream() {
           if (self._waitResolve) {
             const resolve = self._waitResolve;
             self._waitResolve = null;
+            self._waitReject = null;
             resolve({ value: undefined, done: true });
           }
         },
         error(e: unknown) {
           self._errored = e;
-          if (self._waitResolve) {
-            const resolve = self._waitResolve;
+          if (self._waitReject) {
+            const reject = self._waitReject;
             self._waitResolve = null;
-            resolve(Promise.reject(e));
+            self._waitReject = null;
+            reject(e);
           }
         },
         desiredSize: 1,
@@ -115,8 +118,9 @@ function createMinimalReadableStream() {
             return Promise.resolve({ value: undefined, done: true });
           }
           // 等待 enqueue 或 close
-          return new Promise((resolve) => {
+          return new Promise<MinimalReadResult>((resolve, reject) => {
             self._waitResolve = resolve;
+            self._waitReject = reject;
           });
         },
         releaseLock() {
@@ -135,7 +139,9 @@ function createMinimalReadableStream() {
       this._queue.length = 0;
       return Promise.resolve();
     }
-  };
+  }
+
+  return MinimalReadableStream as unknown as typeof ReadableStream;
 }
 
 /**
@@ -147,8 +153,7 @@ function ensureReadableStream(): void {
     console.warn(
       '[pdf-text-extractor] ReadableStream 不可用或残缺，注入最小化 polyfill',
     );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).ReadableStream = createMinimalReadableStream();
+    globalThis.ReadableStream = createMinimalReadableStream();
   }
 }
 
@@ -184,8 +189,7 @@ export async function extractPdfText(
   const maxChars = options.maxChars ?? DEFAULT_SUMMARY_SOURCE_CHARS;
   let loadingTask: PDFDocumentLoadingTask | null = null;
   // ② 创建独立的 fake worker（不传 port → 主线程执行）
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pdfjs 类型定义将 name 错误标注为 null|undefined
-  const fakeWorker = new PDFWorker({ name: 'rastro-text-extractor' } as any);
+  const fakeWorker = PDFWorker.create({ name: 'rastro-text-extractor' });
 
   try {
     // ③ 先 fetch 为 ArrayBuffer，绕过 pdfjs 内部 fetch/stream 路径

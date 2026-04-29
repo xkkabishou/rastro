@@ -73,7 +73,13 @@ mod tests {
     #[test]
     fn upsert_then_get_returns_content() {
         let connection = setup_connection();
-        upsert(&connection, "translation", "自定义翻译提示词", "2026-03-16T00:00:00Z").unwrap();
+        upsert(
+            &connection,
+            "translation",
+            "自定义翻译提示词",
+            "2026-03-16T00:00:00Z",
+        )
+        .unwrap();
 
         let result = get(&connection, "translation").unwrap();
         assert_eq!(result, Some("自定义翻译提示词".to_string()));

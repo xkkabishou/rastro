@@ -33,7 +33,9 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             state
                 .translation_manager
                 .set_event_emitter(move |event_name, job| {
-                    let _ = handle.emit(event_name, job.clone());
+                    if let Err(error) = handle.emit(event_name, job.clone()) {
+                        eprintln!("emit {event_name} failed: {error}");
+                    }
                 });
 
             // T3.1.2: 启动时后台缓存补全任务（不阻塞主线程）
@@ -142,10 +144,19 @@ async fn background_fill_title_cache(
     // 延迟 3 秒启动，等待应用初始化和 UI 加载完成
     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
-    // 1. 检查翻译 API 是否已配置
+    // 1. 检查翻译 API 是否已配置 (SQLite 走 spawn_blocking)
     let active_record = {
-        let connection = state.storage.connection();
-        storage::translation_provider_settings::get_active(&connection)?
+        let storage = state.storage.clone();
+        tokio::task::spawn_blocking(move || -> Result<_, errors::AppError> {
+            let connection = storage.connection();
+            Ok(storage::translation_provider_settings::get_active(
+                &connection,
+            )?)
+        })
+        .await
+        .map_err(|join_err| {
+            errors::AppError::internal(format!("数据库任务异常退出: {join_err}"))
+        })??
     };
     let active_record = match active_record {
         Some(r) => r,
@@ -156,15 +167,28 @@ async fn background_fill_title_cache(
     };
     let provider = models::ProviderId::from_str(&active_record.provider)?;
 
-    // 验证 API Key 是否存在
-    let config =
-        match ipc::translation_settings::resolve_translation_runtime_config(&state, provider) {
-            Ok(c) => c,
-            Err(_) => {
+    // 验证 API Key 是否存在 (resolve 内部读 SQLite + Keychain，走 spawn_blocking)
+    let config = {
+        let state_for_resolve = state.clone();
+        let resolve_result = tokio::task::spawn_blocking(move || {
+            ipc::translation_settings::resolve_translation_runtime_config(
+                &state_for_resolve,
+                provider,
+            )
+        })
+        .await;
+        match resolve_result {
+            Ok(Ok(c)) => c,
+            Ok(Err(_)) => {
                 eprintln!("[标题缓存补全] 翻译 API Key 未配置，跳过");
                 return Ok(());
             }
-        };
+            Err(join_err) => {
+                eprintln!("[标题缓存补全] 配置读取任务异常退出: {join_err}");
+                return Ok(());
+            }
+        }
+    };
 
     // 2. 检测 Zotero
     let connector = match zotero_connector::ZoteroConnector::detect() {
@@ -197,14 +221,25 @@ async fn background_fill_title_cache(
         return Ok(());
     }
 
-    // 4. 查缓存缺失
+    // 4. 查缓存缺失 (SQLite 走 spawn_blocking)
     let hashes: Vec<String> = all_titles
         .iter()
         .map(|t| storage::title_translations::hash_title(t))
         .collect();
     let cached = {
-        let connection = state.storage.connection();
-        storage::title_translations::batch_get(&connection, &hashes)?
+        let storage_for_query = state.storage.clone();
+        let hashes_for_query = hashes.clone();
+        tokio::task::spawn_blocking(move || -> Result<_, errors::AppError> {
+            let connection = storage_for_query.connection();
+            Ok(storage::title_translations::batch_get(
+                &connection,
+                &hashes_for_query,
+            )?)
+        })
+        .await
+        .map_err(|join_err| {
+            errors::AppError::internal(format!("数据库任务异常退出: {join_err}"))
+        })??
     };
     let cached_set: std::collections::HashSet<String> =
         cached.into_iter().map(|r| r.title_hash).collect();
@@ -296,19 +331,39 @@ async fn background_fill_title_cache(
             if !translated.is_empty() {
                 let hash = storage::title_translations::hash_title(title);
                 let now = chrono::Utc::now().to_rfc3339();
-                let connection = state.storage.connection();
-                if let Err(err) = storage::title_translations::insert(
-                    &connection,
-                    &hash,
-                    title,
-                    &translated,
-                    config.provider.as_str(),
-                    &config.model,
-                    &now,
-                ) {
-                    eprintln!("[标题缓存补全] 缓存写入失败 ({}): {}", title, err);
-                } else {
-                    success_count += 1;
+                // SQLite 写入走 spawn_blocking 避免阻塞 tokio worker
+                let storage_for_insert = state.storage.clone();
+                let title_for_insert = (*title).clone();
+                let translated_for_insert = translated.clone();
+                let provider_str = config.provider.as_str().to_string();
+                let model_for_insert = config.model.clone();
+                let title_for_log = (*title).clone();
+                let insert_result = tokio::task::spawn_blocking(move || {
+                    let connection = storage_for_insert.connection();
+                    storage::title_translations::insert(
+                        &connection,
+                        &hash,
+                        &title_for_insert,
+                        &translated_for_insert,
+                        &provider_str,
+                        &model_for_insert,
+                        &now,
+                    )
+                })
+                .await;
+                match insert_result {
+                    Ok(Ok(_)) => {
+                        success_count += 1;
+                    }
+                    Ok(Err(err)) => {
+                        eprintln!("[标题缓存补全] 缓存写入失败 ({}): {}", title_for_log, err);
+                    }
+                    Err(join_err) => {
+                        eprintln!(
+                            "[标题缓存补全] 缓存写入任务异常退出 ({}): {}",
+                            title_for_log, join_err
+                        );
+                    }
                 }
             }
         }

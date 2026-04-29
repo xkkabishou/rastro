@@ -9,3 +9,7 @@ PyMuPDF>=1.24.0
 
 # BabelDOC 翻译引擎（替代 pdf2zh CLI）
 babeldoc>=0.5.0
+
+fastapi>=0.115.0
+
+uvicorn>=0.32.0

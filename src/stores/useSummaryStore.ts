@@ -49,7 +49,9 @@ export const useSummaryStore = create<SummaryState>((set, get) => ({
   startGeneration: () => set({
     summaryContent: '',
     isGenerating: true,
-    activeStreamId: null,
+    // 不重置 activeStreamId：setActiveStreamId 在 generateSummary 返回后才调用，
+    // 但流事件（chunk / finished）可能在此竞态窗口内提前到达。
+    // 保留旧值无害（旧流已结束），而 null 会导致 finishStream 因 streamId 不匹配而被跳过。
     hasGenerated: true,
     savedSummaryId: null,
   }),
@@ -94,15 +96,17 @@ export const useSummaryStore = create<SummaryState>((set, get) => ({
     // T2.4.5: 生成完成后自动持久化保存
     const { summaryContent, currentDocumentId } = get();
     if (currentDocumentId && summaryContent.trim()) {
+      // 将 narrowed 的 documentId 捕获为常量，避免在 .then() 回调中使用 `!`
+      const docId = currentDocumentId;
       ipcClient
-        .saveDocumentSummary(currentDocumentId, summaryContent, 'ai', 'default')
+        .saveDocumentSummary(docId, summaryContent, 'ai', 'default')
         .then((saved) => {
           set({ savedSummaryId: saved.summaryId });
           console.log('[Summary] 自动保存成功:', saved.summaryId);
           // Obsidian 自动同步
           const doc = useDocumentStore.getState().currentDocument;
           const docTitle = doc?.title || '未命名文献';
-          useObsidianStore.getState().autoSyncSummary(currentDocumentId!, docTitle, summaryContent);
+          useObsidianStore.getState().autoSyncSummary(docId, docTitle, summaryContent);
           // Zotero 自动同步：如果文献来自 Zotero，同时写入附件
           if (doc?.zoteroItemKey) {
             ipcClient
@@ -177,21 +181,35 @@ export const useSummaryStore = create<SummaryState>((set, get) => ({
 // ---------------------------------------------------------------------------
 
 void ipcEvents.onAiStreamChunk((payload) => {
-  const state = useSummaryStore.getState();
+  let state = useSummaryStore.getState();
+  // 竞态窗口：startGeneration 后 setActiveStreamId 前，事件已到达。
+  // 此时 isGenerating=true 但 activeStreamId 尚未绑定，自动绑定首个到达的 streamId。
+  if (state.isGenerating && state.activeStreamId === null) {
+    useSummaryStore.setState({ activeStreamId: payload.streamId });
+    state = useSummaryStore.getState();
+  }
   if (state.activeStreamId === payload.streamId) {
     state.appendStreamChunk(payload.streamId, payload.delta, payload.kind);
   }
 });
 
 void ipcEvents.onAiStreamFinished((payload) => {
-  const state = useSummaryStore.getState();
+  let state = useSummaryStore.getState();
+  if (state.isGenerating && state.activeStreamId === null) {
+    useSummaryStore.setState({ activeStreamId: payload.streamId });
+    state = useSummaryStore.getState();
+  }
   if (state.activeStreamId === payload.streamId) {
     state.finishStream(payload.streamId, payload.normalizedContent);
   }
 });
 
 void ipcEvents.onAiStreamFailed((payload) => {
-  const state = useSummaryStore.getState();
+  let state = useSummaryStore.getState();
+  if (state.isGenerating && state.activeStreamId === null) {
+    useSummaryStore.setState({ activeStreamId: payload.streamId });
+    state = useSummaryStore.getState();
+  }
   if (state.activeStreamId === payload.streamId) {
     state.failStream(payload.streamId, payload.error.message);
   }

@@ -153,11 +153,11 @@ export const ObsidianSettings: React.FC = () => {
             ) : validation ? (
               <>
                 {validation.valid ? (
-                  <Check size={10} className="text-emerald-500" />
+                  <Check size={10} className="text-[var(--color-success)]" />
                 ) : (
-                  <X size={10} className="text-red-400" />
+                  <X size={10} className="text-[var(--color-destructive)]" />
                 )}
-                <span className={validation.valid ? 'text-emerald-500' : 'text-red-400'}>
+                <span className={validation.valid ? 'text-[var(--color-success)]' : 'text-[var(--color-destructive)]'}>
                   {validation.message}
                 </span>
                 <button
@@ -170,7 +170,7 @@ export const ObsidianSettings: React.FC = () => {
               </>
             ) : null}
             {justSaved && (
-              <span className="ml-auto text-emerald-500 animate-pulse">✓ 已保存</span>
+              <span className="ml-auto text-[var(--color-success)] animate-pulse">✓ 已保存</span>
             )}
           </div>
         )}

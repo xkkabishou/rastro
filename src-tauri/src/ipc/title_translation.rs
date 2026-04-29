@@ -97,9 +97,19 @@ pub async fn batch_translate_titles(
         .iter()
         .map(|t| title_translations::hash_title(t))
         .collect();
+    // SQLite 同步 IO，走 spawn_blocking 避免阻塞 tokio worker
     let cached_records = {
-        let connection = state.storage.connection();
-        title_translations::batch_get(&connection, &hashes)?
+        let storage = state.storage.clone();
+        let hashes_for_query = hashes.clone();
+        tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+            let connection = storage.connection();
+            Ok(title_translations::batch_get(
+                &connection,
+                &hashes_for_query,
+            )?)
+        })
+        .await
+        .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))??
     };
 
     let mut results: HashMap<String, String> = HashMap::new();
@@ -135,10 +145,15 @@ pub async fn batch_translate_titles(
         });
     }
 
-    // 4. 读取活跃翻译配置
+    // 4. 读取活跃翻译配置 (SQLite 走 spawn_blocking)
     let active_record = {
-        let connection = state.storage.connection();
-        translation_provider_settings::get_active(&connection)?
+        let storage = state.storage.clone();
+        tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+            let connection = storage.connection();
+            Ok(translation_provider_settings::get_active(&connection)?)
+        })
+        .await
+        .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))??
     }
     .ok_or_else(|| {
         AppError::new(
@@ -149,7 +164,15 @@ pub async fn batch_translate_titles(
     })?;
 
     let provider = ProviderId::from_str(&active_record.provider)?;
-    let config = resolve_translation_runtime_config(&state, provider)?;
+    // resolve_translation_runtime_config 内部读 SQLite + Keychain，走 spawn_blocking
+    let config = {
+        let app_state = (*state).clone();
+        tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+            resolve_translation_runtime_config(&app_state, provider)
+        })
+        .await
+        .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))??
+    };
 
     // 5. 串行限速翻译（1 req/s）
     let client = reqwest::Client::new();
@@ -197,21 +220,38 @@ pub async fn batch_translate_titles(
         if let Some(translated) = extract_chat_response_text(provider, &body) {
             let translated = translated.trim().to_string();
             if !translated.is_empty() {
-                // 写入缓存
+                // 写入缓存 (SQLite 走 spawn_blocking)
                 let hash = title_translations::hash_title(title);
                 let now = chrono::Utc::now().to_rfc3339();
-                {
-                    let connection = state.storage.connection();
-                    if let Err(err) = title_translations::insert(
+                let storage = state.storage.clone();
+                let title_for_insert = title.clone();
+                let translated_for_insert = translated.clone();
+                let provider_str = config.provider.as_str().to_string();
+                let model_for_insert = config.model.clone();
+                let title_for_log = title.clone();
+                let insert_result = tokio::task::spawn_blocking(move || {
+                    let connection = storage.connection();
+                    title_translations::insert(
                         &connection,
                         &hash,
-                        title,
-                        &translated,
-                        config.provider.as_str(),
-                        &config.model,
+                        &title_for_insert,
+                        &translated_for_insert,
+                        &provider_str,
+                        &model_for_insert,
                         &now,
-                    ) {
-                        eprintln!("标题翻译缓存写入失败 ({}): {}", title, err);
+                    )
+                })
+                .await;
+                match insert_result {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(err)) => {
+                        eprintln!("标题翻译缓存写入失败 ({}): {}", title_for_log, err);
+                    }
+                    Err(join_err) => {
+                        eprintln!(
+                            "标题翻译缓存写入任务异常退出 ({}): {}",
+                            title_for_log, join_err
+                        );
                     }
                 }
                 results.insert(title.clone(), translated);

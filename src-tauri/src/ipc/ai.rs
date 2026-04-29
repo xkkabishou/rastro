@@ -154,11 +154,17 @@ pub async fn generate_summary(
     state: State<'_, AppState>,
     input: GenerateSummaryInput,
 ) -> Result<AIStreamHandle, crate::errors::AppError> {
-    // 从数据库读取用户自定义总结提示词
-    let custom_prompt = {
-        let connection = state.storage.connection();
-        custom_prompts::get(&connection, "summary")?
-    };
+    // 从数据库读取用户自定义总结提示词 (SQLite 走 spawn_blocking 避免阻塞 tokio worker)
+    let storage = state.storage.clone();
+    let custom_prompt =
+        tokio::task::spawn_blocking(move || -> Result<_, crate::errors::AppError> {
+            let connection = storage.connection();
+            Ok(custom_prompts::get(&connection, "summary")?)
+        })
+        .await
+        .map_err(|join_err| {
+            crate::errors::AppError::internal(format!("数据库任务异常退出: {join_err}"))
+        })??;
 
     let result = state
         .ai_integration

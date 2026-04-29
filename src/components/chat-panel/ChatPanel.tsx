@@ -6,8 +6,11 @@ import { ChatInput } from './ChatInput';
 import { ipcClient } from '../../lib/ipc-client';
 import { extractPdfText } from '../../lib/pdf-text-extractor';
 import { Sparkles, MessageSquare, Trash2, BookOpen, Loader2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import shibaChatUrl from '../../assets/shiba/shiba-chat.png';
+
+const CHAT_MESSAGE_ESTIMATED_HEIGHT = 132;
+const CHAT_MESSAGE_OVERSCAN = 6;
 
 /** 聊天面板主组件 */
 export const ChatPanel: React.FC = () => {
@@ -23,16 +26,32 @@ export const ChatPanel: React.FC = () => {
     clearChat,
   } = useChatStore();
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollParentRef = useRef<HTMLDivElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const dragLeaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [deepReadEnabled, setDeepReadEnabled] = useState(false);
   const [deepReadLoading, setDeepReadLoading] = useState(false);
 
+  const messageVirtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => scrollParentRef.current,
+    estimateSize: () => CHAT_MESSAGE_ESTIMATED_HEIGHT,
+    overscan: CHAT_MESSAGE_OVERSCAN,
+  });
+
   // 自动滚动到底部
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (messages.length === 0) return;
+    messageVirtualizer.scrollToIndex(messages.length - 1, { align: 'end' });
+  }, [messages, messageVirtualizer]);
+
+  // 组件卸载时清理拖拽 leave 计时器，避免在已卸载组件上触发 setIsDragOver
+  useEffect(() => () => {
+    if (dragLeaveTimer.current) {
+      clearTimeout(dragLeaveTimer.current);
+      dragLeaveTimer.current = undefined;
+    }
+  }, []);
 
   const currentDocument = useDocumentStore((s) => s.currentDocument);
   const currentDocumentId = currentDocument?.documentId;
@@ -188,7 +207,7 @@ export const ChatPanel: React.FC = () => {
             disabled={!currentDocument || deepReadLoading}
             className={`p-1.5 rounded-md transition-colors ${
               deepReadEnabled
-                ? 'bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25'
+                ? 'bg-[var(--color-primary)]/15 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/25'
                 : 'hover:bg-[var(--color-hover)] text-[var(--color-text-tertiary)]'
             } disabled:opacity-40 disabled:cursor-not-allowed`}
             title={deepReadEnabled ? '关闭精读模式' : '开启精读模式（提取全文作为 AI 上下文）'}
@@ -212,24 +231,37 @@ export const ChatPanel: React.FC = () => {
       </div>
 
       {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollParentRef} className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
           <EmptyState />
         ) : (
-          <div>
-            <AnimatePresence>
-              {messages.map((msg) => (
-                <motion.div
-                  key={msg.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.2 }}
+          <div
+            style={{
+              height: `${messageVirtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {messageVirtualizer.getVirtualItems().map((virtualRow) => {
+              const message = messages[virtualRow.index];
+              if (!message) return null;
+              return (
+                <div
+                  key={virtualRow.key}
+                  data-index={virtualRow.index}
+                  ref={messageVirtualizer.measureElement}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
                 >
-                  <ChatMessage message={msg} />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-            <div ref={messagesEndRef} />
+                  <ChatMessage message={message} />
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

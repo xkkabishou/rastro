@@ -101,8 +101,10 @@ pub fn list_uncached_titles(
     );
 
     let mut statement = connection.prepare(&sql)?;
-    let params: Vec<&dyn rusqlite::types::ToSql> =
-        hashes.iter().map(|h| h as &dyn rusqlite::types::ToSql).collect();
+    let params: Vec<&dyn rusqlite::types::ToSql> = hashes
+        .iter()
+        .map(|h| h as &dyn rusqlite::types::ToSql)
+        .collect();
     let cached_hashes: Vec<String> = statement
         .query_map(params.as_slice(), |row| row.get::<_, String>(0))?
         .filter_map(Result::ok)
@@ -138,8 +140,10 @@ pub fn batch_get(
     );
 
     let mut statement = connection.prepare(&sql)?;
-    let params: Vec<&dyn rusqlite::types::ToSql> =
-        hashes.iter().map(|h| h as &dyn rusqlite::types::ToSql).collect();
+    let params: Vec<&dyn rusqlite::types::ToSql> = hashes
+        .iter()
+        .map(|h| h as &dyn rusqlite::types::ToSql)
+        .collect();
     let rows = statement.query_map(params.as_slice(), map_row)?;
     rows.collect()
 }

@@ -453,7 +453,7 @@ export const ZoteroList: React.FC<ZoteroListProps> = ({
                   width: '40%',
                 }}
                 animate={{ x: ['-100%', '350%'] }}
-                transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+                transition={{ duration: 0.8, repeat: Infinity, ease: 'easeInOut' }}
               />
             </motion.div>
           )}

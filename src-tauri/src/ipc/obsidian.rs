@@ -66,7 +66,12 @@ fn sanitize_filename(raw: &str) -> String {
     // 截断为 80 字符
     let trimmed = sanitized.trim();
     if trimmed.chars().count() > 80 {
-        trimmed.chars().take(80).collect::<String>().trim_end().to_string()
+        trimmed
+            .chars()
+            .take(80)
+            .collect::<String>()
+            .trim_end()
+            .to_string()
     } else {
         trimmed.to_string()
     }
@@ -75,9 +80,8 @@ fn sanitize_filename(raw: &str) -> String {
 /// 确保目录存在
 fn ensure_dir(path: &Path) -> Result<(), AppError> {
     if !path.exists() {
-        fs::create_dir_all(path).map_err(|e| AppError::internal(
-            format!("无法创建目录 {}: {}", path.display(), e),
-        ))?;
+        fs::create_dir_all(path)
+            .map_err(|e| AppError::internal(format!("无法创建目录 {}: {}", path.display(), e)))?;
     }
     Ok(())
 }
@@ -140,9 +144,7 @@ fn build_export_path(vault_path: &str, title: &str, summary_type: &str) -> PathB
 
 /// 获取 Obsidian 配置
 #[tauri::command]
-pub fn get_obsidian_config(
-    state: State<'_, AppState>,
-) -> Result<ObsidianConfigDto, AppError> {
+pub fn get_obsidian_config(state: State<'_, AppState>) -> Result<ObsidianConfigDto, AppError> {
     let connection = state.storage.connection();
     let vault_path = obsidian_config::get_vault_path(&connection)?;
     let auto_sync = obsidian_config::get_auto_sync(&connection)?;
@@ -187,9 +189,7 @@ pub fn save_obsidian_config(
 
 /// 校验 Vault 路径
 #[tauri::command]
-pub fn validate_obsidian_vault(
-    vault_path: String,
-) -> Result<ValidateVaultResult, AppError> {
+pub fn validate_obsidian_vault(vault_path: String) -> Result<ValidateVaultResult, AppError> {
     let path = Path::new(&vault_path);
 
     if !path.exists() {
@@ -252,9 +252,8 @@ pub fn export_summary_to_obsidian(
         (vault_path, record.map(|r| r.translated_title))
     };
 
-    let vault_path = vault_path_opt.ok_or_else(|| {
-        AppError::internal("Obsidian Vault 路径未配置".to_string())
-    })?;
+    let vault_path = vault_path_opt
+        .ok_or_else(|| AppError::internal("Obsidian Vault 路径未配置".to_string()))?;
 
     // 选择用于文件名的显示标题（优先中文译名）
     let display_title = pick_display_title(&title, cached_translation.as_deref());
@@ -269,9 +268,8 @@ pub fn export_summary_to_obsidian(
 
     // frontmatter 里仍使用原 title，保留原文以便 Dataview 查询
     let md_content = build_summary_markdown(&title, &content_md, &summary_type, &document_id);
-    fs::write(&file_path, md_content).map_err(|e| {
-        AppError::internal(format!("写入文件失败: {}", e))
-    })?;
+    fs::write(&file_path, md_content)
+        .map_err(|e| AppError::internal(format!("写入文件失败: {}", e)))?;
 
     Ok(ExportSummaryResult {
         success: true,
@@ -283,9 +281,8 @@ pub fn export_summary_to_obsidian(
 /// 读取 ~/Library/Application Support/obsidian/obsidian.json
 #[tauri::command]
 pub fn detect_obsidian_vaults() -> Result<Vec<DetectedVault>, AppError> {
-    let home = dirs::home_dir().ok_or_else(|| {
-        AppError::internal("无法获取用户主目录".to_string())
-    })?;
+    let home =
+        dirs::home_dir().ok_or_else(|| AppError::internal("无法获取用户主目录".to_string()))?;
 
     let obsidian_json = home
         .join("Library")
@@ -297,14 +294,12 @@ pub fn detect_obsidian_vaults() -> Result<Vec<DetectedVault>, AppError> {
         return Ok(vec![]);
     }
 
-    let content = fs::read_to_string(&obsidian_json).map_err(|e| {
-        AppError::internal(format!("读取 Obsidian 配置失败: {}", e))
-    })?;
+    let content = fs::read_to_string(&obsidian_json)
+        .map_err(|e| AppError::internal(format!("读取 Obsidian 配置失败: {}", e)))?;
 
     // 解析 JSON：{ "vaults": { "id": { "path": "...", ... }, ... } }
-    let json: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
-        AppError::internal(format!("解析 Obsidian JSON 失败: {}", e))
-    })?;
+    let json: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| AppError::internal(format!("解析 Obsidian JSON 失败: {}", e)))?;
 
     let mut vaults: Vec<DetectedVault> = Vec::new();
 

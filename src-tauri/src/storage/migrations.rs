@@ -24,6 +24,7 @@ const PERF_INDEXES_SQL: &str = include_str!("../../migrations/009_perf_indexes.s
 const DEEP_READ_SQL: &str = include_str!("../../migrations/010_deep_read.sql");
 const DROP_NOTEBOOKLM_ARTIFACTS_SQL: &str =
     include_str!("../../migrations/011_drop_notebooklm_artifacts.sql");
+const AUDIT_INDEXES_SQL: &str = include_str!("../../migrations/012_audit_indexes.sql");
 
 struct Migration {
     version: i64,
@@ -87,6 +88,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "drop_notebooklm_artifacts",
         sql: DROP_NOTEBOOKLM_ARTIFACTS_SQL,
     },
+    Migration {
+        version: 12,
+        name: "audit_indexes",
+        sql: AUDIT_INDEXES_SQL,
+    },
 ];
 
 /// 执行全部未应用的 schema migration。
@@ -140,7 +146,7 @@ fn current_version(connection: &Connection) -> rusqlite::Result<i64> {
 mod tests {
     use rusqlite::Connection;
 
-    use super::{current_version, run, INIT_SQL};
+    use super::{current_version, run, INIT_SQL, MIGRATIONS};
 
     #[test]
     fn run_creates_schema_and_marks_current_schema_as_latest() {
@@ -148,10 +154,9 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 11);
-        assert_eq!(
+        assert_eq!(current_version(&connection).unwrap(), latest_version());
+        assert!(
             table_exists(&connection, "documents"),
-            true,
             "documents table should exist after migration"
         );
         assert_eq!(
@@ -207,6 +212,10 @@ mod tests {
             column_exists(&connection, "documents", "deep_read_text"),
             "documents.deep_read_text should exist after migration"
         );
+        assert!(
+            index_exists(&connection, "idx_translation_jobs_cache_key"),
+            "audit cache_key index should exist after migration"
+        );
     }
 
     #[test]
@@ -216,10 +225,10 @@ mod tests {
         run(&connection).unwrap();
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 11);
+        assert_eq!(current_version(&connection).unwrap(), latest_version());
         assert_eq!(
             migration_row_count(&connection),
-            11,
+            MIGRATIONS.len() as i64,
             "latest migrations should only be recorded once"
         );
     }
@@ -231,7 +240,7 @@ mod tests {
 
         run(&connection).unwrap();
 
-        assert_eq!(current_version(&connection).unwrap(), 11);
+        assert_eq!(current_version(&connection).unwrap(), latest_version());
         assert_eq!(
             provider_setting_count(&connection),
             3,
@@ -289,5 +298,26 @@ mod tests {
                 row.get(0)
             })
             .unwrap()
+    }
+
+    fn index_exists(connection: &Connection, index_name: &str) -> bool {
+        connection
+            .query_row(
+                "SELECT 1
+                 FROM sqlite_master
+                 WHERE type = 'index'
+                   AND name = ?1",
+                [index_name],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|value| value == 1)
+            .unwrap_or(false)
+    }
+
+    fn latest_version() -> i64 {
+        MIGRATIONS
+            .last()
+            .expect("migrations should not be empty")
+            .version
     }
 }

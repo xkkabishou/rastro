@@ -145,7 +145,6 @@ export const Sidebar = ({ isOpen, isMobile = false, onToggle, width, isResizing 
         }
         break;
       case 'ai_summary':
-        // TODO: Wave 4+ — 打开 AI 总结面板
         openDocumentInViewer(doc);
         break;
       default:

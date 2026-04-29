@@ -98,6 +98,55 @@ class BabeldocAdapterTests(unittest.TestCase):
         self.assertEqual(events[0]["overall_progress"], 56.0)
         self.assertEqual(events[0]["stage"], "translate")
 
+    def test_progress_bridge_accepts_positional_dict_event(self):
+        """进度桥接应兼容位置参数 dict，避免 BabelDOC 事件形态变化时丢进度。"""
+        events: list[dict] = []
+
+        def fake_progress_monitor_factory(*, stages, progress_change_callback, cancel_event):
+            monitor = MagicMock()
+            monitor._test_callback = progress_change_callback
+            return monitor
+
+        def fake_run_translation(config):
+            cb = config.progress_monitor._test_callback
+            cb(
+                {
+                    "type": "progress_update",
+                    "stage": "Translate Paragraphs",
+                    "overall_progress": 18.0,
+                    "stage_progress": 5.0,
+                }
+            )
+            return {
+                "mono_pdf_path": "/tmp/out/paper-zh.pdf",
+                "dual_pdf_path": "/tmp/out/paper-dual.pdf",
+            }
+
+        translate_pdf_with_babeldoc(
+            input_pdf=Path("/tmp/paper.pdf"),
+            output_dir=Path("/tmp/out"),
+            lang_in="en",
+            lang_out="zh",
+            base_url="https://example.test/v1",
+            api_key="test-key",
+            model="test-model",
+            pages=None,
+            no_dual=False,
+            no_mono=False,
+            qps=10,
+            pool_max_workers=8,
+            glossary_csv=None,
+            prompt_text="translate this PDF",
+            on_progress=events.append,
+            cancel_event=threading.Event(),
+            translator_factory=lambda **_: MagicMock(),
+            progress_monitor_factory=fake_progress_monitor_factory,
+            run_translation=fake_run_translation,
+        )
+
+        self.assertEqual(events[0]["overall_progress"], 18.0)
+        self.assertEqual(events[0]["stage"], "Translate Paragraphs")
+
     def test_none_output_paths_handled_gracefully(self):
         """输出路径为 None 时应正确处理。"""
         def fake_run(config):

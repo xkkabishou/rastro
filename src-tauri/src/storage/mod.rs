@@ -32,6 +32,8 @@ impl Storage {
     /// 打开文件数据库并执行 migration
     pub fn new_file(path: impl AsRef<Path>) -> Result<Self, AppError> {
         let connection = Connection::open(path)?;
+        // 文件库启用 WAL，降低读写互相阻塞概率；in-memory 测试库保持默认 journal。
+        connection.pragma_update(None, "journal_mode", "WAL")?;
         Self::from_connection(connection)
     }
 
@@ -243,5 +245,63 @@ mod storage_tests {
             assert_eq!(providers.len(), 3);
             assert!(providers.iter().any(|record| record.provider == "openai"));
         }
+    }
+
+    /// 回归测试：验证 spawn_blocking 模式下并发查询不会阻塞 tokio runtime worker。
+    /// 模拟 Wave 1 的核心修复——所有 async 上下文中的 SQLite 访问应通过 spawn_blocking
+    /// 隔离到 blocking 线程池，避免持有 parking_lot::Mutex 跨 tokio worker。
+    ///
+    /// 期望：64 个并发查询在 5 秒内全部完成（in-memory SQLite 实际只需毫秒级），
+    /// 任何死锁或线程池耗尽都会让该测试超时或失败。
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_spawn_blocking_queries_do_not_block_runtime() {
+        use std::time::{Duration, Instant};
+
+        let storage = Storage::new_in_memory().expect("in-memory storage should initialize");
+
+        // 预先插入一份文档作为查询目标
+        let timestamp = Utc::now().to_rfc3339();
+        {
+            let connection = storage.connection();
+            documents::upsert(
+                &connection,
+                &documents::UpsertDocumentParams {
+                    file_path: "/tmp/concurrent.pdf".to_string(),
+                    file_sha256: "sha-concurrent".to_string(),
+                    title: "Concurrent".to_string(),
+                    page_count: 1,
+                    source_type: crate::models::DocumentSourceType::Local,
+                    zotero_item_key: None,
+                    timestamp,
+                },
+            )
+            .expect("upsert should succeed");
+        }
+
+        let started = Instant::now();
+        let mut handles = Vec::new();
+        for _ in 0..64 {
+            let storage_for_task = storage.clone();
+            handles.push(tokio::task::spawn_blocking(move || {
+                // 在 blocking 线程池里访问 SQLite，仿照生产代码模式
+                let connection = storage_for_task.connection();
+                documents::list_recent(&connection, 10).map(|records| records.len())
+            }));
+        }
+
+        for handle in handles {
+            let count = handle
+                .await
+                .expect("spawn_blocking task should not panic")
+                .expect("query should succeed");
+            assert!(count >= 1, "至少能查到刚插入的那条文档");
+        }
+
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "64 个并发查询应在 5 秒内完成，但实际耗时 {:?}（可能存在阻塞或调度问题）",
+            elapsed
+        );
     }
 }

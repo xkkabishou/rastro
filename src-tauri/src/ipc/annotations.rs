@@ -62,10 +62,8 @@ pub struct DeleteAnnotationResult {
 // ---------------------------------------------------------------------------
 
 fn record_to_dto(record: annotations::AnnotationRecord) -> Result<AnnotationDto, AppError> {
-    let rects: Vec<AnnotationRect> =
-        serde_json::from_str(&record.rects_json).map_err(|e| {
-            AppError::internal(format!("标注矩形 JSON 反序列化失败: {e}"))
-        })?;
+    let rects: Vec<AnnotationRect> = serde_json::from_str(&record.rects_json)
+        .map_err(|e| AppError::internal(format!("标注矩形 JSON 反序列化失败: {e}")))?;
 
     Ok(AnnotationDto {
         annotation_id: record.annotation_id,

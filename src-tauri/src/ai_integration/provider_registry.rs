@@ -211,7 +211,7 @@ pub fn build_stream_request(
             let mut payload = json!({
                 "model": config.model,
                 "stream": true,
-                "max_tokens": 2048,
+                "max_tokens": 8192,
                 "messages": api_messages
             });
 

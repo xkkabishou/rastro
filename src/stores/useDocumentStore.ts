@@ -244,14 +244,21 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 // R2-L1: 注册 Tauri 事件监听，实现产物状态实时更新
 // ---------------------------------------------------------------------------
 
-let eventListenersInitialized = false;
+// 使用 unlisteners 数组替代单一 boolean flag：
+// 1. 当已有监听器或注册仍在进行中时，重复 init 直接跳过（幂等）
+// 2. 任一 listen 调用失败时回滚已注册监听器，下次 init 可重试
+// 3. cleanup 会提升 generation，防止晚到的 listen Promise 在卸载后重新写入旧监听器
+let unlisteners: Array<() => void> = [];
+let listenerRegistrationInFlight = false;
+let listenerGeneration = 0;
 
 /** 初始化 Tauri 后端事件监听（幂等，仅首次生效） */
 export function initDocumentEventListeners(): void {
-  if (eventListenersInitialized) return;
-  eventListenersInitialized = true;
+  if (listenerRegistrationInFlight || unlisteners.length > 0) return;
+  listenerRegistrationInFlight = true;
+  const generation = listenerGeneration;
 
-  ipcEvents.onTranslationProgress((job) => {
+  const registerProgress = ipcEvents.onTranslationProgress((job) => {
     const store = useDocumentStore.getState();
     if (!shouldSyncLiveTranslationJob(store, job)) {
       return;
@@ -259,10 +266,10 @@ export function initDocumentEventListeners(): void {
 
     store.setTranslationJob(job);
     store.setTranslationProgress(toProgressPercentage(job.progress));
-  }).catch((err) => console.error('注册 translation://job-progress 监听失败:', err));
+  });
 
   // 翻译完成事件 → 刷新对应文档的产物 + 快照
-  ipcEvents.onTranslationCompleted((job) => {
+  const registerCompleted = ipcEvents.onTranslationCompleted((job) => {
     const docId = job.documentId;
     if (!docId) return;
     const store = useDocumentStore.getState();
@@ -279,17 +286,68 @@ export function initDocumentEventListeners(): void {
     if (store.expandedDocIds.has(docId)) {
       store.loadArtifacts(docId, true);
     }
-  }).catch((err) => console.error('注册 translation://job-completed 监听失败:', err));
+  });
 
   // AI 总结完成事件 → 刷新对应文档的产物 + 快照
-  listen<{ documentId: string }>('ai://stream-finished', (event) => {
-    const docId = event.payload?.documentId;
-    if (!docId) return;
-    const store = useDocumentStore.getState();
-    store.invalidateArtifacts(docId);
-    store.refreshDocumentSnapshot(docId);
-    if (store.expandedDocIds.has(docId)) {
-      store.loadArtifacts(docId, true);
+  const registerSummaryFinished = listen<{ documentId: string }>(
+    'ai://stream-finished',
+    (event) => {
+      const docId = event.payload?.documentId;
+      if (!docId) return;
+      const store = useDocumentStore.getState();
+      store.invalidateArtifacts(docId);
+      store.refreshDocumentSnapshot(docId);
+      if (store.expandedDocIds.has(docId)) {
+        store.loadArtifacts(docId, true);
+      }
+    },
+  );
+
+  Promise.allSettled([registerProgress, registerCompleted, registerSummaryFinished])
+    .then((results) => {
+      const registered = results
+        .filter((result): result is PromiseFulfilledResult<() => void> => (
+          result.status === 'fulfilled'
+        ))
+        .map((result) => result.value);
+      const failed = results.filter((result) => result.status === 'rejected');
+
+      if (generation !== listenerGeneration || failed.length > 0) {
+        for (const unlisten of registered) {
+          try {
+            unlisten();
+          } catch (err) {
+            console.error('回滚文档事件监听器失败:', err);
+          }
+        }
+      } else {
+        unlisteners.push(...registered);
+      }
+
+      for (const result of failed) {
+        console.error('注册文档事件监听失败:', result.reason);
+      }
+    })
+    .finally(() => {
+      if (generation === listenerGeneration) {
+        listenerRegistrationInFlight = false;
+      }
+    });
+}
+
+/**
+ * 清理所有已注册的文档事件监听器。
+ * 调用后 `unlisteners` 数组为空，下次 `initDocumentEventListeners()` 可重新注册。
+ */
+export function cleanupDocumentEventListeners(): void {
+  listenerGeneration += 1;
+  listenerRegistrationInFlight = false;
+  for (const unlisten of unlisteners) {
+    try {
+      unlisten();
+    } catch (err) {
+      console.error('卸载文档事件监听器失败:', err);
     }
-  }).catch((err) => console.error('注册 ai://stream-finished 监听失败:', err));
+  }
+  unlisteners = [];
 }

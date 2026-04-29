@@ -177,7 +177,7 @@ fn delete_translation_cache_inner(
     // R2-M1: 检查是否有活跃翻译任务，防止竞态
     let active_count: i64 = connection.query_row(
         "SELECT COUNT(*) FROM translation_jobs
-         WHERE document_id = ?1 AND status IN ('pending', 'running')",
+         WHERE document_id = ?1 AND status IN ('queued', 'running')",
         params![document_id],
         |row| row.get(0),
     )?;
@@ -395,6 +395,53 @@ mod tests {
 
         assert!(!result.deleted);
         assert_eq!(result.freed_bytes, 0);
+    }
+
+    #[test]
+    fn delete_translation_cache_rejects_queued_jobs() {
+        let storage = Storage::new_in_memory().unwrap();
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        let document = {
+            let connection = storage.connection();
+            documents::upsert(
+                &connection,
+                &documents::UpsertDocumentParams {
+                    file_path: "/tmp/queued.pdf".to_string(),
+                    file_sha256: "sha-queued".to_string(),
+                    title: "Queued".to_string(),
+                    page_count: 3,
+                    source_type: DocumentSourceType::Local,
+                    zotero_item_key: None,
+                    timestamp: timestamp.clone(),
+                },
+            )
+            .unwrap()
+        };
+        {
+            let connection = storage.connection();
+            translation_jobs::create(
+                &connection,
+                &translation_jobs::CreateTranslationJobParams {
+                    document_id: document.document_id.clone(),
+                    engine_job_id: None,
+                    cache_key: "cache-queued".to_string(),
+                    provider: "openai".to_string(),
+                    model: "gpt-4o-mini".to_string(),
+                    source_lang: "en".to_string(),
+                    target_lang: "zh-CN".to_string(),
+                    status: "queued".to_string(),
+                    stage: "queued".to_string(),
+                    progress: 0.0,
+                    created_at: timestamp,
+                },
+            )
+            .unwrap();
+        }
+
+        let error = delete_translation_cache_inner(&storage, &document.document_id)
+            .expect_err("queued job should block cache deletion");
+
+        assert!(error.message.contains("正在进行"));
     }
 
     fn build_test_state() -> AppState {

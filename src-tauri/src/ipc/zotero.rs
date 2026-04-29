@@ -1,7 +1,7 @@
 // G. Zotero 集成 Command (5 个)
 // 对应 rust-backend-system.md Section 7.3 G
-use std::path::Path;
 use serde::Serialize;
+use std::path::Path;
 use tauri::State;
 
 use crate::{
@@ -230,18 +230,20 @@ pub fn export_pdf_to_zotero(
     let connector = ZoteroConnector::detect()?;
 
     // 检查是否已存在同名附件
-    if let Some(existing_key) = connector.find_attachment_by_name(&zotero_item_key, &target_filename)? {
+    if let Some(existing_key) =
+        connector.find_attachment_by_name(&zotero_item_key, &target_filename)?
+    {
         // 已存在 → 删除旧链接并重建软连接
         let source = Path::new(&source_file_path);
-        let target = connector.profile_dir()
+        let target = connector
+            .profile_dir()
             .join("storage")
             .join(&existing_key)
             .join(&target_filename);
         // 先删除旧文件/链接
         let _ = std::fs::remove_file(&target);
-        std::os::unix::fs::symlink(source, &target).map_err(|e| {
-            crate::errors::AppError::internal(format!("更新软连接失败: {}", e))
-        })?;
+        std::os::unix::fs::symlink(source, &target)
+            .map_err(|e| crate::errors::AppError::internal(format!("更新软连接失败: {}", e)))?;
         return Ok(ZoteroExportResult {
             success: true,
             file_path: target.to_string_lossy().to_string(),

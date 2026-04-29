@@ -13,6 +13,7 @@ import { SelectionPopupMenu } from './SelectionPopupMenu';
 import { TranslationBubble } from './TranslationBubble';
 import { ipcClient } from '../../lib/ipc-client';
 import { useDocumentStore } from '../../stores/useDocumentStore';
+import { useChatStore } from '../../stores/useChatStore';
 import { useAnnotationStore } from '../../stores/useAnnotationStore';
 import { useAnnotationShortcuts } from '../../lib/useAnnotationShortcuts';
 import { selectionToAnnotationRects } from '../../lib/annotation-coords';
@@ -625,18 +626,18 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     });
 
     linkService.setViewer(pdfViewer);
-    eventBus.on('pagechanging', ({ pageNumber }: { pageNumber: number }) => {
+    const handlePageChanging = ({ pageNumber }: { pageNumber: number }) => {
       setCurrentPage(pageNumber);
-    });
-    eventBus.on('pagesloaded', ({ pagesCount }: { pagesCount: number }) => {
+    };
+    const handlePagesLoaded = ({ pagesCount }: { pagesCount: number }) => {
       setTotalPages(pagesCount);
       // 收集页面元素（路线 X：提供给外挂式 AnnotationOverlay 跟随定位）
       if (viewer) {
         const pages = Array.from(viewer.querySelectorAll<HTMLElement>('.page'));
         setPageElements(pages);
       }
-    });
-    eventBus.on('pagesinit', () => {
+    };
+    const handlePagesInit = () => {
       // 使用 pdfjs 内置 page-width 模式精确适配容器宽度（自动处理内边距、滚动条等）
       (pdfViewer as unknown as { currentScaleValue: string }).currentScaleValue = 'page-width';
       const fitScale = pdfViewer.currentScale;
@@ -644,7 +645,10 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
       userSetScaleRef.current = fitScale;
       referenceWidthRef.current = containerRef.current?.clientWidth ?? null;
       setScale(fitScale);
-    });
+    };
+    eventBus.on('pagechanging', handlePageChanging);
+    eventBus.on('pagesloaded', handlePagesLoaded);
+    eventBus.on('pagesinit', handlePagesInit);
     // 标注层布局同步触发源（路线 X）
     // - scalechanging: pdfjs 在 scale 变更开始时即触发（比 ResizeObserver 更早，避免闪烁）
     // - pagerendered: reset() 后 canvas 重绘完成，此时 .page 尺寸已最终确定
@@ -660,6 +664,11 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
     linkServiceRef.current = linkService;
 
     return () => {
+      eventBus.off('pagechanging', handlePageChanging);
+      eventBus.off('pagesloaded', handlePagesLoaded);
+      eventBus.off('pagesinit', handlePagesInit);
+      eventBus.off('scalechanging', bumpLayoutVersion);
+      eventBus.off('pagerendered', bumpLayoutVersion);
       viewerObserver.disconnect();
       resetPdfViewerDocument(pdfViewer, linkService);
       pdfViewerRef.current = null;
@@ -921,6 +930,21 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
           break;
         case 'PYTHON_NOT_FOUND':
           userMessage = '未找到 Python 环境，请先安装 Python 3.10+';
+          break;
+        case 'TRANSLATION_FAILED':
+          userMessage = '翻译处理失败，请稍后重试';
+          break;
+        case 'PROVIDER_CONNECTION_FAILED':
+          userMessage = 'AI Provider 连接失败，请检查网络或 API Key';
+          break;
+        case 'PROVIDER_RATE_LIMITED':
+          userMessage = 'API 调用频率限制，请稍后重试';
+          break;
+        case 'PROVIDER_INSUFFICIENT_CREDIT':
+          userMessage = 'API 额度不足，请充值或更换 Provider';
+          break;
+        case 'PDFMATHTRANSLATE_NOT_INSTALLED':
+          userMessage = '翻译核心库未安装，请运行安装脚本';
           break;
         default:
           userMessage = appErr?.message ?? '翻译请求失败，请检查控制台日志';
@@ -1385,10 +1409,7 @@ export const PdfViewer = ({ url: initialUrl }: { url?: string }) => {
   }, [fontDebug, isSelectionDebugEnabled]);
 
   const handleQuoteToChat = useCallback((text: string) => {
-    // 动态导入避免循环依赖
-    import('../../stores/useChatStore').then(({ useChatStore }) => {
-      useChatStore.getState().setContextQuote(text);
-    });
+    useChatStore.getState().setContextQuote(text);
     setSelectionPopup(null);
     setTranslationBubble(null);
     window.getSelection()?.removeAllRanges();

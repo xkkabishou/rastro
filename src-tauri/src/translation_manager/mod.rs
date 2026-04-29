@@ -41,6 +41,8 @@ const ENGINE_HOST: &str = "127.0.0.1";
 const DEFAULT_ENGINE_PORT: u16 = 8890;
 const DEFAULT_TIMEOUT_SECONDS: u64 = 1800;
 const DEFAULT_POLL_INTERVAL_MS: u64 = 1000;
+const MAX_STATUS_POLL_TRANSPORT_FAILURES: u32 = 10;
+const MAX_STATUS_POLL_JOB_NOT_FOUND_FAILURES: u32 = 5;
 
 #[derive(Clone)]
 pub struct TranslationManager {
@@ -79,6 +81,18 @@ impl TranslationManager {
             http_client.clone(),
         )?;
         let artifact_index = TranslationArtifactIndex::new(&data_dir)?;
+
+        // 启动自愈：上次进程异常退出时，SQLite 可能残留 running 任务。
+        // 超过单任务默认超时时间后统一转 failed，避免前端一直显示“翻译中”。
+        let now = Utc::now();
+        let cutoff = (now - chrono::Duration::seconds(DEFAULT_TIMEOUT_SECONDS as i64)).to_rfc3339();
+        let recovered = {
+            let connection = storage.connection();
+            translation_jobs::mark_stale_running_as_failed(&connection, &cutoff, &now.to_rfc3339())?
+        };
+        if recovered > 0 {
+            eprintln!("translation manager recovered {recovered} stale running job(s)");
+        }
 
         Ok(Self {
             inner: Arc::new(TranslationManagerInner {
@@ -144,36 +158,58 @@ impl TranslationManager {
         &self,
         input: RequestTranslationInput,
     ) -> Result<TranslationJobDto, AppError> {
-        let prepared = self.prepare_request(input)?;
+        // prepare_request 内部多次访问 SQLite 与 Keychain，整体走 spawn_blocking
+        let manager_for_prepare = self.clone();
+        let prepared = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+            manager_for_prepare.prepare_request(input)
+        })
+        .await
+        .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))??;
 
         if !prepared.force_refresh {
-            if let Some(record) = {
-                let connection = self.inner.storage.connection();
-                translation_jobs::find_latest_completed_by_cache_key(
-                    &connection,
-                    &prepared.cache_key,
-                )?
-            } {
-                if self
-                    .inner
-                    .artifact_index
-                    .validate_completed_record(&self.inner.storage, &record)
-                    .is_ok()
-                {
-                    return self
-                        .inner
-                        .artifact_index
-                        .dto_from_record(&self.inner.storage, record);
-                }
+            // 缓存命中检查：lookup → validate → dto_from_record 全程访问 SQLite，
+            // 一次性放进 spawn_blocking 减少多次切线程开销
+            let storage = self.inner.storage.clone();
+            let artifact_index = self.inner.artifact_index.clone();
+            let cache_key_for_lookup = prepared.cache_key.clone();
+            let cached_dto = tokio::task::spawn_blocking(
+                move || -> Result<Option<TranslationJobDto>, AppError> {
+                    let record_opt = {
+                        let connection = storage.connection();
+                        translation_jobs::find_latest_completed_by_cache_key(
+                            &connection,
+                            &cache_key_for_lookup,
+                        )?
+                    };
+                    if let Some(record) = record_opt {
+                        if artifact_index
+                            .validate_completed_record(&storage, &record)
+                            .is_ok()
+                        {
+                            return Ok(Some(artifact_index.dto_from_record(&storage, record)?));
+                        }
+                    }
+                    Ok(None)
+                },
+            )
+            .await
+            .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))??;
+
+            if let Some(dto) = cached_dto {
+                return Ok(dto);
             }
         }
 
         {
-            let registry = self.inner.registry.lock().await;
-            if let Some(existing_job_id) = registry.inflight_job_for_cache_key(&prepared.cache_key)
-            {
-                drop(registry);
-                if let Some(record) = self.lookup_job(&existing_job_id)? {
+            let existing_job_id = {
+                let registry = self.inner.registry.lock().await;
+                registry.inflight_job_for_cache_key(&prepared.cache_key)
+            };
+            if let Some(existing_job_id) = existing_job_id {
+                // lookup_job 内部访问 SQLite，走 spawn_blocking
+                let record_opt = self.lookup_job_async(existing_job_id.clone()).await?;
+
+                if let Some(record) = record_opt {
                     if !is_terminal_status(&record.status) {
                         return Ok(self.inner.artifact_index.dto_from_record_basic(record));
                     }
@@ -186,6 +222,9 @@ impl TranslationManager {
 
         self.ensure_engine(None, false).await?;
 
+        // 持有 registry 锁期间，SQLite 写入仍走 spawn_blocking 隔离，
+        // 这样既保证 queue_len 检查与 register 之间没有并发漏洞，
+        // 又避免在 tokio worker 上长期持有 parking_lot::Mutex。
         let job = {
             let mut registry = self.inner.registry.lock().await;
             if registry.queue_len() >= MAX_QUEUED_JOBS {
@@ -198,29 +237,34 @@ impl TranslationManager {
             }
 
             let timestamp = Utc::now().to_rfc3339();
-            let job = {
-                let connection = self.inner.storage.connection();
-                translation_jobs::create(
+            let storage_for_create = self.inner.storage.clone();
+            let prepared_for_create = prepared.clone();
+            let timestamp_for_create = timestamp.clone();
+            let job_record = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+                let connection = storage_for_create.connection();
+                Ok(translation_jobs::create(
                     &connection,
                     &translation_jobs::CreateTranslationJobParams {
-                        document_id: prepared.document_id.clone(),
+                        document_id: prepared_for_create.document_id.clone(),
                         engine_job_id: None,
-                        cache_key: prepared.cache_key.clone(),
-                        provider: prepared.provider.clone(),
-                        model: prepared.model.clone(),
-                        source_lang: prepared.source_lang.clone(),
-                        target_lang: prepared.target_lang.clone(),
+                        cache_key: prepared_for_create.cache_key.clone(),
+                        provider: prepared_for_create.provider.clone(),
+                        model: prepared_for_create.model.clone(),
+                        source_lang: prepared_for_create.source_lang.clone(),
+                        target_lang: prepared_for_create.target_lang.clone(),
                         status: "queued".to_string(),
                         stage: "queued".to_string(),
                         progress: 0.0,
-                        created_at: timestamp,
+                        created_at: timestamp_for_create,
                     },
-                )?
-            };
+                )?)
+            })
+            .await
+            .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))??;
 
-            registry.register(job.job_id.clone(), prepared);
+            registry.register(job_record.job_id.clone(), prepared);
             let should_spawn = registry.try_mark_worker_running();
-            (job, should_spawn)
+            (job_record, should_spawn)
         };
 
         if job.1 {
@@ -245,27 +289,39 @@ impl TranslationManager {
     }
 
     pub async fn cancel_translation(&self, job_id: String) -> Result<bool, AppError> {
-        if let Some(record) = self.lookup_job(&job_id)? {
+        // lookup_job 内部访问 SQLite，走 spawn_blocking
+        let initial_record = self.lookup_job_async(job_id.clone()).await?;
+        if let Some(record) = initial_record {
             if is_terminal_status(&record.status) {
                 return Ok(false);
             }
         }
 
-        {
+        // 队列内取消标记是同步操作，但 update_local_job 写入 SQLite，
+        // 因此先在 registry 守卫内拿到 cancelled 标志，再走 spawn_blocking 落库。
+        let cancelled_in_queue = {
             let mut registry = self.inner.registry.lock().await;
-            if registry.cancel_queued(&job_id) {
-                self.update_local_job(
-                    &job_id,
+            registry.cancel_queued(&job_id)
+        };
+        if cancelled_in_queue {
+            let manager_for_update = self.clone();
+            let job_id_for_update = job_id.clone();
+            let finished_at = Utc::now().to_rfc3339();
+            tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+                manager_for_update.update_local_job(
+                    &job_id_for_update,
                     "cancelled",
                     "cancelled",
                     Some("JOB_CANCELLED"),
                     Some("用户在队列中取消了翻译任务"),
                     None,
-                    Some(Utc::now().to_rfc3339()),
+                    Some(finished_at),
                     Some(0.0),
-                )?;
-                return Ok(true);
-            }
+                )
+            })
+            .await
+            .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))??;
+            return Ok(true);
         }
 
         let maybe_engine_job_id = {
@@ -278,7 +334,9 @@ impl TranslationManager {
             return Ok(true);
         }
 
-        if let Some(record) = self.lookup_job(&job_id)? {
+        // lookup_job 内部访问 SQLite，走 spawn_blocking
+        let final_record = self.lookup_job_async(job_id.clone()).await?;
+        if let Some(record) = final_record {
             if let Some(engine_job_id) = record.engine_job_id {
                 let _ = self.inner.http_client.cancel_job(&engine_job_id).await;
                 return Ok(true);
@@ -480,30 +538,34 @@ impl TranslationManager {
         };
 
         if snapshot.cancel_requested {
-            let _ = self.update_local_job(
-                &job_id,
-                "cancelled",
-                "cancelled",
-                Some("JOB_CANCELLED"),
-                Some("任务在调度前被取消"),
-                None,
-                Some(Utc::now().to_rfc3339()),
-                Some(0.0),
-            );
+            let _ = self
+                .update_local_job_async(
+                    job_id.clone(),
+                    "cancelled".to_string(),
+                    "cancelled".to_string(),
+                    Some("JOB_CANCELLED".to_string()),
+                    Some("任务在调度前被取消".to_string()),
+                    None,
+                    Some(Utc::now().to_rfc3339()),
+                    Some(0.0),
+                )
+                .await;
             return;
         }
 
         let started_at = Utc::now().to_rfc3339();
-        let _ = self.update_local_job(
-            &job_id,
-            "running",
-            "preflight",
-            None,
-            None,
-            Some(started_at.clone()),
-            None,
-            Some(0.0),
-        );
+        let _ = self
+            .update_local_job_async(
+                job_id.clone(),
+                "running".to_string(),
+                "preflight".to_string(),
+                None,
+                None,
+                Some(started_at.clone()),
+                None,
+                Some(0.0),
+            )
+            .await;
 
         let create_request = CreateJobRequest {
             request_id: job_id.clone(),
@@ -536,29 +598,42 @@ impl TranslationManager {
             Err(()) => return,
         };
 
+        // SQLite 写入走 spawn_blocking
         {
-            let connection = self.inner.storage.connection();
-            let _ = translation_jobs::set_engine_job_id(
-                &connection,
-                &job_id,
-                Some(&create_response.job_id),
-            );
+            let storage = self.inner.storage.clone();
+            let job_id_for_set = job_id.clone();
+            let engine_job_id_for_set = create_response.job_id.clone();
+            let _ = tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+                let connection = storage.connection();
+                translation_jobs::set_engine_job_id(
+                    &connection,
+                    &job_id_for_set,
+                    Some(&engine_job_id_for_set),
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(|join_err| {
+                eprintln!("set_engine_job_id 任务异常退出: {join_err}");
+            });
         }
         {
             let mut registry = self.inner.registry.lock().await;
             registry.set_engine_job_id(&job_id, Some(create_response.job_id.clone()));
         }
 
-        let _ = self.update_local_job(
-            &job_id,
-            &create_response.status,
-            "queued",
-            None,
-            None,
-            Some(started_at.clone()),
-            None,
-            Some(0.0),
-        );
+        let _ = self
+            .update_local_job_async(
+                job_id.clone(),
+                create_response.status.clone(),
+                "queued".to_string(),
+                None,
+                None,
+                Some(started_at.clone()),
+                None,
+                Some(0.0),
+            )
+            .await;
 
         self.poll_engine_job(
             job_id,
@@ -576,6 +651,7 @@ impl TranslationManager {
         document_id: String,
         started_at: Option<String>,
     ) {
+        let mut consecutive_status_poll_failures = 0u32;
         loop {
             let cancel_requested = {
                 let registry = self.inner.registry.lock().await;
@@ -589,23 +665,45 @@ impl TranslationManager {
             }
 
             let job = match self.inner.http_client.get_job(&engine_job_id).await {
-                Ok(job) => job,
+                Ok(job) => {
+                    consecutive_status_poll_failures = 0;
+                    job
+                }
                 Err(error) => {
-                    let _ = self
-                        .handle_engine_transport_failure(&job_id, &error, started_at.clone())
-                        .await;
+                    if self
+                        .handle_status_poll_failure(
+                            &job_id,
+                            &engine_job_id,
+                            &error,
+                            &mut consecutive_status_poll_failures,
+                            started_at.clone(),
+                        )
+                        .await
+                        .is_retryable()
+                    {
+                        sleep(Duration::from_millis(DEFAULT_POLL_INTERVAL_MS)).await;
+                        continue;
+                    }
                     return;
                 }
             };
 
+            // apply_engine_job_status 内部多处访问 SQLite，走 spawn_blocking
+            let job_status = job.status.clone();
             if self
-                .apply_engine_job_status(&job_id, &job, &document_id, started_at.clone())
+                .apply_engine_job_status_async(
+                    job_id.clone(),
+                    job,
+                    document_id.clone(),
+                    started_at.clone(),
+                )
+                .await
                 .is_err()
             {
                 return;
             }
 
-            if is_terminal_status(&job.status) {
+            if is_terminal_status(&job_status) {
                 return;
             }
 
@@ -632,25 +730,31 @@ impl TranslationManager {
                     .updated_at
                     .clone()
                     .unwrap_or_else(|| Utc::now().to_rfc3339());
-                if let Some(result) = job.result.as_ref() {
-                    self.inner.artifact_index.persist_result(
-                        &self.inner.storage,
+                {
+                    let mut connection = self.inner.storage.connection();
+                    let transaction = connection.transaction()?;
+                    if let Some(result) = job.result.as_ref() {
+                        self.inner.artifact_index.persist_result_with_connection(
+                            &transaction,
+                            job_id,
+                            document_id,
+                            result,
+                            &finished_at,
+                        )?;
+                    }
+                    translation_jobs::update_status(
+                        &transaction,
                         job_id,
-                        document_id,
-                        result,
-                        &finished_at,
+                        "completed",
+                        "completed",
+                        1.0,
+                        None,
+                        None,
+                        started_at.as_deref(),
+                        Some(&finished_at),
                     )?;
+                    transaction.commit()?;
                 }
-                self.update_local_job(
-                    job_id,
-                    "completed",
-                    "completed",
-                    None,
-                    None,
-                    started_at,
-                    Some(finished_at),
-                    Some(1.0),
-                )?;
                 if let Err(error) =
                     cache_eviction::evict_if_needed_excluding(&self.inner.storage, Some(job_id))
                 {
@@ -706,6 +810,48 @@ impl TranslationManager {
         Ok(())
     }
 
+    async fn handle_status_poll_failure(
+        &self,
+        job_id: &str,
+        engine_job_id: &str,
+        error: &AppError,
+        consecutive_failures: &mut u32,
+        started_at: Option<String>,
+    ) -> StatusPollFailureAction {
+        if matches!(
+            error.code,
+            AppErrorCode::EngineUnavailable | AppErrorCode::EngineTimeout
+        ) {
+            self.inner.supervisor.record_runtime_failure().await;
+        }
+
+        if !is_retryable_status_poll_error(error) {
+            let final_error = user_facing_status_poll_error(error);
+            let _ = self
+                .fail_job_async(job_id.to_string(), final_error, started_at)
+                .await;
+            return StatusPollFailureAction::Failed;
+        }
+
+        *consecutive_failures += 1;
+        let failure_limit = status_poll_failure_limit(error);
+        if *consecutive_failures <= failure_limit {
+            eprintln!(
+                "翻译任务状态轮询暂时失败，将继续重试, job_id={job_id}, engine_job_id={engine_job_id}, attempt={}/{failure_limit}, code={}, err={}",
+                *consecutive_failures,
+                error.code.as_contract_str(),
+                error
+            );
+            return StatusPollFailureAction::Retry;
+        }
+
+        let final_error = user_facing_status_poll_error(error);
+        let _ = self
+            .fail_job_async(job_id.to_string(), final_error, started_at)
+            .await;
+        StatusPollFailureAction::Failed
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn update_local_job(
         &self,
@@ -737,6 +883,63 @@ impl TranslationManager {
             }
         }
         Ok(())
+    }
+
+    /// async 上下文调用 update_local_job 的统一包装：用 spawn_blocking 隔离 SQLite 同步 IO
+    #[allow(clippy::too_many_arguments)]
+    async fn update_local_job_async(
+        &self,
+        job_id: String,
+        status: String,
+        stage: String,
+        error_code: Option<String>,
+        error_message: Option<String>,
+        started_at: Option<String>,
+        finished_at: Option<String>,
+        progress: Option<f64>,
+    ) -> Result<(), AppError> {
+        let manager = self.clone();
+        tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+            manager.update_local_job(
+                &job_id,
+                &status,
+                &stage,
+                error_code.as_deref(),
+                error_message.as_deref(),
+                started_at,
+                finished_at,
+                progress,
+            )
+        })
+        .await
+        .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))?
+    }
+
+    /// async 上下文 lookup_job：spawn_blocking 包装
+    async fn lookup_job_async(
+        &self,
+        job_id: String,
+    ) -> Result<Option<translation_jobs::TranslationJobRecord>, AppError> {
+        let manager = self.clone();
+        tokio::task::spawn_blocking(move || -> Result<_, AppError> { manager.lookup_job(&job_id) })
+            .await
+            .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))?
+    }
+
+    /// async 上下文 apply_engine_job_status：spawn_blocking 包装
+    async fn apply_engine_job_status_async(
+        &self,
+        job_id: String,
+        job: GetJobResponse,
+        document_id: String,
+        started_at: Option<String>,
+    ) -> Result<(), AppError> {
+        let manager = self.clone();
+        tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+            manager.apply_engine_job_status(&job_id, &job, &document_id, started_at)
+        })
+        .await
+        .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))?
     }
 
     async fn submit_engine_job(
@@ -811,7 +1014,29 @@ impl TranslationManager {
         ) {
             self.inner.supervisor.record_runtime_failure().await;
         }
-        self.fail_job(job_id, error, started_at)
+        // fail_job 内部访问 SQLite，走 spawn_blocking
+        let manager = self.clone();
+        let job_id_owned = job_id.to_string();
+        let error_owned = error.clone();
+        tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+            manager.fail_job(&job_id_owned, &error_owned, started_at)
+        })
+        .await
+        .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))?
+    }
+
+    async fn fail_job_async(
+        &self,
+        job_id: String,
+        error: AppError,
+        started_at: Option<String>,
+    ) -> Result<(), AppError> {
+        let manager = self.clone();
+        tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+            manager.fail_job(&job_id, &error, started_at)
+        })
+        .await
+        .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))?
     }
 
     fn fail_job(
@@ -856,6 +1081,65 @@ fn default_stage_for_status(status: &str) -> &str {
     }
 }
 
+enum StatusPollFailureAction {
+    Retry,
+    Failed,
+}
+
+impl StatusPollFailureAction {
+    fn is_retryable(&self) -> bool {
+        matches!(self, Self::Retry)
+    }
+}
+
+fn is_retryable_status_poll_error(error: &AppError) -> bool {
+    matches!(
+        error.code,
+        AppErrorCode::EngineUnavailable | AppErrorCode::EngineTimeout
+    ) || is_engine_job_not_found(error)
+}
+
+fn status_poll_failure_limit(error: &AppError) -> u32 {
+    if is_engine_job_not_found(error) {
+        MAX_STATUS_POLL_JOB_NOT_FOUND_FAILURES
+    } else {
+        MAX_STATUS_POLL_TRANSPORT_FAILURES
+    }
+}
+
+fn is_engine_job_not_found(error: &AppError) -> bool {
+    error
+        .details
+        .as_ref()
+        .and_then(|details| details.get("engineCode"))
+        .and_then(|value| value.as_str())
+        .is_some_and(|code| code == "JOB_NOT_FOUND")
+}
+
+fn user_facing_status_poll_error(error: &AppError) -> AppError {
+    if is_engine_job_not_found(error) {
+        return AppError::new(
+            AppErrorCode::TranslationFailed,
+            "翻译引擎重启后丢失了任务状态，请重新发起翻译",
+            false,
+        )
+        .with_detail("engineCode", "JOB_NOT_FOUND");
+    }
+
+    if matches!(
+        error.code,
+        AppErrorCode::EngineUnavailable | AppErrorCode::EngineTimeout
+    ) {
+        return AppError::new(
+            error.code,
+            "翻译引擎连接持续中断，任务状态无法确认，请稍后重新发起翻译",
+            true,
+        );
+    }
+
+    AppError::new(error.code, error.message.clone(), error.retryable)
+}
+
 fn normalize_output_mode(output_mode: String) -> Result<String, AppError> {
     match output_mode.as_str() {
         "translated" | "translated_only" => Ok("translated_only".to_string()),
@@ -870,9 +1154,24 @@ fn normalize_output_mode(output_mode: String) -> Result<String, AppError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::errors::AppErrorCode;
+    use std::{path::PathBuf, sync::Arc};
 
-    use super::normalize_output_mode;
+    use chrono::Utc;
+    use parking_lot::Mutex as ParkingMutex;
+    use uuid::Uuid;
+
+    use crate::{
+        errors::{AppError, AppErrorCode},
+        ipc::translation::TranslationEngineStatus,
+        keychain::KeychainService,
+        models::DocumentSourceType,
+        storage::{documents, translation_jobs, Storage},
+    };
+
+    use super::{
+        http_client::GetJobResponse, normalize_output_mode, StatusPollFailureAction,
+        TranslationManager, MAX_STATUS_POLL_TRANSPORT_FAILURES,
+    };
 
     #[test]
     fn normalize_output_mode_accepts_contract_value_and_legacy_alias() {
@@ -894,5 +1193,228 @@ mod tests {
     fn normalize_output_mode_rejects_unknown_values() {
         let error = normalize_output_mode("side_by_side".to_string()).unwrap_err();
         assert_eq!(error.code, AppErrorCode::TranslationFailed);
+    }
+
+    #[tokio::test]
+    async fn status_poll_transient_errors_do_not_fail_job_before_completed_status() {
+        let (manager, storage, job_id, document_id) = setup_manager_with_running_job();
+        let started_at = Some(Utc::now().to_rfc3339());
+        let mut consecutive_failures = 0;
+        let error = AppError::new(
+            AppErrorCode::EngineUnavailable,
+            "翻译引擎暂时无法连接，正在尝试恢复",
+            true,
+        );
+
+        for _ in 0..3 {
+            let action = manager
+                .handle_status_poll_failure(
+                    &job_id,
+                    "engine-job-1",
+                    &error,
+                    &mut consecutive_failures,
+                    started_at.clone(),
+                )
+                .await;
+            assert!(matches!(action, StatusPollFailureAction::Retry));
+            let record = lookup_test_job(&storage, &job_id);
+            assert_eq!(record.status, "running");
+            assert_eq!(record.stage, "preflight");
+            assert!(record.error_message.is_none());
+        }
+
+        manager
+            .apply_engine_job_status(
+                &job_id,
+                &GetJobResponse {
+                    job_id: "engine-job-1".to_string(),
+                    document_id: Some(document_id.clone()),
+                    status: "completed".to_string(),
+                    stage: Some("completed".to_string()),
+                    progress: Some(1.0),
+                    queue_position: None,
+                    current_page: None,
+                    total_pages: None,
+                    provider: None,
+                    model: None,
+                    started_at: started_at.clone(),
+                    updated_at: Some(Utc::now().to_rfc3339()),
+                    result: None,
+                    error: None,
+                },
+                &document_id,
+                started_at,
+            )
+            .expect("completed status should apply after transient poll errors");
+
+        let record = lookup_test_job(&storage, &job_id);
+        assert_eq!(record.status, "completed");
+        assert_eq!(record.stage, "completed");
+        assert_eq!(record.progress, 1.0);
+        assert!(record.error_message.is_none());
+    }
+
+    #[tokio::test]
+    async fn status_poll_persistent_connection_errors_fail_with_clear_message() {
+        let (manager, storage, job_id, _document_id) = setup_manager_with_running_job();
+        let started_at = Some(Utc::now().to_rfc3339());
+        let mut consecutive_failures = 0;
+        let error = AppError::new(
+            AppErrorCode::EngineUnavailable,
+            "翻译引擎暂时无法连接，正在尝试恢复",
+            true,
+        )
+        .with_detail(
+            "transportError",
+            "error sending request for url (http://127.0.0.1:8890/v1/jobs/demo)",
+        );
+
+        for _ in 0..MAX_STATUS_POLL_TRANSPORT_FAILURES {
+            let action = manager
+                .handle_status_poll_failure(
+                    &job_id,
+                    "engine-job-1",
+                    &error,
+                    &mut consecutive_failures,
+                    started_at.clone(),
+                )
+                .await;
+            assert!(matches!(action, StatusPollFailureAction::Retry));
+        }
+
+        let action = manager
+            .handle_status_poll_failure(
+                &job_id,
+                "engine-job-1",
+                &error,
+                &mut consecutive_failures,
+                started_at,
+            )
+            .await;
+        assert!(matches!(action, StatusPollFailureAction::Failed));
+
+        let record = lookup_test_job(&storage, &job_id);
+        assert_eq!(record.status, "failed");
+        assert_eq!(record.stage, "failed");
+        assert_eq!(record.error_code.as_deref(), Some("ENGINE_UNAVAILABLE"));
+        let message = record.error_message.expect("failed job should store message");
+        assert!(message.contains("翻译引擎连接持续中断"));
+        assert!(!message.contains("http://127.0.0.1"));
+        assert!(!message.contains("error sending request"));
+    }
+
+    #[tokio::test]
+    async fn status_poll_recent_engine_job_not_found_is_retried_before_clear_failure() {
+        let (manager, storage, job_id, _document_id) = setup_manager_with_running_job();
+        let started_at = Some(Utc::now().to_rfc3339());
+        let mut consecutive_failures = 0;
+        let error = AppError::new(AppErrorCode::TranslationFailed, "未找到任务: engine-job-1", false)
+            .with_detail("engineCode", "JOB_NOT_FOUND");
+
+        let action = manager
+            .handle_status_poll_failure(
+                &job_id,
+                "engine-job-1",
+                &error,
+                &mut consecutive_failures,
+                started_at.clone(),
+            )
+            .await;
+        assert!(matches!(action, StatusPollFailureAction::Retry));
+        assert_eq!(lookup_test_job(&storage, &job_id).status, "running");
+
+        while matches!(
+            manager
+                .handle_status_poll_failure(
+                    &job_id,
+                    "engine-job-1",
+                    &error,
+                    &mut consecutive_failures,
+                    started_at.clone(),
+                )
+                .await,
+            StatusPollFailureAction::Retry
+        ) {}
+
+        let record = lookup_test_job(&storage, &job_id);
+        assert_eq!(record.status, "failed");
+        let message = record.error_message.expect("job-not-found should explain recovery");
+        assert!(message.contains("丢失了任务状态"));
+        assert!(!message.contains("未找到任务: engine-job-1"));
+    }
+
+    fn setup_manager_with_running_job() -> (
+        TranslationManager,
+        Storage,
+        String,
+        String,
+    ) {
+        let storage = Storage::new_in_memory().expect("in-memory storage should initialize");
+        let data_dir = unique_test_dir();
+        let status = Arc::new(ParkingMutex::new(TranslationEngineStatus {
+            running: false,
+            pid: None,
+            port: 8890,
+            engine_version: None,
+            circuit_breaker_open: false,
+            last_health_check: None,
+        }));
+        let manager = TranslationManager::new(
+            data_dir,
+            storage.clone(),
+            KeychainService::default(),
+            status,
+        )
+        .expect("manager should initialize");
+        let timestamp = Utc::now().to_rfc3339();
+        let document = {
+            let connection = storage.connection();
+            documents::upsert(
+                &connection,
+                &documents::UpsertDocumentParams {
+                    file_path: format!("/tmp/{}.pdf", Uuid::new_v4()),
+                    file_sha256: Uuid::new_v4().to_string(),
+                    title: "Demo".to_string(),
+                    page_count: 1,
+                    source_type: DocumentSourceType::Local,
+                    zotero_item_key: None,
+                    timestamp: timestamp.clone(),
+                },
+            )
+            .expect("document should insert")
+        };
+        let job = {
+            let connection = storage.connection();
+            translation_jobs::create(
+                &connection,
+                &translation_jobs::CreateTranslationJobParams {
+                    document_id: document.document_id.clone(),
+                    engine_job_id: Some("engine-job-1".to_string()),
+                    cache_key: Uuid::new_v4().to_string(),
+                    provider: "openai".to_string(),
+                    model: "gpt-4o-mini".to_string(),
+                    source_lang: "en".to_string(),
+                    target_lang: "zh-CN".to_string(),
+                    status: "running".to_string(),
+                    stage: "preflight".to_string(),
+                    progress: 0.0,
+                    created_at: timestamp,
+                },
+            )
+            .expect("translation job should insert")
+        };
+
+        (manager, storage, job.job_id, document.document_id)
+    }
+
+    fn lookup_test_job(storage: &Storage, job_id: &str) -> translation_jobs::TranslationJobRecord {
+        let connection = storage.connection();
+        translation_jobs::get_by_id(&connection, job_id)
+            .expect("job lookup should succeed")
+            .expect("job should exist")
+    }
+
+    fn unique_test_dir() -> PathBuf {
+        std::env::temp_dir().join(format!("rastro-translation-test-{}", Uuid::new_v4()))
     }
 }

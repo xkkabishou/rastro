@@ -186,11 +186,19 @@ impl ZoteroConnector {
 
         let (total, rows) = if let Some(cid) = collection_id {
             let total = query_total_in_collection(&connection, cid, &query_value, &like_query)?;
-            let rows = query_page_in_collection(&connection, cid, &query_value, &like_query, offset, limit)?;
+            let rows = query_page_in_collection(
+                &connection,
+                cid,
+                &query_value,
+                &like_query,
+                offset,
+                limit,
+            )?;
             (total, rows)
         } else {
             let total = query_total_uncategorized(&connection, &query_value, &like_query)?;
-            let rows = query_page_uncategorized(&connection, &query_value, &like_query, offset, limit)?;
+            let rows =
+                query_page_uncategorized(&connection, &query_value, &like_query, offset, limit)?;
             (total, rows)
         };
 
@@ -300,7 +308,9 @@ impl ZoteroConnector {
         let file_path = self.resolve_attachment_reference(&attachment)?;
 
         // 查询 parent item 的标题
-        let title = lookup_item_title(&connection, &attachment.parent_item_key).ok().flatten();
+        let title = lookup_item_title(&connection, &attachment.parent_item_key)
+            .ok()
+            .flatten();
 
         Ok(ResolvedAttachment {
             parent_item_key: attachment.parent_item_key,
@@ -383,7 +393,9 @@ impl ZoteroConnector {
             ))
         })?;
         // 写入操作需要更长的等待时间（Zotero 可能持有 WAL 锁）
-        connection.busy_timeout(Duration::from_millis(5000)).map_err(map_sqlite_error)?;
+        connection
+            .busy_timeout(Duration::from_millis(5000))
+            .map_err(map_sqlite_error)?;
         Ok(connection)
     }
 
@@ -421,27 +433,21 @@ impl ZoteroConnector {
         let new_key = generate_unique_key(&connection)?;
 
         // 在 storage 目录下创建子文件夹并写入文件
-        let storage_dir = self
-            .library
-            .profile_dir
-            .join("storage")
-            .join(&new_key);
-        std::fs::create_dir_all(&storage_dir).map_err(|e| {
-            AppError::internal(format!("创建 Zotero 存储目录失败: {}", e))
-        })?;
+        let storage_dir = self.library.profile_dir.join("storage").join(&new_key);
+        std::fs::create_dir_all(&storage_dir)
+            .map_err(|e| AppError::internal(format!("创建 Zotero 存储目录失败: {}", e)))?;
 
         let file_path = storage_dir.join(filename);
-        std::fs::write(&file_path, content).map_err(|e| {
-            AppError::internal(format!("写入附件文件失败: {}", e))
-        })?;
+        std::fs::write(&file_path, content)
+            .map_err(|e| AppError::internal(format!("写入附件文件失败: {}", e)))?;
 
         // 在事务中插入数据库记录
-        let now = chrono::Utc::now()
-            .format("%Y-%m-%d %H:%M:%S")
-            .to_string();
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let storage_path = format!("storage:{}", filename);
 
-        let tx = connection.unchecked_transaction().map_err(map_sqlite_error)?;
+        let tx = connection
+            .unchecked_transaction()
+            .map_err(map_sqlite_error)?;
 
         // 插入 items 表（itemTypeID=3 = attachment）
         tx.execute(
@@ -515,15 +521,12 @@ impl ZoteroConnector {
             .join(attachment_key)
             .join(filename);
 
-        std::fs::write(&file_path, content).map_err(|e| {
-            AppError::internal(format!("更新附件文件失败: {}", e))
-        })?;
+        std::fs::write(&file_path, content)
+            .map_err(|e| AppError::internal(format!("更新附件文件失败: {}", e)))?;
 
         // 更新修改时间
         let connection = self.open_write_connection()?;
-        let now = chrono::Utc::now()
-            .format("%Y-%m-%d %H:%M:%S")
-            .to_string();
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         connection
             .execute(
                 "UPDATE items SET dateModified = ?1, clientDateModified = ?1, synced = 0
@@ -571,21 +574,21 @@ impl ZoteroConnector {
 
         // 拷贝文件到 storage 目录
         let storage_dir = self.library.profile_dir.join("storage").join(&new_key);
-        std::fs::create_dir_all(&storage_dir).map_err(|e| {
-            AppError::internal(format!("创建 Zotero 存储目录失败: {}", e))
-        })?;
+        std::fs::create_dir_all(&storage_dir)
+            .map_err(|e| AppError::internal(format!("创建 Zotero 存储目录失败: {}", e)))?;
 
         let target_path = storage_dir.join(target_filename);
         // 使用软连接而非拷贝，节省磁盘空间
-        std::os::unix::fs::symlink(source_file_path, &target_path).map_err(|e| {
-            AppError::internal(format!("创建软连接到 Zotero 失败: {}", e))
-        })?;
+        std::os::unix::fs::symlink(source_file_path, &target_path)
+            .map_err(|e| AppError::internal(format!("创建软连接到 Zotero 失败: {}", e)))?;
 
         // 插入数据库记录
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let storage_path = format!("storage:{}", target_filename);
 
-        let tx = connection.unchecked_transaction().map_err(map_sqlite_error)?;
+        let tx = connection
+            .unchecked_transaction()
+            .map_err(map_sqlite_error)?;
 
         tx.execute(
             "INSERT INTO items (itemTypeID, dateAdded, dateModified, clientDateModified, libraryID, key, version, synced)
@@ -976,10 +979,7 @@ fn lookup_attachment_by_item_key(
 }
 
 /// 根据 item_key 查询 Zotero 文献标题
-fn lookup_item_title(
-    connection: &Connection,
-    item_key: &str,
-) -> Result<Option<String>, AppError> {
+fn lookup_item_title(connection: &Connection, item_key: &str) -> Result<Option<String>, AppError> {
     connection
         .query_row(
             "SELECT idv.value
@@ -1188,7 +1188,9 @@ fn query_total_in_collection(
         collection_item_filter_sql()
     );
     connection
-        .query_row(&sql, params![collection_id, query, like_query], |row| row.get(0))
+        .query_row(&sql, params![collection_id, query, like_query], |row| {
+            row.get(0)
+        })
         .map_err(map_sqlite_error)
 }
 
@@ -1245,16 +1247,19 @@ fn query_page_in_collection(
 
     let mut statement = connection.prepare(&sql).map_err(map_sqlite_error)?;
     let rows = statement
-        .query_map(params![collection_id, query, like_query, limit, offset], |row| {
-            Ok(PageRow {
-                item_id: row.get(0)?,
-                item_key: row.get(1)?,
-                date_added: row.get(2)?,
-                title: row.get(3)?,
-                publication_title: row.get(4)?,
-                raw_year: row.get(5)?,
-            })
-        })
+        .query_map(
+            params![collection_id, query, like_query, limit, offset],
+            |row| {
+                Ok(PageRow {
+                    item_id: row.get(0)?,
+                    item_key: row.get(1)?,
+                    date_added: row.get(2)?,
+                    title: row.get(3)?,
+                    publication_title: row.get(4)?,
+                    raw_year: row.get(5)?,
+                })
+            },
+        )
         .map_err(map_sqlite_error)?;
 
     rows.collect::<Result<Vec<_>, _>>()
@@ -1263,8 +1268,7 @@ fn query_page_in_collection(
 
 /// 未分类文献（不属于任何 collection）的过滤 SQL
 fn uncategorized_filter_sql() -> String {
-    format!(
-        "WHERE NOT EXISTS (
+    "WHERE NOT EXISTS (
              SELECT 1 FROM collectionItems ci WHERE ci.itemID = i.itemID
          )
          AND EXISTS (
@@ -1288,7 +1292,7 @@ fn uncategorized_filter_sql() -> String {
                  LIMIT 1
              ), '')) LIKE ?2
          )"
-    )
+    .to_string()
 }
 
 /// 未分类文献总数
@@ -1297,7 +1301,10 @@ fn query_total_uncategorized(
     query: &str,
     like_query: &str,
 ) -> Result<u32, AppError> {
-    let sql = format!("SELECT COUNT(*) FROM items i {}", uncategorized_filter_sql());
+    let sql = format!(
+        "SELECT COUNT(*) FROM items i {}",
+        uncategorized_filter_sql()
+    );
     connection
         .query_row(&sql, params![query, like_query], |row| row.get(0))
         .map_err(map_sqlite_error)

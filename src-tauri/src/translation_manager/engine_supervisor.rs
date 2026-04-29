@@ -19,12 +19,16 @@ use super::http_client::{HealthzResponse, TranslationHttpClient};
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(500);
+const ORPHAN_SHUTDOWN_GRACE: u64 = 3;
+const ORPHAN_PORT_RELEASE_WAIT: Duration = Duration::from_millis(500);
+const ORPHAN_PORT_RELEASE_TIMEOUT: Duration = Duration::from_secs(4);
 const CIRCUIT_WINDOW: Duration = Duration::from_secs(5 * 60);
 const BACKOFF_SEQUENCE: [Duration; 3] = [
     Duration::from_secs(30),
     Duration::from_secs(60),
     Duration::from_secs(180),
 ];
+const RUNTIME_PID_FILE: &str = "translation-engine.pid";
 
 #[derive(Clone)]
 pub struct EngineSupervisor {
@@ -51,6 +55,20 @@ struct CircuitBreakerState {
     recent_failures: Vec<Instant>,
     open_until: Option<Instant>,
     backoff_index: usize,
+}
+
+impl Drop for EngineSupervisorInner {
+    fn drop(&mut self) {
+        let Ok(mut state) = self.state.try_lock() else {
+            return;
+        };
+        if let Some(child) = state.child.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        state.child = None;
+        let _ = fs::remove_file(self.runtime_dir.join("translation-engine.pid"));
+    }
 }
 
 impl EngineSupervisor {
@@ -122,28 +140,20 @@ impl EngineSupervisor {
 
         if let Ok(health) = self.inner.http_client.healthz().await {
             if valid_health_signature(&health) {
-                let status = self.status_from_health(Some(health)).await;
-                return Ok(status);
+                if self.should_replace_untracked_engine().await {
+                    self.shutdown_untracked_engine_for_restart().await?;
+                } else {
+                    let status = self.status_from_health(Some(health)).await;
+                    return Ok(status);
+                }
             }
         }
 
         if self.port_in_use() {
-            // 先尝试优雅关闭可能的孤儿引擎进程（上次 tauri dev 退出时留下的）
-            let _ = self.inner.http_client.shutdown(3).await;
-            sleep(Duration::from_millis(500)).await;
-
-            // 再检查一次，如果端口释放了就继续启动
-            if self.port_in_use() {
-                return Err(AppError::new(
-                    AppErrorCode::EnginePortConflict,
-                    format!(
-                        "端口 {} 已被其他进程占用，请在终端执行: lsof -ti :{} | xargs kill -9",
-                        self.inner.port, self.inner.port
-                    ),
-                    false,
-                )
-                .with_detail("port", self.inner.port));
-            }
+            // 保守策略：只有前面的健康检查已经证明这是 Rastro translation-engine，
+            // 且被判定为 dev/孤儿进程时，才会走 shutdown_untracked_engine_for_restart。
+            // 走到这里说明端口仍被未知进程占用，不能向无关服务发送 shutdown。
+            return Err(self.port_conflict_error());
         }
 
         {
@@ -213,6 +223,47 @@ impl EngineSupervisor {
 
             sleep(HEALTH_POLL_INTERVAL).await;
         }
+    }
+
+    async fn should_replace_untracked_engine(&self) -> bool {
+        let has_tracked_child = {
+            let state = self.inner.state.lock().await;
+            state.child.is_some()
+        };
+        if has_tracked_child {
+            return false;
+        }
+
+        // dev 下每次新 Tauri 进程都应加载当前工作区代码，不复用上次 dev 遗留的引擎。
+        if cfg!(debug_assertions) {
+            return true;
+        }
+
+        self.read_runtime_pid_marker()
+            .is_some_and(runtime_pid_looks_orphaned)
+    }
+
+    async fn shutdown_untracked_engine_for_restart(&self) -> Result<(), AppError> {
+        eprintln!(
+            "检测到未被当前进程跟踪的 translation-engine，尝试关闭旧引擎后重启, port={}",
+            self.inner.port
+        );
+
+        if let Err(error) = self.inner.http_client.shutdown(ORPHAN_SHUTDOWN_GRACE).await {
+            eprintln!(
+                "关闭未跟踪 translation-engine 失败，将继续检测端口状态, port={}, err={}",
+                self.inner.port, error
+            );
+        }
+        self.wait_for_port_release(ORPHAN_PORT_RELEASE_TIMEOUT)
+            .await;
+
+        if self.port_in_use() {
+            return Err(self.port_conflict_error());
+        }
+
+        self.cleanup_runtime_markers()?;
+        Ok(())
     }
 
     pub async fn shutdown(&self, force: bool) -> Result<TranslationEngineStatus, AppError> {
@@ -388,8 +439,7 @@ impl EngineSupervisor {
         let venv_python = project_root.join(".venv").join("bin").join("python3");
 
         // 环境变量显式指定时，视为用户明确选择，不再 fallback 到其他候选
-        let candidates: Vec<String> = if let Ok(explicit) = std::env::var("RASTRO_ENGINE_PYTHON")
-        {
+        let candidates: Vec<String> = if let Ok(explicit) = std::env::var("RASTRO_ENGINE_PYTHON") {
             vec![explicit]
         } else {
             let mut list = Vec::new();
@@ -400,10 +450,10 @@ impl EngineSupervisor {
             // macOS Homebrew 路径（打包后的 .app 环境 PATH 受限，需显式探测）
             // 包含版本化路径，因为 python3 可能指向没装依赖的最新版本
             for brew_path in [
-                "/opt/homebrew/bin/python3",    // Apple Silicon
+                "/opt/homebrew/bin/python3", // Apple Silicon
                 "/opt/homebrew/bin/python3.13",
                 "/opt/homebrew/bin/python3.12",
-                "/usr/local/bin/python3",       // Intel Mac
+                "/usr/local/bin/python3", // Intel Mac
                 "/usr/local/bin/python3.13",
                 "/usr/local/bin/python3.12",
             ] {
@@ -472,8 +522,7 @@ impl EngineSupervisor {
 
                 // 记录第一个版本满足但模块缺失的候选，用于最终报错
                 if version_ok_but_modules_missing.is_none() {
-                    version_ok_but_modules_missing =
-                        Some((candidate.clone(), missing_module));
+                    version_ok_but_modules_missing = Some((candidate.clone(), missing_module));
                 }
             }
 
@@ -490,9 +539,7 @@ impl EngineSupervisor {
             if let Some((py, module)) = version_ok_but_modules_missing {
                 return Err(AppError::new(
                     AppErrorCode::PdfmathtranslateNotInstalled,
-                    format!(
-                        "缺少翻译运行依赖 {module}，请检查项目目录下是否存在该 Python 包"
-                    ),
+                    format!("缺少翻译运行依赖 {module}，请检查项目目录下是否存在该 Python 包"),
                     false,
                 )
                 .with_detail("python", py)
@@ -575,11 +622,20 @@ impl EngineSupervisor {
             .with_detail("python", python.to_string())
         })?;
 
-        fs::write(
-            self.inner.runtime_dir.join("translation-engine.pid"),
-            child.id().to_string(),
-        )?;
+        fs::write(self.runtime_pid_file(), child.id().to_string())?;
         Ok(child)
+    }
+
+    fn port_conflict_error(&self) -> AppError {
+        AppError::new(
+            AppErrorCode::EnginePortConflict,
+            format!(
+                "端口 {} 已被其他进程占用，请在终端执行: lsof -ti :{} | xargs kill -9",
+                self.inner.port, self.inner.port
+            ),
+            false,
+        )
+        .with_detail("port", self.inner.port)
     }
 
     fn port_in_use(&self) -> bool {
@@ -595,6 +651,16 @@ impl EngineSupervisor {
             self.inner.port,
         ));
         std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok()
+    }
+
+    async fn wait_for_port_release(&self, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if !self.port_in_use() {
+                return;
+            }
+            sleep(ORPHAN_PORT_RELEASE_WAIT).await;
+        }
     }
 
     async fn is_circuit_open(&self) -> bool {
@@ -635,11 +701,21 @@ impl EngineSupervisor {
     }
 
     fn cleanup_runtime_markers(&self) -> Result<(), AppError> {
-        let pid_file = self.inner.runtime_dir.join("translation-engine.pid");
+        let pid_file = self.runtime_pid_file();
         if pid_file.exists() {
             fs::remove_file(pid_file)?;
         }
         Ok(())
+    }
+
+    fn runtime_pid_file(&self) -> PathBuf {
+        self.inner.runtime_dir.join(RUNTIME_PID_FILE)
+    }
+
+    fn read_runtime_pid_marker(&self) -> Option<u32> {
+        fs::read_to_string(self.runtime_pid_file())
+            .ok()
+            .and_then(|value| value.trim().parse::<u32>().ok())
     }
 }
 
@@ -707,17 +783,50 @@ fn valid_health_signature(health: &HealthzResponse) -> bool {
         && health.engine_version.is_some()
 }
 
+#[cfg(unix)]
+fn runtime_pid_looks_orphaned(pid: u32) -> bool {
+    let output = Command::new("ps")
+        .args(["-o", "ppid=", "-p", &pid.to_string()])
+        .output();
+    let Ok(output) = output else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let parent_pid = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<u32>()
+        .ok();
+    matches!(parent_pid, Some(0 | 1))
+}
+
+#[cfg(not(unix))]
+fn runtime_pid_looks_orphaned(_pid: u32) -> bool {
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
         fs,
         net::TcpListener,
         path::PathBuf,
-        sync::{Arc, Mutex},
-        time::{SystemTime, UNIX_EPOCH},
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Mutex,
+        },
+        time::{Duration, SystemTime, UNIX_EPOCH},
     };
 
+    use axum::{
+        extract::State,
+        routing::{get, post},
+        Json, Router,
+    };
     use parking_lot::Mutex as ParkingMutex;
+    use serde_json::json;
+    use tokio::net::TcpListener as TokioTcpListener;
 
     use crate::{
         errors::AppErrorCode,
@@ -778,6 +887,78 @@ mod tests {
             .expect_err("bound port should fail fast");
 
         assert_eq!(error.code, AppErrorCode::EnginePortConflict);
+    }
+
+    #[tokio::test]
+    async fn ensure_started_does_not_reuse_untracked_app_owned_engine() {
+        let shutdown_calls = Arc::new(AtomicUsize::new(0));
+        let address = spawn_healthy_engine_server(shutdown_calls.clone()).await;
+        let supervisor = test_supervisor(address.port());
+        fs::write(
+            supervisor.runtime_pid_file(),
+            std::process::id().to_string(),
+        )
+        .unwrap();
+
+        let error = supervisor
+            .ensure_started(false)
+            .await
+            .expect_err("untracked app-owned engine should be shut down before reuse");
+
+        assert_eq!(error.code, AppErrorCode::EnginePortConflict);
+        assert!(
+            shutdown_calls.load(Ordering::SeqCst) > 0,
+            "supervisor should request /control/shutdown before reporting conflict"
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_started_does_not_shutdown_unrelated_process_on_bound_port() {
+        let shutdown_calls = Arc::new(AtomicUsize::new(0));
+        let address = spawn_unrelated_server(shutdown_calls.clone()).await;
+        let supervisor = test_supervisor(address.port());
+
+        let error = supervisor
+            .ensure_started(false)
+            .await
+            .expect_err("unrelated service on the port should be reported as conflict");
+
+        assert_eq!(error.code, AppErrorCode::EnginePortConflict);
+        assert_eq!(
+            shutdown_calls.load(Ordering::SeqCst),
+            0,
+            "supervisor must not call /control/shutdown on unrelated services"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn ensure_started_reuses_valid_health_when_child_is_tracked() {
+        let shutdown_calls = Arc::new(AtomicUsize::new(0));
+        let address = spawn_healthy_engine_server(shutdown_calls.clone()).await;
+        let supervisor = test_supervisor(address.port());
+        let child = std::process::Command::new("sh")
+            .args(["-c", "sleep 30"])
+            .spawn()
+            .unwrap();
+        let child_pid = child.id();
+        {
+            let mut state = supervisor.inner.state.lock().await;
+            state.child = Some(child);
+        }
+
+        let status = supervisor
+            .ensure_started(false)
+            .await
+            .expect("valid health with a tracked child should be reused");
+
+        assert!(status.running);
+        assert_eq!(status.pid, Some(child_pid));
+        assert_eq!(
+            shutdown_calls.load(Ordering::SeqCst),
+            0,
+            "tracked child must be reused without orphan shutdown"
+        );
     }
 
     #[tokio::test]
@@ -888,6 +1069,69 @@ exit 0
         let http_client = TranslationHttpClient::new("127.0.0.1", port).unwrap();
 
         EngineSupervisor::new("127.0.0.1".to_string(), port, data_dir, status, http_client).unwrap()
+    }
+
+    async fn spawn_healthy_engine_server(shutdown_calls: Arc<AtomicUsize>) -> std::net::SocketAddr {
+        async fn healthz_handler() -> Json<serde_json::Value> {
+            Json(json!({
+                "status": "ok",
+                "service": "translation-engine-system",
+                "engineVersion": "test-engine",
+            }))
+        }
+
+        async fn shutdown_handler(
+            State(shutdown_calls): State<Arc<AtomicUsize>>,
+        ) -> Json<serde_json::Value> {
+            shutdown_calls.fetch_add(1, Ordering::SeqCst);
+            Json(json!({
+                "accepted": true,
+                "activeJobId": null,
+            }))
+        }
+
+        let router = Router::new()
+            .route("/healthz", get(healthz_handler))
+            .route("/control/shutdown", post(shutdown_handler))
+            .with_state(shutdown_calls);
+        let listener = TokioTcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        address
+    }
+
+    async fn spawn_unrelated_server(shutdown_calls: Arc<AtomicUsize>) -> std::net::SocketAddr {
+        async fn healthz_handler() -> Json<serde_json::Value> {
+            Json(json!({
+                "status": "ok",
+                "service": "unrelated-service",
+                "engineVersion": "test-engine",
+            }))
+        }
+
+        async fn shutdown_handler(
+            State(shutdown_calls): State<Arc<AtomicUsize>>,
+        ) -> Json<serde_json::Value> {
+            shutdown_calls.fetch_add(1, Ordering::SeqCst);
+            Json(json!({
+                "accepted": true,
+            }))
+        }
+
+        let router = Router::new()
+            .route("/healthz", get(healthz_handler))
+            .route("/control/shutdown", post(shutdown_handler))
+            .with_state(shutdown_calls);
+        let listener = TokioTcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        address
     }
 
     fn free_port() -> u16 {

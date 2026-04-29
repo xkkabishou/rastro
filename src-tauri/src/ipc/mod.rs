@@ -10,4 +10,3 @@ pub mod title_translation;
 pub mod translation;
 pub mod translation_settings;
 pub mod zotero;
-

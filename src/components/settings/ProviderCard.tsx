@@ -199,7 +199,7 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
         )}
       </div>
 
-      <div className="space-y-2.5">
+      <div className="space-y-3">
         {/* Base URL 输入 */}
         <div>
           <label className="text-[10px] font-medium text-[var(--color-text-tertiary)] mb-1 block">

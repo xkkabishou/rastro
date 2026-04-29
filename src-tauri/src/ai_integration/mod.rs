@@ -76,7 +76,7 @@ impl AiIntegration {
     pub fn new(storage: Storage, keychain: KeychainService) -> Result<Self, AppError> {
         let client = Client::builder()
             .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_secs(180))
             .build()
             .map_err(|e| {
                 AppError::new(

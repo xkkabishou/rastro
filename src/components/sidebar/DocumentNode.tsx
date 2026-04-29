@@ -175,7 +175,7 @@ export const DocumentNode: React.FC<DocumentNodeProps> = React.memo(
               <div className="flex items-center gap-1 text-[10px] text-[var(--color-text-quaternary)]">
                 <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${
                   doc.sourceType === 'zotero'
-                    ? 'bg-blue-500/10 text-blue-500'
+                    ? 'bg-[var(--color-selected)] text-[var(--color-primary)]'
                     : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-quaternary)]'
                 }`}>
                   {doc.sourceType === 'zotero' ? 'Zotero' : '本地'}

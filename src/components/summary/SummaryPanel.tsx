@@ -220,13 +220,13 @@ export const SummaryPanel: React.FC = () => {
               disabled={isSyncing}
               className={`p-1.5 rounded-md hover:bg-[var(--color-hover)] disabled:opacity-50 transition-colors ${
                 syncError && !syncSuccess
-                  ? 'text-red-400'
+                  ? 'text-[var(--color-destructive)]'
                   : 'text-[var(--color-text-tertiary)]'
               }`}
               title={syncTooltip}
             >
               {syncSuccess ? (
-                <Check size={14} className="text-emerald-500" />
+                <Check size={14} className="text-[var(--color-success)]" />
               ) : isSyncing ? (
                 <Loader2 size={14} className="animate-spin" />
               ) : (

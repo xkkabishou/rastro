@@ -178,15 +178,13 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use chrono::Utc;
-    use rusqlite::params;
-
     use crate::{
         models::{ArtifactKind, DocumentSourceType},
         storage::{
             document_summaries, documents, translation_artifacts, translation_jobs, Storage,
         },
     };
+    use chrono::Utc;
 
     use super::{list_artifacts_for_document, AppErrorCode};
 

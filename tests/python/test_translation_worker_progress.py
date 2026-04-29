@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+import time
 import unittest
 
-from rastro_translation_engine.worker import TranslationJob, TranslationWorker
+from rastro_translation_engine.worker import (
+    HEARTBEAT_INTERVAL_SECONDS,
+    HEARTBEAT_PROGRESS_CAP,
+    VISIBLE_START_PROGRESS,
+    JobStatus,
+    TranslationJob,
+    TranslationWorker,
+)
 
 
 class TranslationWorkerProgressTests(unittest.TestCase):
@@ -100,6 +108,109 @@ class TranslationWorkerProgressTests(unittest.TestCase):
         )
 
         self.assertAlmostEqual(job.progress, 0.98)
+
+    def test_babeldoc_long_translate_stage_sets_visible_progress(self):
+        """BabelDOC 真实长阶段名应映射为 translating，0 进度也要给 UI 最小可见值。"""
+        job = self._job()
+        worker = TranslationWorker()
+
+        worker._apply_progress_event(
+            job,
+            {
+                "type": "progress_start",
+                "stage": "Translate Paragraphs",
+                "overall_progress": 0.0,
+                "stage_current": 0,
+                "stage_total": 25,
+            },
+        )
+
+        self.assertEqual(job.stage, "translating")
+        self.assertAlmostEqual(job.progress, VISIBLE_START_PROGRESS)
+
+    def test_babeldoc_real_postprocessing_stage_mapping(self):
+        """BabelDOC Save PDF 阶段应映射为 postprocessing。"""
+        job = self._job()
+        worker = TranslationWorker()
+
+        worker._apply_progress_event(
+            job,
+            {
+                "type": "progress_update",
+                "stage": "Save PDF",
+                "overall_progress": 92.0,
+            },
+        )
+
+        self.assertEqual(job.stage, "postprocessing")
+        self.assertAlmostEqual(job.progress, 0.92)
+
+    def test_heartbeat_moves_preflight_to_visible_micro_progress(self):
+        """长时间无回调时 heartbeat 不应只刷新 updated_at。"""
+        job = self._job()
+        job.status = JobStatus.RUNNING
+        job.stage = "preflight"
+        job.progress = 0.0
+        job._last_progress_monotonic = time.monotonic() - HEARTBEAT_INTERVAL_SECONDS - 1
+        worker = TranslationWorker()
+
+        worker._apply_heartbeat_progress(job)
+
+        self.assertEqual(job.stage, "translating")
+        self.assertGreater(job.progress, 0.0)
+        self.assertLessEqual(job.progress, HEARTBEAT_PROGRESS_CAP)
+
+    def test_terminal_status_ignores_late_progress_event(self):
+        """终态任务不应被迟到的 BabelDOC 进度事件改写。"""
+        worker = TranslationWorker()
+        for status, stage, progress in (
+            (JobStatus.COMPLETED, "completed", 1.0),
+            (JobStatus.FAILED, "failed", 0.27),
+            (JobStatus.CANCELLED, "cancelled", 0.0),
+        ):
+            with self.subTest(status=status):
+                job = self._job()
+                job.status = status
+                job.stage = stage
+                job.progress = progress
+                job.updated_at = "terminal-timestamp"
+
+                worker._apply_progress_event(
+                    job,
+                    {
+                        "type": "progress_update",
+                        "stage": "Translate Paragraphs",
+                        "overall_progress": 56.0,
+                    },
+                )
+
+                self.assertEqual(job.status, status)
+                self.assertEqual(job.stage, stage)
+                self.assertAlmostEqual(job.progress, progress)
+                self.assertEqual(job.updated_at, "terminal-timestamp")
+
+    def test_terminal_status_ignores_heartbeat_progress(self):
+        """终态任务不应被 heartbeat 微进度改写。"""
+        worker = TranslationWorker()
+        for status, stage, progress in (
+            (JobStatus.COMPLETED, "completed", 1.0),
+            (JobStatus.FAILED, "failed", 0.27),
+            (JobStatus.CANCELLED, "cancelled", 0.0),
+        ):
+            with self.subTest(status=status):
+                job = self._job()
+                job.status = status
+                job.stage = stage
+                job.progress = progress
+                job.updated_at = "terminal-timestamp"
+                job._last_progress_monotonic = time.monotonic() - HEARTBEAT_INTERVAL_SECONDS - 1
+
+                worker._apply_heartbeat_progress(job)
+
+                self.assertEqual(job.status, status)
+                self.assertEqual(job.stage, stage)
+                self.assertAlmostEqual(job.progress, progress)
+                self.assertEqual(job.updated_at, "terminal-timestamp")
 
 
 if __name__ == "__main__":

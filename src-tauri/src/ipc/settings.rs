@@ -168,23 +168,28 @@ pub async fn test_provider_connection(
     let result = state.ai_integration.test_connection(provider, model).await;
     let tested_at = chrono::Utc::now().to_rfc3339();
 
-    {
-        let connection = state.storage.connection();
-        match &result {
-            Ok(_) => provider_settings::update_test_status(
-                &connection,
-                provider.as_str(),
-                Some("ok"),
-                Some(&tested_at),
-            )?,
-            Err(error) => provider_settings::update_test_status(
-                &connection,
-                provider.as_str(),
-                Some(&error.message),
-                Some(&tested_at),
-            )?,
-        }
-    }
+    // SQLite 写入放到 spawn_blocking 中，避免阻塞 tokio worker
+    let storage = state.storage.clone();
+    let provider_str = provider.as_str().to_string();
+    // 把测试结果(Ok/Err)拆成两段简单可拷贝的数据，方便跨线程传入闭包
+    let test_status_text = match &result {
+        Ok(_) => "ok".to_string(),
+        Err(error) => error.message.clone(),
+    };
+    tokio::task::spawn_blocking(move || -> Result<(), crate::errors::AppError> {
+        let connection = storage.connection();
+        provider_settings::update_test_status(
+            &connection,
+            &provider_str,
+            Some(&test_status_text),
+            Some(&tested_at),
+        )?;
+        Ok(())
+    })
+    .await
+    .map_err(|join_err| {
+        crate::errors::AppError::internal(format!("数据库任务异常退出: {join_err}"))
+    })??;
 
     let result = result?;
     Ok(ProviderConnectivityDto {
@@ -255,11 +260,20 @@ pub async fn fetch_available_models(
     state: State<'_, AppState>,
     provider: ProviderId,
 ) -> Result<FetchModelsResult, crate::errors::AppError> {
-    // 读取 provider 配置获取 base_url 和 key
-    let record = {
-        let connection = state.storage.connection();
-        provider_settings::get_by_provider(&connection, provider.as_str())?
-    }
+    // 读取 provider 配置获取 base_url 和 key (SQLite 同步 IO 走 spawn_blocking)
+    let storage = state.storage.clone();
+    let provider_str = provider.as_str().to_string();
+    let record = tokio::task::spawn_blocking(move || -> Result<_, crate::errors::AppError> {
+        let connection = storage.connection();
+        Ok(provider_settings::get_by_provider(
+            &connection,
+            &provider_str,
+        )?)
+    })
+    .await
+    .map_err(|join_err| {
+        crate::errors::AppError::internal(format!("数据库任务异常退出: {join_err}"))
+    })??
     .ok_or_else(|| {
         crate::errors::AppError::new(
             crate::errors::AppErrorCode::InternalError,
@@ -530,11 +544,10 @@ pub fn get_cache_stats(
     )?;
 
     // AI 总结数量
-    let summary_count: u32 = connection.query_row(
-        "SELECT COUNT(*) FROM document_summaries",
-        [],
-        |row| row.get(0),
-    )?;
+    let summary_count: u32 =
+        connection.query_row("SELECT COUNT(*) FROM document_summaries", [], |row| {
+            row.get(0)
+        })?;
 
     // 活跃文档数量（未软删除）
     let document_count: u32 = connection.query_row(
@@ -561,14 +574,17 @@ pub fn clear_all_translation_cache(
 
     // R3-M2: 检查是否有活跃翻译任务，防止竞态
     let active_count: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM translation_jobs WHERE status IN ('pending', 'running')",
+        "SELECT COUNT(*) FROM translation_jobs WHERE status IN ('queued', 'running')",
         [],
         |row| row.get(0),
     )?;
     if active_count > 0 {
         return Err(crate::errors::AppError::new(
             crate::errors::AppErrorCode::InternalError,
-            format!("当前有 {} 个翻译任务正在进行，请先取消后再清理缓存", active_count),
+            format!(
+                "当前有 {} 个翻译任务正在进行，请先取消后再清理缓存",
+                active_count
+            ),
             false,
         ));
     }
@@ -577,9 +593,8 @@ pub fn clear_all_translation_cache(
 
     // 查询所有翻译产物文件路径和大小
     let artifacts: Vec<(String, u64)> = {
-        let mut statement = transaction.prepare(
-            "SELECT file_path, file_size_bytes FROM translation_artifacts",
-        )?;
+        let mut statement =
+            transaction.prepare("SELECT file_path, file_size_bytes FROM translation_artifacts")?;
         let rows = statement.query_map([], |row| {
             Ok((
                 row.get::<_, String>("file_path")?,
@@ -652,7 +667,10 @@ fn default_prompt_for_key(key: &str) -> Result<&'static str, crate::errors::AppE
         "summary" => Ok(DEFAULT_SUMMARY_PROMPT),
         _ => Err(crate::errors::AppError::new(
             crate::errors::AppErrorCode::InternalError,
-            format!("不支持的提示词 key: '{}'，仅允许 'translation' 或 'summary'", key),
+            format!(
+                "不支持的提示词 key: '{}'，仅允许 'translation' 或 'summary'",
+                key
+            ),
             false,
         )),
     }

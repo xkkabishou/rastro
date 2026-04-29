@@ -251,16 +251,18 @@ fn map_transport_error(error: reqwest::Error) -> AppError {
     if error.is_timeout() {
         return AppError::new(
             AppErrorCode::EngineTimeout,
-            format!("translation-engine 请求超时: {error}"),
+            "翻译引擎响应超时，正在尝试恢复",
             true,
-        );
+        )
+        .with_detail("transportError", error.to_string());
     }
 
     AppError::new(
         AppErrorCode::EngineUnavailable,
-        format!("无法连接 translation-engine: {error}"),
+        "翻译引擎暂时无法连接，正在尝试恢复",
         true,
     )
+    .with_detail("transportError", error.to_string())
 }
 
 fn map_engine_error(error: EngineErrorPayload) -> AppError {
@@ -270,6 +272,7 @@ fn map_engine_error(error: EngineErrorPayload) -> AppError {
         "UNSUPPORTED_PROVIDER" => AppErrorCode::UnsupportedTranslationProvider,
         "TRANSLATION_TIMEOUT" => AppErrorCode::EngineTimeout,
         "JOB_CANCELLED" => AppErrorCode::TranslationCancelled,
+        "FILE_NOT_FOUND" => AppErrorCode::FileNotFound,
         _ => AppErrorCode::TranslationFailed,
     };
 
@@ -308,6 +311,7 @@ mod tests {
             ),
             ("TRANSLATION_TIMEOUT", AppErrorCode::EngineTimeout),
             ("JOB_CANCELLED", AppErrorCode::TranslationCancelled),
+            ("FILE_NOT_FOUND", AppErrorCode::FileNotFound),
             ("UNKNOWN", AppErrorCode::TranslationFailed),
         ];
 

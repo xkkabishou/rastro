@@ -67,7 +67,7 @@ pub fn list_translation_provider_configs(
 
     records
         .into_iter()
-        .map(|record| build_translation_config_dto(record))
+        .map(build_translation_config_dto)
         .collect()
 }
 
@@ -161,7 +161,13 @@ pub async fn test_translation_connection(
     state: State<'_, AppState>,
     provider: ProviderId,
 ) -> Result<TranslationConnectivityDto, AppError> {
-    let config = resolve_translation_runtime_config(&state, provider)?;
+    // resolve_translation_runtime_config 内部读 SQLite + Keychain，走 spawn_blocking
+    let app_state = (*state).clone();
+    let config = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+        resolve_translation_runtime_config(&app_state, provider)
+    })
+    .await
+    .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))??;
 
     let client = reqwest::Client::new();
     let request = build_translation_test_request(&client, &config);
@@ -192,11 +198,7 @@ pub async fn test_translation_connection(
 
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
-    Err(map_provider_http_error(
-        status,
-        &body,
-        "翻译 API 测试失败",
-    ))
+    Err(map_provider_http_error(status, &body, "翻译 API 测试失败"))
 }
 
 // --- T1.2.2: translate_text IPC Command ---
@@ -207,11 +209,14 @@ pub async fn translate_text(
     state: State<'_, AppState>,
     text: String,
 ) -> Result<TranslateTextResult, AppError> {
-    // 读取活跃的翻译 Provider 配置
-    let active_record = {
-        let connection = state.storage.connection();
-        translation_provider_settings::get_active(&connection)?
-    }
+    // 读取活跃的翻译 Provider 配置 (SQLite 走 spawn_blocking)
+    let storage = state.storage.clone();
+    let active_record = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+        let connection = storage.connection();
+        Ok(translation_provider_settings::get_active(&connection)?)
+    })
+    .await
+    .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))??
     .ok_or_else(|| {
         AppError::new(
             AppErrorCode::ProviderNotConfigured,
@@ -221,7 +226,13 @@ pub async fn translate_text(
     })?;
 
     let provider = ProviderId::from_str(&active_record.provider)?;
-    let config = resolve_translation_runtime_config(&state, provider)?;
+    // resolve_translation_runtime_config 内部读 SQLite + Keychain，走 spawn_blocking
+    let app_state = (*state).clone();
+    let config = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+        resolve_translation_runtime_config(&app_state, provider)
+    })
+    .await
+    .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))??;
 
     // 构建翻译请求
     let client = reqwest::Client::new();
@@ -258,14 +269,13 @@ pub async fn translate_text(
     })?;
 
     // 从不同 Provider 的响应格式中提取翻译文本
-    let translated = extract_chat_response_text(provider, &body)
-        .ok_or_else(|| {
-            AppError::new(
-                AppErrorCode::InternalError,
-                "无法从翻译 API 响应中提取文本",
-                true,
-            )
-        })?;
+    let translated = extract_chat_response_text(provider, &body).ok_or_else(|| {
+        AppError::new(
+            AppErrorCode::InternalError,
+            "无法从翻译 API 响应中提取文本",
+            true,
+        )
+    })?;
 
     Ok(TranslateTextResult {
         translated: translated.trim().to_string(),
@@ -422,7 +432,10 @@ pub(crate) fn build_translation_chat_request(
 }
 
 /// 从非流式聊天响应中提取文本内容
-pub(crate) fn extract_chat_response_text(provider: ProviderId, body: &serde_json::Value) -> Option<String> {
+pub(crate) fn extract_chat_response_text(
+    provider: ProviderId,
+    body: &serde_json::Value,
+) -> Option<String> {
     match provider {
         ProviderId::Openai => {
             // OpenAI: { "choices": [{ "message": { "content": "..." } }] }

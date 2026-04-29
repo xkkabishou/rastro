@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -153,9 +154,22 @@ impl TranslationArtifactIndex {
         Ok(())
     }
 
+    #[cfg(test)]
     pub fn persist_result(
         &self,
         storage: &Storage,
+        job_id: &str,
+        document_id: &str,
+        result: &EngineJobResult,
+        timestamp: &str,
+    ) -> Result<(), AppError> {
+        let connection = storage.connection();
+        self.persist_result_with_connection(&connection, job_id, document_id, result, timestamp)
+    }
+
+    pub fn persist_result_with_connection(
+        &self,
+        connection: &Connection,
         job_id: &str,
         document_id: &str,
         result: &EngineJobResult,
@@ -194,9 +208,8 @@ impl TranslationArtifactIndex {
             let metadata = fs::metadata(artifact_path)?;
             let file_sha256 = compute_sha256(artifact_path)?;
 
-            let connection = storage.connection();
             translation_artifacts::create(
-                &connection,
+                connection,
                 &translation_artifacts::CreateTranslationArtifactParams {
                     job_id: job_id.to_string(),
                     document_id: document_id.to_string(),
@@ -327,6 +340,31 @@ mod tests {
                 base_url: None,
                 custom_prompt: None,
             }
+        });
+
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn cache_key_changes_when_base_url_changes() {
+        let index = TranslationArtifactIndex::new(std::path::Path::new("/tmp"))
+            .expect("cache root should initialize");
+        let base = CacheKeyInput {
+            document_sha256: "sha-doc".to_string(),
+            provider: "openai".to_string(),
+            model: "gpt-4.1-mini".to_string(),
+            source_lang: "en".to_string(),
+            target_lang: "zh-CN".to_string(),
+            output_mode: "bilingual".to_string(),
+            figure_translation: true,
+            skip_reference_pages: true,
+            base_url: Some("https://api.openai.com/v1".to_string()),
+            custom_prompt: None,
+        };
+        let first = index.compute_cache_key(&base);
+        let second = index.compute_cache_key(&CacheKeyInput {
+            base_url: Some("https://gateway.example.com/v1".to_string()),
+            ..base
         });
 
         assert_ne!(first, second);

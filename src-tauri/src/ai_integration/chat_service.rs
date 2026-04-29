@@ -1,10 +1,16 @@
 // 问答流服务
+use std::io::ErrorKind;
+
 use chrono::Utc;
-use futures_util::StreamExt;
+use futures_util::{Stream, StreamExt, TryStreamExt};
 use serde_json::json;
 use tauri::Emitter;
 use tokio::select;
-use tokio_util::sync::CancellationToken;
+use tokio_util::{
+    codec::{FramedRead, LinesCodec, LinesCodecError},
+    io::StreamReader,
+    sync::CancellationToken,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -98,6 +104,92 @@ fn finalize_stream_outcome(
     })
 }
 
+fn fallback_usage_snapshot(
+    prepared: &PreparedStream,
+    full_text: &str,
+) -> usage_meter::UsageSnapshot {
+    usage_meter::UsageSnapshot::fallback(
+        prepared.provider,
+        &prepared.model,
+        &prepared.combined_input_text(),
+        full_text,
+    )
+}
+
+fn stream_read_error_summary(error: &LinesCodecError) -> String {
+    match error {
+        LinesCodecError::MaxLineLengthExceeded => "单行响应超过解析上限".to_string(),
+        LinesCodecError::Io(error) => {
+            let message = error.to_string();
+            if message.trim().is_empty() {
+                "流式响应读取失败".to_string()
+            } else {
+                message
+            }
+        }
+    }
+}
+
+fn is_recoverable_stream_read_error(error: &LinesCodecError) -> bool {
+    let LinesCodecError::Io(error) = error else {
+        return false;
+    };
+
+    if matches!(
+        error.kind(),
+        ErrorKind::UnexpectedEof
+            | ErrorKind::ConnectionAborted
+            | ErrorKind::ConnectionReset
+            | ErrorKind::BrokenPipe
+    ) {
+        return true;
+    }
+
+    let message = error.to_string().to_ascii_lowercase();
+    [
+        "error decoding response body",
+        "unexpected eof",
+        "connection closed",
+        "connection reset",
+        "connection aborted",
+        "early eof",
+        "incomplete message",
+    ]
+    .iter()
+    .any(|needle| message.contains(needle))
+}
+
+fn build_stream_read_error(
+    prepared: &PreparedStream,
+    error: &LinesCodecError,
+    payload_count: usize,
+    last_payload_preview: Option<&str>,
+) -> AppError {
+    let message = match error {
+        LinesCodecError::MaxLineLengthExceeded => {
+            "AI 服务返回的一行响应过长，无法继续解析。请检查 Provider 网关是否兼容流式输出。"
+                .to_string()
+        }
+        LinesCodecError::Io(_) => {
+            "AI 服务连接在读取流式响应时中断，未收到可用内容。请检查网络或 Provider 网关后重试。"
+                .to_string()
+        }
+    };
+
+    let mut app_error = AppError::new(AppErrorCode::ProviderConnectionFailed, message, true)
+        .with_detail("provider", prepared.provider.as_str())
+        .with_detail("model", prepared.model.clone())
+        .with_detail("payloadCount", payload_count as u64)
+        .with_detail("streamError", stream_read_error_summary(error));
+
+    if let Some(preview) = last_payload_preview.filter(|value| !value.is_empty()) {
+        app_error = app_error.with_detail("lastPayloadPreview", preview.to_string());
+    }
+
+    app_error
+}
+
+#[allow(clippy::too_many_arguments)]
 fn process_sse_data_line<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     prepared: &PreparedStream,
@@ -119,14 +211,9 @@ fn process_sse_data_line<R: tauri::Runtime>(
     }
 
     if data == "[DONE]" {
-        let resolved_usage = usage.take().unwrap_or_else(|| {
-            usage_meter::UsageSnapshot::fallback(
-                prepared.provider,
-                &prepared.model,
-                &prepared.combined_input_text(),
-                full_text,
-            )
-        });
+        let resolved_usage = usage
+            .take()
+            .unwrap_or_else(|| fallback_usage_snapshot(prepared, full_text));
 
         return finalize_stream_outcome(
             prepared,
@@ -154,26 +241,30 @@ fn process_sse_data_line<R: tauri::Runtime>(
         provider_registry::extract_stream_thinking(prepared.provider, &payload)
     {
         full_thinking.push_str(&thinking_delta);
-        let _ = app.emit(
+        if let Err(error) = app.emit(
             "ai://stream-chunk",
             json!({
                 "streamId": prepared.stream_id,
                 "delta": thinking_delta,
                 "kind": "thinking",
             }),
-        );
+        ) {
+            eprintln!("emit ai://stream-chunk thinking failed: {error}");
+        }
     }
 
     if let Some(delta) = provider_registry::extract_stream_delta(prepared.provider, &payload) {
         full_text.push_str(&delta);
-        let _ = app.emit(
+        if let Err(error) = app.emit(
             "ai://stream-chunk",
             json!({
                 "streamId": prepared.stream_id,
                 "delta": delta,
                 "kind": "content",
             }),
-        );
+        ) {
+            eprintln!("emit ai://stream-chunk content failed: {error}");
+        }
     }
 
     if usage.is_none() {
@@ -183,77 +274,183 @@ fn process_sse_data_line<R: tauri::Runtime>(
     Ok(None)
 }
 
+async fn consume_sse_lines<R, S>(
+    app: &tauri::AppHandle<R>,
+    prepared: &PreparedStream,
+    cancellation: &CancellationToken,
+    mut lines: S,
+) -> Result<StreamOutcome, AppError>
+where
+    R: tauri::Runtime,
+    S: Stream<Item = Result<String, LinesCodecError>> + Unpin,
+{
+    let mut full_text = String::new();
+    let mut full_thinking = String::new();
+    let mut usage = None;
+    let mut payload_count = 0usize;
+    let mut last_payload_preview: Option<String> = None;
+
+    loop {
+        select! {
+            _ = cancellation.cancelled() => {
+                return Ok(StreamOutcome::Cancelled);
+            }
+            next = lines.next() => {
+                match next {
+                    Some(Ok(line)) => {
+                        if let Some(outcome) = process_sse_data_line(
+                            app,
+                            prepared,
+                            &line,
+                            &mut full_text,
+                            &mut full_thinking,
+                            &mut usage,
+                            &mut payload_count,
+                            &mut last_payload_preview,
+                        )? {
+                            return Ok(outcome);
+                        }
+                    }
+                    Some(Err(error)) => {
+                        if !full_text.trim().is_empty()
+                            && is_recoverable_stream_read_error(&error)
+                        {
+                            eprintln!(
+                                "AI 流式响应中断但已收到内容，按已生成内容完成, stream_id={}, provider={}, model={}, err={}",
+                                prepared.stream_id,
+                                prepared.provider.as_str(),
+                                prepared.model,
+                                stream_read_error_summary(&error)
+                            );
+
+                            let resolved_usage = usage
+                                .unwrap_or_else(|| fallback_usage_snapshot(prepared, &full_text));
+
+                            return finalize_stream_outcome(
+                                prepared,
+                                full_text,
+                                full_thinking,
+                                resolved_usage,
+                                payload_count,
+                                last_payload_preview.as_deref(),
+                            );
+                        }
+
+                        return Err(build_stream_read_error(
+                            prepared,
+                            &error,
+                            payload_count,
+                            last_payload_preview.as_deref(),
+                        ));
+                    }
+                    None => {
+                        let resolved_usage = usage
+                            .unwrap_or_else(|| fallback_usage_snapshot(prepared, &full_text));
+
+                        return finalize_stream_outcome(
+                            prepared,
+                            full_text,
+                            full_thinking,
+                            resolved_usage,
+                            payload_count,
+                            last_payload_preview.as_deref(),
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// 启动普通聊天流
 pub async fn start_chat<R: tauri::Runtime + 'static>(
     app: tauri::AppHandle<R>,
     ai: AiIntegration,
     input: AskAiRequest,
 ) -> Result<StreamHandleResult, AppError> {
-    let config =
-        provider_registry::resolve_runtime_config(&ai, input.provider, input.model.clone())?;
     let started_at = Utc::now().to_rfc3339();
     let session_title = Some(truncate_title(&input.user_message));
-    let messages = build_chat_messages(&ai, &input)?;
 
-    let session_id = {
-        let connection = ai.storage.connection();
-        if let Some(session_id) = input.session_id.clone() {
-            let Some(existing) = chat_sessions::get_by_id(&connection, &session_id)? else {
-                return Err(AppError::new(
-                    AppErrorCode::ChatSessionNotFound,
-                    "聊天会话不存在",
-                    false,
-                ));
+    // 同步段：resolve_runtime_config / build_chat_messages / 会话与消息持久化
+    // 都依赖 SQLite (parking_lot::Mutex) + Keychain，统一放进 spawn_blocking 避免阻塞 tokio worker
+    let ai_for_block = ai.clone();
+    let input_for_block = input.clone();
+    let started_at_for_block = started_at.clone();
+    let session_title_for_block = session_title.clone();
+    let (config, messages, session_id) = tokio::task::spawn_blocking(
+        move || -> Result<(provider_registry::ProviderRuntimeConfig, Vec<PromptMessage>, String), AppError> {
+            let config = provider_registry::resolve_runtime_config(
+                &ai_for_block,
+                input_for_block.provider,
+                input_for_block.model.clone(),
+            )?;
+            let messages = build_chat_messages(&ai_for_block, &input_for_block)?;
+
+            let session_id = {
+                let connection = ai_for_block.storage.connection();
+                if let Some(session_id) = input_for_block.session_id.clone() {
+                    let Some(existing) = chat_sessions::get_by_id(&connection, &session_id)? else {
+                        return Err(AppError::new(
+                            AppErrorCode::ChatSessionNotFound,
+                            "聊天会话不存在",
+                            false,
+                        ));
+                    };
+
+                    if existing.document_id != input_for_block.document_id {
+                        return Err(AppError::new(
+                            AppErrorCode::ChatSessionNotFound,
+                            "聊天会话不属于当前文档",
+                            false,
+                        ));
+                    }
+
+                    session_id
+                } else {
+                    let session = chat_sessions::create(
+                        &connection,
+                        &chat_sessions::CreateChatSessionParams {
+                            document_id: input_for_block.document_id.clone(),
+                            provider: config.provider.as_str().to_string(),
+                            model: config.model.clone(),
+                            title: session_title_for_block.clone(),
+                            timestamp: started_at_for_block.clone(),
+                        },
+                    )?;
+                    session.session_id
+                }
             };
 
-            if existing.document_id != input.document_id {
-                return Err(AppError::new(
-                    AppErrorCode::ChatSessionNotFound,
-                    "聊天会话不属于当前文档",
-                    false,
-                ));
+            {
+                let connection = ai_for_block.storage.connection();
+                chat_messages::create(
+                    &connection,
+                    &chat_messages::CreateChatMessageParams {
+                        session_id: session_id.clone(),
+                        role: ChatRole::User.as_str().to_string(),
+                        content_md: input_for_block.user_message.clone(),
+                        thinking_md: None,
+                        context_quote: input_for_block.context_quote.clone(),
+                        input_tokens: 0,
+                        output_tokens: 0,
+                        estimated_cost: 0.0,
+                        created_at: started_at_for_block.clone(),
+                    },
+                )?;
+
+                chat_sessions::update_metadata(
+                    &connection,
+                    &session_id,
+                    session_title_for_block.as_deref(),
+                    &started_at_for_block,
+                )?;
             }
 
-            session_id
-        } else {
-            let session = chat_sessions::create(
-                &connection,
-                &chat_sessions::CreateChatSessionParams {
-                    document_id: input.document_id.clone(),
-                    provider: config.provider.as_str().to_string(),
-                    model: config.model.clone(),
-                    title: session_title.clone(),
-                    timestamp: started_at.clone(),
-                },
-            )?;
-            session.session_id
-        }
-    };
-
-    {
-        let connection = ai.storage.connection();
-        chat_messages::create(
-            &connection,
-            &chat_messages::CreateChatMessageParams {
-                session_id: session_id.clone(),
-                role: ChatRole::User.as_str().to_string(),
-                content_md: input.user_message.clone(),
-                thinking_md: None,
-                context_quote: input.context_quote.clone(),
-                input_tokens: 0,
-                output_tokens: 0,
-                estimated_cost: 0.0,
-                created_at: started_at.clone(),
-            },
-        )?;
-
-        chat_sessions::update_metadata(
-            &connection,
-            &session_id,
-            session_title.as_deref(),
-            &started_at,
-        )?;
-    }
+            Ok((config, messages, session_id))
+        },
+    )
+    .await
+    .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))??;
 
     start_stream(
         app,
@@ -275,25 +472,39 @@ pub async fn start_summary_flow<R: tauri::Runtime + 'static>(
     ai: AiIntegration,
     input: GenerateSummaryRequest,
 ) -> Result<StreamHandleResult, AppError> {
-    let config =
-        provider_registry::resolve_runtime_config(&ai, input.provider, input.model.clone())?;
     let started_at = Utc::now().to_rfc3339();
     let session_title = Some(format!("Summary · {}", input.prompt_profile.as_str()));
 
-    let session_id = {
-        let connection = ai.storage.connection();
-        let session = chat_sessions::create(
-            &connection,
-            &chat_sessions::CreateChatSessionParams {
-                document_id: input.document_id.clone(),
-                provider: config.provider.as_str().to_string(),
-                model: config.model.clone(),
-                title: session_title.clone(),
-                timestamp: started_at.clone(),
-            },
-        )?;
-        session.session_id
-    };
+    // resolve_runtime_config + 会话创建均涉及 SQLite + Keychain，走 spawn_blocking
+    let ai_for_block = ai.clone();
+    let input_provider = input.provider;
+    let input_model = input.model.clone();
+    let document_id_for_block = input.document_id.clone();
+    let started_at_for_block = started_at.clone();
+    let session_title_for_block = session_title.clone();
+    let (config, session_id) = tokio::task::spawn_blocking(
+        move || -> Result<(provider_registry::ProviderRuntimeConfig, String), AppError> {
+            let config = provider_registry::resolve_runtime_config(
+                &ai_for_block,
+                input_provider,
+                input_model,
+            )?;
+            let connection = ai_for_block.storage.connection();
+            let session = chat_sessions::create(
+                &connection,
+                &chat_sessions::CreateChatSessionParams {
+                    document_id: document_id_for_block,
+                    provider: config.provider.as_str().to_string(),
+                    model: config.model.clone(),
+                    title: session_title_for_block,
+                    timestamp: started_at_for_block,
+                },
+            )?;
+            Ok((config, session.session_id))
+        },
+    )
+    .await
+    .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))??;
 
     start_stream(
         app,
@@ -378,57 +589,80 @@ async fn run_stream_task<R: tauri::Runtime + 'static>(
             // 2. Callout 前缀规范化（补齐漏写的 `> ` 前缀）
             // 聊天等其他场景保持原文。
             let final_text = if matches!(feature, UsageFeature::Summary) {
-                let step1 = normalize_frontmatter_fencing(&text);
-                normalize_callout_prefixes(&step1)
+                normalize_summary_markdown(&text)
             } else {
                 text.clone()
             };
             let normalized_changed = final_text != text;
 
             let finished_at = Utc::now().to_rfc3339();
-            let message_result = {
-                let connection = ai.storage.connection();
+            // SQLite 写入 (assistant message + session 元数据 + usage event) 走 spawn_blocking
+            let storage = ai.storage.clone();
+            let session_id_for_block = prepared.session_id.clone();
+            let final_text_for_block = final_text.clone();
+            let thinking_for_block = thinking.clone();
+            let usage_for_block = usage.clone();
+            let document_id_for_block = prepared.document_id.clone();
+            let provider_str_for_block = prepared.provider.as_str().to_string();
+            let model_for_block = prepared.model.clone();
+            let feature_str_for_block = feature.as_str().to_string();
+            let finished_at_for_block = finished_at.clone();
+            let join_outcome = tokio::task::spawn_blocking(move || {
+                let connection = storage.connection();
                 let message = chat_messages::create(
                     &connection,
                     &chat_messages::CreateChatMessageParams {
-                        session_id: prepared.session_id.clone(),
+                        session_id: session_id_for_block.clone(),
                         role: ChatRole::Assistant.as_str().to_string(),
-                        content_md: final_text.clone(),
-                        thinking_md: thinking.clone(),
+                        content_md: final_text_for_block,
+                        thinking_md: thinking_for_block,
                         context_quote: None,
-                        input_tokens: usage.input_tokens as u32,
-                        output_tokens: usage.output_tokens as u32,
-                        estimated_cost: usage.estimated_cost,
-                        created_at: finished_at.clone(),
+                        input_tokens: usage_for_block.input_tokens as u32,
+                        output_tokens: usage_for_block.output_tokens as u32,
+                        estimated_cost: usage_for_block.estimated_cost,
+                        created_at: finished_at_for_block.clone(),
                     },
                 );
 
                 if message.is_ok() {
                     let _ = chat_sessions::update_metadata(
                         &connection,
-                        &prepared.session_id,
+                        &session_id_for_block,
                         None,
-                        &finished_at,
+                        &finished_at_for_block,
                     );
 
                     let _ = usage_events::create(
                         &connection,
                         &usage_events::CreateUsageEventParams {
-                            document_id: Some(prepared.document_id.clone()),
-                            provider: prepared.provider.as_str().to_string(),
-                            model: prepared.model.clone(),
-                            feature: feature.as_str().to_string(),
-                            input_tokens: usage.input_tokens,
-                            output_tokens: usage.output_tokens,
-                            estimated_cost: usage.estimated_cost,
-                            currency: usage.currency.clone(),
-                            created_at: finished_at.clone(),
+                            document_id: Some(document_id_for_block),
+                            provider: provider_str_for_block,
+                            model: model_for_block,
+                            feature: feature_str_for_block,
+                            input_tokens: usage_for_block.input_tokens,
+                            output_tokens: usage_for_block.output_tokens,
+                            estimated_cost: usage_for_block.estimated_cost,
+                            currency: usage_for_block.currency,
+                            created_at: finished_at_for_block,
                         },
                     );
                 }
 
                 message
-            };
+            })
+            .await;
+            // 把 spawn_blocking JoinError 与 rusqlite::Error 统一收敛为 AppError
+            let message_result: Result<chat_messages::ChatMessageRecord, AppError> =
+                match join_outcome {
+                    Ok(Ok(message)) => Ok(message),
+                    Ok(Err(rusqlite_err)) => Err(AppError::from(rusqlite_err)),
+                    Err(join_err) => {
+                        eprintln!("聊天消息持久化任务异常退出: {join_err}");
+                        Err(AppError::internal(format!(
+                            "聊天消息持久化任务异常退出: {join_err}"
+                        )))
+                    }
+                };
 
             match message_result {
                 Ok(message) => {
@@ -442,34 +676,37 @@ async fn run_stream_task<R: tauri::Runtime + 'static>(
                     });
                     if matches!(feature, UsageFeature::Summary) && normalized_changed {
                         if let Some(obj) = payload.as_object_mut() {
-                            obj.insert(
-                                "normalizedContent".to_string(),
-                                json!(final_text.clone()),
-                            );
+                            obj.insert("normalizedContent".to_string(), json!(final_text.clone()));
                         }
                     }
-                    let _ = app.emit("ai://stream-finished", payload);
+                    if let Err(error) = app.emit("ai://stream-finished", payload) {
+                        eprintln!("emit ai://stream-finished failed: {error}");
+                    }
                 }
                 Err(error) => {
-                    let _ = app.emit(
+                    if let Err(emit_error) = app.emit(
                         "ai://stream-failed",
                         json!({
                             "streamId": prepared.stream_id,
-                            "error": AppError::from(error),
+                            "error": error,
                         }),
-                    );
+                    ) {
+                        eprintln!("emit ai://stream-failed failed: {emit_error}");
+                    }
                 }
             }
         }
         Ok(StreamOutcome::Cancelled) => {}
         Err(error) => {
-            let _ = app.emit(
+            if let Err(emit_error) = app.emit(
                 "ai://stream-failed",
                 json!({
                     "streamId": prepared.stream_id,
                     "error": error,
                 }),
-            );
+            ) {
+                eprintln!("emit ai://stream-failed failed: {emit_error}");
+            }
         }
     }
 }
@@ -480,11 +717,18 @@ async fn run_stream_request<R: tauri::Runtime>(
     prepared: &PreparedStream,
     cancellation: &CancellationToken,
 ) -> Result<StreamOutcome, AppError> {
-    let config = provider_registry::resolve_runtime_config(
-        ai,
-        Some(prepared.provider),
-        Some(prepared.model.clone()),
-    )?;
+    let ai_for_config = ai.clone();
+    let provider_for_config = prepared.provider;
+    let model_for_config = prepared.model.clone();
+    let config = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+        provider_registry::resolve_runtime_config(
+            &ai_for_config,
+            Some(provider_for_config),
+            Some(model_for_config),
+        )
+    })
+    .await
+    .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))??;
 
     let response = provider_registry::build_stream_request(&ai.client, &config, &prepared.messages)
         .send()
@@ -500,79 +744,11 @@ async fn run_stream_request<R: tauri::Runtime>(
         ));
     }
 
-    let mut full_text = String::new();
-    let mut full_thinking = String::new();
-    let mut buffer = String::new();
-    let mut usage = None;
-    let mut payload_count = 0usize;
-    let mut last_payload_preview: Option<String> = None;
-    let mut bytes_stream = response.bytes_stream();
+    let byte_stream = response.bytes_stream().map_err(std::io::Error::other);
+    let stream_reader = StreamReader::new(byte_stream);
+    let lines = FramedRead::new(stream_reader, LinesCodec::new());
 
-    loop {
-        select! {
-            _ = cancellation.cancelled() => {
-                return Ok(StreamOutcome::Cancelled);
-            }
-            next = bytes_stream.next() => {
-                match next {
-                    Some(Ok(chunk)) => {
-                        buffer.push_str(&String::from_utf8_lossy(&chunk));
-
-                        while let Some(position) = buffer.find('\n') {
-                            let line = buffer[..position].to_string();
-                            buffer = buffer[position + 1..].to_string();
-
-                            if let Some(outcome) = process_sse_data_line(
-                                app,
-                                prepared,
-                                &line,
-                                &mut full_text,
-                                &mut full_thinking,
-                                &mut usage,
-                                &mut payload_count,
-                                &mut last_payload_preview,
-                            )? {
-                                return Ok(outcome);
-                            }
-                        }
-                    }
-                    Some(Err(error)) => return Err(AppError::from(error)),
-                    None => {
-                        if let Some(outcome) = process_sse_data_line(
-                            app,
-                            prepared,
-                            &buffer,
-                            &mut full_text,
-                            &mut full_thinking,
-                            &mut usage,
-                            &mut payload_count,
-                            &mut last_payload_preview,
-                        )? {
-                            return Ok(outcome);
-                        }
-
-                        let usage = usage.unwrap_or_else(|| {
-                            usage_meter::UsageSnapshot::fallback(
-                                prepared.provider,
-                                &prepared.model,
-                                &prepared.combined_input_text(),
-                                &full_text,
-                            )
-                        });
-
-                        return finalize_stream_outcome(
-                            prepared,
-                            full_text,
-                            full_thinking,
-                            usage,
-                            payload_count,
-                            last_payload_preview.as_deref(),
-                        );
-                    }
-                }
-            }
-        }
-    }
+    consume_sse_lines(app, prepared, cancellation, lines).await
 }
 
 /// 构建多消息数组：可选 system（精读全文）+ 历史消息 + 当前 user 消息
@@ -647,6 +823,13 @@ fn build_summary_prompt(
     )
 }
 
+pub(crate) fn normalize_summary_markdown(md: &str) -> String {
+    let step1 = normalize_one_line_frontmatter(md);
+    let step2 = repair_markdown_block_boundaries(&step1);
+    let step3 = normalize_frontmatter_fencing(&step2);
+    normalize_callout_prefixes(&step3)
+}
+
 fn truncate_title(value: &str) -> String {
     let trimmed = value.trim();
     if trimmed.chars().count() <= 36 {
@@ -686,6 +869,449 @@ const CALLOUT_TYPES: &[&str] = &[
     "cite",
     "note",
 ];
+
+const FRONTMATTER_KEYS: &[&str] = &[
+    "title",
+    "authors",
+    "author",
+    "year",
+    "date",
+    "tags",
+    "source",
+    "aliases",
+    "cssclasses",
+    "publisher",
+    "doi",
+    "abstract",
+    "keywords",
+];
+
+const ONE_LINE_FRONTMATTER_KEYS: &[&str] =
+    &["title", "authors", "author", "year", "source", "tags"];
+
+fn normalize_one_line_frontmatter(md: &str) -> String {
+    let Some(start) = md.find(|ch: char| !ch.is_whitespace()) else {
+        return md.to_string();
+    };
+    let mut content = &md[start..];
+    // 兼容 `--- title: ... authors: ... --- # 标题` 这种被压成单行的 YAML。
+    // 标准 `---\n...` frontmatter 仍交给 normalize_frontmatter_fencing 保持幂等。
+    if content.starts_with("---")
+        && !content.starts_with("---\n")
+        && !content.starts_with("---\r\n")
+    {
+        content = content.trim_start_matches('-').trim_start();
+    }
+    if !content
+        .get(..content.len().min("title:".len()))
+        .is_some_and(|value| value.eq_ignore_ascii_case("title:"))
+    {
+        return md.to_string();
+    }
+
+    let positions = find_frontmatter_key_positions(content);
+    if positions.len() < 2 || positions[0].0 != 0 {
+        return md.to_string();
+    }
+
+    let mut fields = Vec::with_capacity(positions.len());
+    let mut body_tail = String::new();
+    for (idx, (position, key)) in positions.iter().enumerate() {
+        let value_start = position + key.len() + 1;
+        let value_end = positions
+            .get(idx + 1)
+            .map(|(next_position, _)| *next_position)
+            .unwrap_or(content.len());
+        let raw_value = content[value_start..value_end].trim();
+        if idx + 1 == positions.len() {
+            let (field_value, tail) = split_frontmatter_value_tail(raw_value);
+            fields.push((*key, clean_one_line_frontmatter_value(field_value)));
+            body_tail = clean_one_line_frontmatter_tail(tail);
+        } else {
+            fields.push((*key, clean_one_line_frontmatter_value(raw_value)));
+        }
+    }
+
+    if fields.iter().filter(|(_, value)| !value.is_empty()).count() < 2 {
+        return md.to_string();
+    }
+
+    let mut output = String::new();
+    output.push_str("---\n");
+    for (key, value) in fields {
+        output.push_str(key);
+        output.push_str(": ");
+        output.push_str(value.trim());
+        output.push('\n');
+    }
+    output.push_str("---");
+    if !body_tail.is_empty() {
+        output.push_str("\n\n");
+        output.push_str(&body_tail);
+    }
+    output
+}
+
+fn clean_one_line_frontmatter_value(value: &str) -> String {
+    let trimmed = value.trim();
+    trimmed
+        .strip_suffix("---")
+        .unwrap_or(trimmed)
+        .trim_end()
+        .to_string()
+}
+
+fn clean_one_line_frontmatter_tail(tail: &str) -> String {
+    tail.trim_start()
+        .trim_start_matches('-')
+        .trim_start()
+        .to_string()
+}
+
+fn find_frontmatter_key_positions(content: &str) -> Vec<(usize, &'static str)> {
+    let lower = content.to_ascii_lowercase();
+    let mut positions = Vec::new();
+    for key in ONE_LINE_FRONTMATTER_KEYS {
+        let pattern = format!("{key}:");
+        if let Some(position) = lower.find(&pattern) {
+            positions.push((position, *key));
+        }
+    }
+    positions.sort_by_key(|(position, _)| *position);
+    positions.dedup_by_key(|(position, _)| *position);
+    positions
+}
+
+fn split_frontmatter_value_tail(value: &str) -> (&str, &str) {
+    let markers = [
+        "\n# ", "\n## ", "# ", "## ", " ---# ", " ---## ", "---# ", "---## ", "> [!", "[!",
+    ];
+    let split_at = markers.iter().filter_map(|marker| value.find(marker)).min();
+    match split_at {
+        Some(index) => value.split_at(index),
+        None => (value, ""),
+    }
+}
+
+fn repair_markdown_block_boundaries(md: &str) -> String {
+    let step1 = insert_missing_block_boundaries(md);
+    let step2 = split_compacted_table_rows(&step1);
+    split_inline_list_markers(&step2)
+}
+
+fn insert_missing_block_boundaries(md: &str) -> String {
+    let mut output = String::with_capacity(md.len() + 16);
+    let mut index = 0;
+
+    while index < md.len() {
+        if starts_markdown_block(md, index) && !output.is_empty() && !output.ends_with('\n') {
+            output.push('\n');
+            output.push('\n');
+        }
+
+        let ch = md[index..].chars().next().expect("valid char boundary");
+        output.push(ch);
+        index += ch.len_utf8();
+    }
+
+    output
+}
+
+fn starts_markdown_block(md: &str, index: usize) -> bool {
+    starts_heading(md, index) || starts_callout(md, index) || starts_probable_table(md, index)
+}
+
+fn starts_heading(md: &str, index: usize) -> bool {
+    let rest = &md[index..];
+    let level = rest.chars().take_while(|ch| *ch == '#').count();
+    if !(1..=6).contains(&level) || !rest[level..].starts_with(' ') {
+        return false;
+    }
+
+    // 前一个字符不能是 #（防止把 "###" 的第二个 "#" 误判为 "## 标题"）
+    if index > 0 && md[..index].ends_with('#') {
+        return false;
+    }
+
+    if level == 1 {
+        let previous = md[..index].chars().next_back();
+        return match previous {
+            Some(ch) => !ch.is_ascii_alphanumeric(),
+            None => true,
+        };
+    }
+
+    true
+}
+
+fn starts_callout(md: &str, index: usize) -> bool {
+    let rest = &md[index..];
+    if rest.starts_with("[!") {
+        if md[..index]
+            .chars()
+            .rev()
+            .find(|ch| !ch.is_whitespace())
+            .is_some_and(|ch| ch == '>')
+        {
+            return false;
+        }
+        let line_prefix = md[..index].rsplit('\n').next().unwrap_or_default();
+        if line_prefix.trim_start().starts_with('>') {
+            return false;
+        }
+    }
+    (rest.starts_with("> [!") || rest.starts_with("[!")) && detect_callout_type(rest).is_some()
+}
+
+fn starts_probable_table(md: &str, index: usize) -> bool {
+    if !md[index..].starts_with('|') {
+        return false;
+    }
+    let line_prefix = md[..index].rsplit('\n').next().unwrap_or_default();
+    if line_prefix.contains('|') {
+        return false;
+    }
+    let rest = &md[index..];
+    let line_end = rest.find('\n').unwrap_or(rest.len());
+    let current_line = &rest[..line_end.min(500)];
+    let pipe_count = current_line.matches('|').count();
+    if pipe_count < 2 {
+        return false;
+    }
+    // 当前行是分隔行（如 |---|:---|）直接通过
+    if line_has_table_separator(current_line) {
+        return true;
+    }
+    // 当前行是表头行（如 |Header1|Header2|），检查下一行是否是分隔行
+    if line_end < rest.len() {
+        let next_rest = rest[line_end..].trim_start_matches('\n');
+        let next_end = next_rest.find('\n').unwrap_or(next_rest.len());
+        let next_line = &next_rest[..next_end.min(500)];
+        return next_line.starts_with('|') && line_has_table_separator(next_line);
+    }
+    false
+}
+
+fn split_compacted_table_rows(md: &str) -> String {
+    md.lines()
+        .flat_map(|line| {
+            if line_has_table_separator(line) {
+                split_compacted_table_line(line)
+            } else {
+                vec![line.to_string()]
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn line_has_table_separator(line: &str) -> bool {
+    let compact = line.replace(' ', "");
+    compact.contains("|---") || compact.contains("|:---") || compact.contains("|---:")
+}
+
+fn split_compacted_table_line(line: &str) -> Vec<String> {
+    if let Some(rows) = split_compacted_table_line_by_separator(line) {
+        return rows;
+    }
+    split_compacted_table_line_fallback(line)
+}
+
+fn split_compacted_table_line_by_separator(line: &str) -> Option<Vec<String>> {
+    if !line.trim_start().starts_with('|') {
+        return None;
+    }
+
+    let normalized_cells: Vec<String> = line
+        .split('|')
+        .skip(1)
+        .filter_map(|cell| {
+            let trimmed = cell.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
+        .collect();
+    if normalized_cells.len() < 4 {
+        return None;
+    }
+
+    let separator_start = normalized_cells
+        .iter()
+        .position(|cell| is_markdown_table_separator_cell(cell))?;
+    let separator_len = normalized_cells[separator_start..]
+        .iter()
+        .take_while(|cell| is_markdown_table_separator_cell(cell))
+        .count();
+    if separator_len < 2 || separator_start < separator_len {
+        return None;
+    }
+
+    let column_count = separator_len;
+    let header_start = separator_start - column_count;
+    let header_cells = &normalized_cells[header_start..separator_start];
+    let separator_cells = &normalized_cells[separator_start..separator_start + column_count];
+    let data_cells = &normalized_cells[separator_start + column_count..];
+    if data_cells.len() < column_count {
+        return None;
+    }
+
+    let data_row_count = data_cells.len() / column_count;
+    let tail_cells = &data_cells[data_row_count * column_count..];
+    if tail_cells.len() > 1 {
+        return None;
+    }
+
+    let mut rows = Vec::with_capacity(2 + data_row_count + tail_cells.len());
+    rows.push(build_markdown_table_row(header_cells, false));
+    rows.push(build_markdown_table_row(separator_cells, true));
+    for row_cells in data_cells[..data_row_count * column_count].chunks(column_count) {
+        rows.push(build_markdown_table_row(row_cells, false));
+    }
+    if let Some(tail) = tail_cells.first() {
+        rows.push(tail.to_string());
+    }
+
+    Some(rows)
+}
+
+fn is_markdown_table_separator_cell(cell: &str) -> bool {
+    let trimmed = cell.trim();
+    trimmed.chars().filter(|ch| *ch == '-').count() >= 3
+        && trimmed
+            .chars()
+            .all(|ch| matches!(ch, '-' | ':' | ' '))
+}
+
+fn build_markdown_table_row(cells: &[String], is_separator: bool) -> String {
+    if is_separator {
+        format!("|{}|", cells.join("|"))
+    } else {
+        format!("| {} |", cells.join(" | "))
+    }
+}
+
+fn split_compacted_table_line_fallback(line: &str) -> Vec<String> {
+    let chars: Vec<char> = line.chars().collect();
+    let mut rows = Vec::new();
+    let mut current = String::new();
+    let mut index = 0;
+
+    while index < chars.len() {
+        if chars[index] == '|' {
+            if current.matches('|').count() >= 2
+                && chars
+                    .get(index + 1)
+                    .is_some_and(|next| !next.is_whitespace() && *next != '|')
+                && !chars[index + 1..].contains(&'|')
+            {
+                current.push('|');
+                rows.push(current.trim_end().to_string());
+                current.clear();
+                index += 1;
+                continue;
+            }
+            let mut next = index + 1;
+            while next < chars.len() && chars[next].is_whitespace() {
+                next += 1;
+            }
+            if next < chars.len() && chars[next] == '|' && current.matches('|').count() >= 2 {
+                current.push('|');
+                rows.push(current.trim_end().to_string());
+                current.clear();
+                current.push('|');
+                index = next + 1;
+                continue;
+            }
+        }
+
+        current.push(chars[index]);
+        index += 1;
+    }
+
+    if !current.trim().is_empty() {
+        rows.push(current.trim_end().to_string());
+    }
+
+    rows
+}
+
+fn split_inline_list_markers(md: &str) -> String {
+    md.lines()
+        .map(|line| {
+            if line.trim_start().starts_with('|') {
+                line.to_string()
+            } else {
+                split_inline_list_markers_in_line(line)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn split_inline_list_markers_in_line(line: &str) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    let mut output = String::with_capacity(line.len() + 8);
+    let mut segment_start = 0usize;
+    let mut index = 0usize;
+    let mut in_inline_list = false;
+
+    while index < chars.len() {
+        if should_split_inline_list_marker(&chars, index, segment_start, in_inline_list) {
+            if !output.ends_with('\n') {
+                output.push('\n');
+            }
+            output.push_str("- ");
+            index += 1;
+            while index < chars.len() && chars[index].is_whitespace() {
+                index += 1;
+            }
+            segment_start = index;
+            in_inline_list = true;
+            continue;
+        }
+
+        output.push(chars[index]);
+        index += 1;
+    }
+
+    output
+}
+
+fn should_split_inline_list_marker(
+    chars: &[char],
+    index: usize,
+    segment_start: usize,
+    in_inline_list: bool,
+) -> bool {
+    if chars[index] != '-' || index == 0 || chars[index - 1].is_whitespace() {
+        return false;
+    }
+    let Some(next) = chars.get(index + 1).copied() else {
+        return false;
+    };
+    if !(next.is_whitespace() || next.is_alphanumeric()) {
+        return false;
+    }
+    if in_inline_list && next.is_whitespace() {
+        return true;
+    }
+    if matches!(chars[index - 1], ':' | '：') {
+        return true;
+    }
+
+    let prefix = chars[segment_start..index]
+        .iter()
+        .collect::<String>()
+        .trim()
+        .to_string();
+    if prefix.ends_with("清单") || prefix.ends_with("列表") || prefix.ends_with("要点") {
+        return true;
+    }
+    false
+}
 
 /// 检测某一行是否是 Callout 起始行（形如 `[!info] 标题` 或 `> [!info] 标题`）
 ///
@@ -798,16 +1424,12 @@ pub(crate) fn normalize_callout_prefixes(md: &str) -> String {
 
 /// 判断一段候选 frontmatter 内容是否像真实的 frontmatter（至少含 2 个常见字段）
 fn content_looks_like_frontmatter(content: &[String]) -> bool {
-    const KNOWN_KEYS: &[&str] = &[
-        "title", "authors", "author", "year", "date", "tags", "source", "aliases",
-        "cssclasses", "publisher", "doi", "abstract", "keywords",
-    ];
     let mut hit_count = 0;
     for line in content {
         let trimmed = line.trim();
         if let Some(colon_idx) = trimmed.find(':') {
             let key = trimmed[..colon_idx].trim().to_ascii_lowercase();
-            if KNOWN_KEYS.iter().any(|k| *k == key.as_str()) {
+            if FRONTMATTER_KEYS.contains(&key.as_str()) {
                 hit_count += 1;
                 if hit_count >= 2 {
                     return true;
@@ -906,20 +1528,21 @@ pub(crate) fn normalize_frontmatter_fencing(md: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::{net::SocketAddr, time::Duration};
+    use std::{io, net::SocketAddr, time::Duration};
 
     use axum::{
         body::Body,
         extract::State,
-        http::header,
+        http::{header, StatusCode},
         response::sse::{Event, KeepAlive, Sse},
         routing::post,
         Json, Router,
     };
     use futures_util::{stream, Stream};
     use serde_json::Value;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
-    use tokio_util::sync::CancellationToken;
+    use tokio_util::{codec::LinesCodecError, sync::CancellationToken};
 
     use crate::{
         ai_integration::{AiIntegration, AskAiRequest},
@@ -930,7 +1553,8 @@ mod tests {
     };
 
     use super::{
-        normalize_callout_prefixes, normalize_frontmatter_fencing, run_stream_request,
+        consume_sse_lines, is_recoverable_stream_read_error, normalize_callout_prefixes,
+        normalize_frontmatter_fencing, normalize_summary_markdown, run_stream_request,
         PreparedStream, StreamOutcome,
     };
     use crate::ai_integration::provider_registry::PromptMessage;
@@ -950,8 +1574,7 @@ mod tests {
     #[test]
     fn normalize_handles_multiline_callout_until_blank_line() {
         let input = "[!info] 烧成温度\n第一行内容。\n第二行内容。\n\n## 下一节";
-        let expected =
-            "> [!info] 烧成温度\n> 第一行内容。\n> 第二行内容。\n\n## 下一节";
+        let expected = "> [!info] 烧成温度\n> 第一行内容。\n> 第二行内容。\n\n## 下一节";
         assert_eq!(normalize_callout_prefixes(input), expected);
     }
 
@@ -1074,7 +1697,8 @@ mod tests {
     #[test]
     fn frontmatter_ignores_unrelated_yaml_code_block() {
         // 代码块内容不像 frontmatter（只是示例 yaml 配置），不应被改动
-        let input = "# 标题\n\n参考下面的配置：\n\n```yaml\nport: 8080\nhost: localhost\n```\n\n说明。";
+        let input =
+            "# 标题\n\n参考下面的配置：\n\n```yaml\nport: 8080\nhost: localhost\n```\n\n说明。";
         assert_eq!(normalize_frontmatter_fencing(input), input);
     }
 
@@ -1125,6 +1749,61 @@ mod tests {
         assert!(step2.contains("> 一句话说明。"));
     }
 
+    #[test]
+    fn summary_normalizer_repairs_compacted_frontmatter_callout_table_and_list() {
+        let input = "title: 科技考古论文精读 authors: 李口, 王口 year:2025source: Journal tags: [archaeometry, ceramic]# 标题> [!abstract] 摘要\n本研究讨论样品。## 数据表| 项目 | 结论 | |------|------| | 胎土 | 高岭土 |清单- 能量色散- 拉曼解读：-李口遗址显示连续生产。";
+        let output = normalize_summary_markdown(input);
+
+        assert!(output.starts_with("---\ntitle: 科技考古论文精读\n"));
+        assert!(output.contains("\nauthors: 李口, 王口\n"));
+        assert!(output.contains("\nyear: 2025\n"));
+        assert!(output.contains("\nsource: Journal\n"));
+        assert!(output.contains("\ntags: [archaeometry, ceramic]\n---\n\n# 标题\n\n"));
+        assert!(output.contains("> [!abstract] 摘要\n> 本研究讨论样品。"));
+        assert!(output.contains("\n## 数据表\n"));
+        assert!(output.contains("| 项目 | 结论 |\n|------|------|\n| 胎土 | 高岭土 |"));
+        assert!(output.contains("清单\n- 能量色散\n- 拉曼"));
+        assert!(output.contains("解读：\n- 李口遗址显示连续生产。"));
+    }
+
+    #[test]
+    fn summary_normalizer_splits_heading_from_table_header_when_separator_on_next_line() {
+        // 用户实际场景：标题和表头行在同一行，分隔行独立存在
+        let input = "## 🏺样品信息速览|遗址 |地理位置 |年代 |样品类型 |样品数量 |保存状况 |\n|------|----------|------|----------|----------|----------|\n|大朱庄 |河南省永城市裴桥镇大朱庄村西北侧 |龙山文化期（2300–1800 BCE） |细泥灰陶、细泥褐陶 |15件 |未具体说明 |";
+        let output = normalize_summary_markdown(input);
+
+        assert!(output.contains("## 🏺样品信息速览\n\n"), "标题后应有空行: {output}");
+        assert!(output.contains("|遗址 |地理位置 |年代 |样品类型 |样品数量 |保存状况 |\n|------|----------|------|----------|----------|----------|\n|大朱庄"), "表格应有表头、分隔行、数据行");
+    }
+
+    #[test]
+    fn summary_normalizer_splits_heading_from_table_with_mixed_heading_levels() {
+        // 三级标题 + 表头 压缩
+        let input = "### 化学成分对比|氧化物 |大朱庄 |李口 |\n|---|---|---|\n| SiO₂ |67.93 |67.10 |";
+        let output = normalize_summary_markdown(input);
+
+        assert!(output.contains("### 化学成分对比\n\n"), "三级标题后应有空行");
+        assert!(output.contains("|氧化物 |大朱庄 |李口 |\n|---|---|---|\n| SiO₂ |67.93 |67.10 |"), "表格结构应保持");
+    }
+
+    #[test]
+    fn summary_normalizer_is_idempotent_for_well_formed_markdown() {
+        let input = "---\ntitle: 已规范\nauthors: 张三\nyear: 2026\n---\n\n# 标题\n\n> [!abstract] 摘要\n> 正文。\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n- 条目";
+        assert_eq!(normalize_summary_markdown(input), input);
+    }
+
+    #[test]
+    fn summary_normalizer_preserves_ordinary_text_and_chemical_formulae() {
+        let input = "# 标题\n\nC-14 测年与 Fe-O 键、Mg-Al 组合均应保持原样。\n普通正文-不是列表，也不应该被拆开。";
+        assert_eq!(normalize_summary_markdown(input), input);
+    }
+
+    #[test]
+    fn summary_normalizer_preserves_table_cell_hyphens() {
+        let input = "| 项目 | 结论 |\n|---|---|\n| 化学式 | Fe-O 与 C-14 未变化 |";
+        assert_eq!(normalize_summary_markdown(input), input);
+    }
+
     async fn openai_stream(
         State(_state): State<MockState>,
         Json(_body): Json<Value>,
@@ -1166,6 +1845,13 @@ mod tests {
         )
     }
 
+    async fn provider_rate_limited(
+        State(_state): State<MockState>,
+        Json(_body): Json<Value>,
+    ) -> impl axum::response::IntoResponse {
+        (StatusCode::TOO_MANY_REQUESTS, "rate limit exceeded")
+    }
+
     async fn boot_mock_server() -> SocketAddr {
         let router = Router::new()
             .route("/chat/completions", post(openai_stream))
@@ -1205,6 +1891,80 @@ mod tests {
         tokio::spawn(async move {
             axum::serve(listener, router).await.unwrap();
         });
+        address
+    }
+
+    async fn boot_provider_http_error_server() -> SocketAddr {
+        let router = Router::new()
+            .route("/chat/completions", post(provider_rate_limited))
+            .route("/v1/chat/completions", post(provider_rate_limited))
+            .with_state(MockState);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        address
+    }
+
+    fn test_prepared_stream(stream_id: &str) -> PreparedStream {
+        PreparedStream {
+            stream_id: stream_id.to_string(),
+            session_id: format!("session-{stream_id}"),
+            provider: ProviderId::Openai,
+            model: "gpt-4o-mini".to_string(),
+            started_at: chrono::Utc::now().to_rfc3339(),
+            messages: vec![PromptMessage {
+                role: "user".to_string(),
+                content: "hello".to_string(),
+            }],
+            document_id: format!("document-{stream_id}"),
+        }
+    }
+
+    async fn run_openai_stream_request_against(
+        address: SocketAddr,
+        stream_id: &str,
+    ) -> Result<StreamOutcome, crate::errors::AppError> {
+        let storage = Storage::new_in_memory().unwrap();
+        let keychain = KeychainService::new(&std::env::temp_dir());
+        let ai = AiIntegration::new(storage.clone(), keychain.clone()).unwrap();
+
+        {
+            let connection = storage.connection();
+            migration::run(&connection).unwrap();
+            connection
+                .execute(
+                    "UPDATE provider_settings SET base_url = ?1, is_active = 1, model = 'gpt-4o-mini' WHERE provider = 'openai'",
+                    rusqlite::params![format!("http://{}", address)],
+                )
+                .unwrap();
+        }
+
+        let app = tauri::test::mock_app();
+        let cancellation = CancellationToken::new();
+        let prepared = test_prepared_stream(stream_id);
+
+        run_stream_request(&app.handle().clone(), &ai, &prepared, &cancellation).await
+    }
+
+    async fn boot_truncated_raw_sse_server(body: &'static str) -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0_u8; 4096];
+            let _ = socket.read(&mut request).await;
+
+            let declared_length = body.len() + 1024;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {declared_length}\r\nconnection: close\r\n\r\n{body}",
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+            let _ = socket.shutdown().await;
+        });
+
         address
     }
 
@@ -1358,6 +2118,120 @@ mod tests {
                 assert!(thinking.is_none());
             }
             StreamOutcome::Cancelled => panic!("EOF without trailing newline should not cancel"),
+        }
+    }
+
+    #[tokio::test]
+    async fn run_stream_request_preserves_partial_content_when_body_decode_fails_after_delta() {
+        let address = boot_truncated_raw_sse_server(
+            r#"data: {"choices":[{"delta":{"content":"Partial"}}]}
+
+"#,
+        )
+        .await;
+
+        let outcome = run_openai_stream_request_against(address, "stream-truncated")
+            .await
+            .unwrap();
+
+        match outcome {
+            StreamOutcome::Completed { text, thinking, .. } => {
+                assert_eq!(text, "Partial");
+                assert!(thinking.is_none());
+            }
+            StreamOutcome::Cancelled => panic!("body decode failure after content should finish"),
+        }
+    }
+
+    #[tokio::test]
+    async fn run_stream_request_fails_cleanly_when_body_decode_fails_before_content() {
+        let address = boot_truncated_raw_sse_server(
+            r#"data: {"choices":[{"delta":{}}]}
+
+"#,
+        )
+        .await;
+
+        let error = run_openai_stream_request_against(address, "stream-empty-truncated")
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::ProviderConnectionFailed);
+        assert!(error.retryable);
+        assert!(error.message.contains("未收到可用内容"));
+        assert!(!error.message.contains("解析 SSE 行失败"));
+        assert!(!error.message.contains("SSE 字节流读取失败"));
+        assert_eq!(
+            error.details.as_ref().unwrap()["payloadCount"],
+            serde_json::json!(1)
+        );
+    }
+
+    #[tokio::test]
+    async fn run_stream_request_preserves_provider_http_error_mapping() {
+        let address = boot_provider_http_error_server().await;
+
+        let error = run_openai_stream_request_against(address, "stream-rate-limited")
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::ProviderRateLimited);
+        assert!(error.retryable);
+        assert!(error.message.contains("HTTP 429"));
+        assert!(error.message.contains("rate limit exceeded"));
+        assert!(!error.message.contains("未收到可用内容"));
+        assert!(!error.message.contains("解析 SSE 行失败"));
+        assert!(!error.message.contains("SSE 字节流读取失败"));
+    }
+
+    #[tokio::test]
+    async fn consume_sse_lines_preserves_partial_content_for_recoverable_read_errors() {
+        let cases = [
+            (
+                "decode",
+                LinesCodecError::Io(io::Error::other("error decoding response body")),
+            ),
+            (
+                "eof",
+                LinesCodecError::Io(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "unexpected EOF while reading body",
+                )),
+            ),
+            (
+                "closed",
+                LinesCodecError::Io(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed before message completed",
+                )),
+            ),
+        ];
+
+        for (label, error) in cases {
+            assert!(
+                is_recoverable_stream_read_error(&error),
+                "{label} should be recognized as recoverable"
+            );
+
+            let app = tauri::test::mock_app();
+            let cancellation = CancellationToken::new();
+            let prepared = test_prepared_stream(&format!("stream-{label}"));
+            let lines = stream::iter(vec![
+                Ok(r#"data: {"choices":[{"delta":{"content":"Partial"}}]}"#.to_string()),
+                Err(error),
+            ]);
+
+            let outcome = consume_sse_lines(&app.handle().clone(), &prepared, &cancellation, lines)
+                .await
+                .unwrap();
+
+            match outcome {
+                StreamOutcome::Completed { text, thinking, .. } => {
+                    assert_eq!(text, "Partial");
+                    assert!(thinking.is_none());
+                }
+                StreamOutcome::Cancelled => panic!("{label} should finish with partial content"),
+            }
         }
     }
 

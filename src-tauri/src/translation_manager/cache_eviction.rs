@@ -4,12 +4,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use chrono::{DateTime, Duration, Utc};
+
 use crate::{
     errors::AppError,
     storage::{documents, translation_artifacts, translation_jobs, Storage},
 };
 
 pub const MAX_CACHE_SIZE_BYTES: u64 = 500 * 1024 * 1024;
+const PROTECTED_JOB_GRACE_PERIOD: Duration = Duration::minutes(5);
 
 #[derive(Debug, Clone)]
 struct CacheCandidate {
@@ -48,7 +51,9 @@ fn evict_if_needed_with_limit(
             break;
         }
 
-        if protected_job_id.is_some_and(|job_id| job_id == candidate.job_id.as_str()) {
+        if protected_job_id.is_some_and(|job_id| job_id == candidate.job_id.as_str())
+            && is_within_protected_grace_period(&candidate.recency_marker)
+        {
             continue;
         }
 
@@ -57,6 +62,14 @@ fn evict_if_needed_with_limit(
     }
 
     Ok(())
+}
+
+fn is_within_protected_grace_period(recency_marker: &str) -> bool {
+    let Ok(timestamp) = DateTime::parse_from_rfc3339(recency_marker) else {
+        return false;
+    };
+
+    Utc::now().signed_duration_since(timestamp.with_timezone(&Utc)) <= PROTECTED_JOB_GRACE_PERIOD
 }
 
 fn load_candidates(storage: &Storage) -> Result<Vec<CacheCandidate>, AppError> {
@@ -188,7 +201,7 @@ mod tests {
         storage::{documents, translation_artifacts, translation_jobs, Storage},
     };
 
-    use super::evict_if_needed_with_limit;
+    use super::{evict_candidate, evict_if_needed_with_limit, CacheCandidate};
 
     #[test]
     fn evicts_oldest_completed_cache_first() {
@@ -253,7 +266,7 @@ mod tests {
             &storage,
             "/tmp/protected.pdf",
             "sha-protected",
-            "2026-01-01T00:00:00Z",
+            &Utc::now().to_rfc3339(),
             &protected_pdf,
         );
         let other_job_id = seed_completed_job(
@@ -280,6 +293,43 @@ mod tests {
         assert!(translation_jobs::get_by_id(&connection, &other_job_id)
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn eviction_keeps_db_rows_when_file_removal_fails() {
+        let storage = Storage::new_in_memory().expect("in-memory storage should initialize");
+        let base_dir = temp_dir("cache-eviction-file-failure");
+        let artifact_dir = base_dir.join("artifact-as-directory");
+        fs::create_dir_all(&artifact_dir).expect("artifact directory should exist");
+        let job_id = seed_completed_job(
+            &storage,
+            "/tmp/remove-failure.pdf",
+            "sha-remove-failure",
+            "2026-01-01T00:00:00Z",
+            &artifact_dir,
+        );
+        let candidate = CacheCandidate {
+            job_id: job_id.clone(),
+            last_opened_at: "2026-01-01T00:00:00Z".to_string(),
+            recency_marker: "2026-01-01T00:00:00Z".to_string(),
+            total_size_bytes: 1,
+            artifact_paths: vec![artifact_dir],
+            cache_dirs: Vec::new(),
+        };
+
+        let result = evict_candidate(&storage, &candidate);
+
+        assert!(
+            result.is_err(),
+            "directory removal via remove_file should fail"
+        );
+        let connection = storage.connection();
+        assert!(
+            translation_jobs::get_by_id(&connection, &job_id)
+                .expect("job lookup should succeed")
+                .is_some(),
+            "DB row must remain when file removal fails"
+        );
     }
 
     fn seed_completed_job(

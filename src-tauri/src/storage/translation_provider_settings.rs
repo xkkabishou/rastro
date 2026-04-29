@@ -67,10 +67,7 @@ pub fn set_active(
     model: &str,
 ) -> rusqlite::Result<TranslationProviderSettingRecord> {
     let transaction = connection.transaction()?;
-    transaction.execute(
-        "UPDATE translation_provider_settings SET is_active = 0",
-        [],
-    )?;
+    transaction.execute("UPDATE translation_provider_settings SET is_active = 0", [])?;
     transaction.execute(
         "UPDATE translation_provider_settings
          SET model = ?1, is_active = 1
@@ -79,8 +76,7 @@ pub fn set_active(
     )?;
     transaction.commit()?;
 
-    get_by_provider(connection, provider)
-        .map(|record| record.expect("激活的翻译 Provider 应存在"))
+    get_by_provider(connection, provider).map(|record| record.expect("激活的翻译 Provider 应存在"))
 }
 
 /// 更新翻译 Provider 的脱敏 Key

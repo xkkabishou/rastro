@@ -226,7 +226,6 @@ pub fn reveal_in_finder(file_path: String) -> Result<(), AppError> {
     Ok(())
 }
 
-
 /// 返回单文档快照，包括缓存可用性
 #[tauri::command]
 pub fn get_document_snapshot(
@@ -324,9 +323,17 @@ fn batch_enrich_snapshots(
     let doc_ids: Vec<&str> = records.iter().map(|r| r.document_id.as_str()).collect();
 
     // 批量查询最新完成的翻译 job（每个文档取最新一个）
-    let placeholders: String = doc_ids.iter().enumerate().map(|(i, _)| {
-        if i == 0 { "?".to_string() } else { ",?".to_string() }
-    }).collect();
+    let placeholders: String = doc_ids
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            if i == 0 {
+                "?".to_string()
+            } else {
+                ",?".to_string()
+            }
+        })
+        .collect();
 
     let mut latest_jobs: HashMap<String, translation_jobs::TranslationJobRecord> = HashMap::new();
     {
@@ -337,12 +344,11 @@ fn batch_enrich_snapshots(
             placeholders
         );
         let mut statement = connection.prepare(&sql)?;
-        let params: Vec<&dyn rusqlite::types::ToSql> = doc_ids.iter()
+        let params: Vec<&dyn rusqlite::types::ToSql> = doc_ids
+            .iter()
             .map(|id| id as &dyn rusqlite::types::ToSql)
             .collect();
-        let rows = statement.query_map(params.as_slice(), |row| {
-            translation_jobs::map_job_row(row)
-        })?;
+        let rows = statement.query_map(params.as_slice(), translation_jobs::map_job_row)?;
         for row_result in rows {
             let job = row_result?;
             // 仅保留每个文档的最新 job（已按 created_at DESC 排序）
@@ -357,12 +363,11 @@ fn batch_enrich_snapshots(
             placeholders
         );
         let mut statement = connection.prepare(&sql)?;
-        let params: Vec<&dyn rusqlite::types::ToSql> = doc_ids.iter()
+        let params: Vec<&dyn rusqlite::types::ToSql> = doc_ids
+            .iter()
             .map(|id| id as &dyn rusqlite::types::ToSql)
             .collect();
-        let rows = statement.query_map(params.as_slice(), |row| {
-            row.get::<_, String>(0)
-        })?;
+        let rows = statement.query_map(params.as_slice(), |row| row.get::<_, String>(0))?;
         rows.filter_map(|r| r.ok()).collect()
     };
 
@@ -384,7 +389,8 @@ fn batch_enrich_snapshots(
             placeholders
         );
         let mut statement = connection.prepare(&sql)?;
-        let params: Vec<&dyn rusqlite::types::ToSql> = doc_ids.iter()
+        let params: Vec<&dyn rusqlite::types::ToSql> = doc_ids
+            .iter()
             .map(|id| id as &dyn rusqlite::types::ToSql)
             .collect();
         let rows = statement.query_map(params.as_slice(), |row| {
@@ -397,7 +403,8 @@ fn batch_enrich_snapshots(
     }
 
     // 富化快照：加载最新 job 的产物详情
-    let mut job_artifacts: HashMap<String, Vec<translation_artifacts::TranslationArtifactRecord>> = HashMap::new();
+    let mut job_artifacts: HashMap<String, Vec<translation_artifacts::TranslationArtifactRecord>> =
+        HashMap::new();
     for (doc_id, job) in &latest_jobs {
         let artifacts = translation_artifacts::list_by_job(connection, &job.job_id)?;
         job_artifacts.insert(doc_id.clone(), artifacts);
@@ -421,14 +428,20 @@ fn batch_enrich_snapshots(
                 model: Some(job.model.clone()),
                 translated_pdf_path,
                 bilingual_pdf_path,
-                updated_at: job.finished_at.clone().or_else(|| Some(job.created_at.clone())),
+                updated_at: job
+                    .finished_at
+                    .clone()
+                    .or_else(|| Some(job.created_at.clone())),
             })
         } else {
             None
         };
 
         let has_summary = summary_doc_ids.contains(&record.document_id);
-        let translation_count = translation_artifact_counts.get(&record.document_id).copied().unwrap_or(0);
+        let translation_count = translation_artifact_counts
+            .get(&record.document_id)
+            .copied()
+            .unwrap_or(0);
         let artifact_count = translation_count + u32::from(has_summary);
 
         snapshots.push(DocumentSnapshot {

@@ -70,15 +70,26 @@ export const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message }) 
               </details>
             )}
 
-            <div className={`markdown-body text-sm ${message.isStreaming ? 'streaming-cursor' : ''}`}>
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex]}
-                components={{ blockquote: CalloutBlockquote }}
-              >
+            {/*
+              流式中纯文本渲染：每个流式 token 都触发 ReactMarkdown + remarkGfm +
+              remarkMath + rehypeKatex 完整解析会显著占用 CPU（50 tokens/s 时尤甚），
+              因此流式期间退化为 whitespace-pre-wrap 文本，等流结束后再走完整 Markdown 渲染。
+            */}
+            {message.isStreaming ? (
+              <div className="text-sm leading-relaxed whitespace-pre-wrap text-[var(--color-text)] streaming-cursor">
                 {message.content || ' '}
-              </ReactMarkdown>
-            </div>
+              </div>
+            ) : (
+              <div className="markdown-body text-sm">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={{ blockquote: CalloutBlockquote }}
+                >
+                  {message.content || ' '}
+                </ReactMarkdown>
+              </div>
+            )}
           </>
         )}
 

@@ -249,8 +249,8 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
           >
             {zoteroSyncSuccess ? (
               <>
-                <Check size={12} className="text-emerald-500" />
-                <span className="text-emerald-500">已同步到 Zotero</span>
+                <Check size={12} className="text-[var(--color-success)]" />
+                <span className="text-[var(--color-success)]">已同步到 Zotero</span>
               </>
             ) : isSyncingZotero ? (
               <>

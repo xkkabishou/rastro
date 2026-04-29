@@ -76,7 +76,7 @@ export type AnnotationColor =
 // 统一错误模型
 // ---------------------------------------------------------------------------
 
-/** 应用错误码（共 23 个） */
+/** 应用错误码（共 25 个） */
 export type AppErrorCode =
   // 文档相关
   | "DOCUMENT_NOT_FOUND"
@@ -92,6 +92,7 @@ export type AppErrorCode =
   // 翻译任务相关
   | "TRANSLATION_FAILED"
   | "TRANSLATION_CANCELLED"
+  | "FILE_NOT_FOUND"
   // AI Provider 相关
   | "PROVIDER_KEY_MISSING"
   | "PROVIDER_CONNECTION_FAILED"

@@ -2,7 +2,7 @@
 // 与 src/shared/types.ts 中的 AppError / AppErrorCode 一一对应
 
 use serde::Serialize;
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 /// 应用错误码（与 TypeScript AppErrorCode 对齐）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -22,6 +22,7 @@ pub enum AppErrorCode {
     // 翻译任务相关
     TranslationFailed,
     TranslationCancelled,
+    FileNotFound,
     // AI Provider 相关
     ProviderKeyMissing,
     ProviderConnectionFailed,
@@ -60,6 +61,7 @@ impl AppErrorCode {
             Self::PdfmathtranslateNotInstalled => "PDFMATHTRANSLATE_NOT_INSTALLED",
             Self::TranslationFailed => "TRANSLATION_FAILED",
             Self::TranslationCancelled => "TRANSLATION_CANCELLED",
+            Self::FileNotFound => "FILE_NOT_FOUND",
             Self::ProviderKeyMissing => "PROVIDER_KEY_MISSING",
             Self::ProviderConnectionFailed => "PROVIDER_CONNECTION_FAILED",
             Self::ProviderRateLimited => "PROVIDER_RATE_LIMITED",
@@ -115,10 +117,38 @@ impl AppError {
         key: impl Into<String>,
         value: impl Into<serde_json::Value>,
     ) -> Self {
+        let key = key.into();
+        let value = sanitize_detail_value(&key, value.into());
         let details = self.details.get_or_insert_with(HashMap::new);
-        details.insert(key.into(), value.into());
+        details.insert(key, value);
         self
     }
+}
+
+fn sanitize_detail_value(key: &str, value: serde_json::Value) -> serde_json::Value {
+    if !key.to_ascii_lowercase().contains("path") {
+        return value;
+    }
+
+    match value {
+        serde_json::Value::String(path) => {
+            serde_json::Value::String(sanitize_path_detail(key, &path))
+        }
+        other => other,
+    }
+}
+
+fn sanitize_path_detail(key: &str, path: &str) -> String {
+    if key.eq_ignore_ascii_case("pythonpath") {
+        return "[paths redacted]".to_string();
+    }
+
+    Path::new(path)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .map(String::from)
+        .unwrap_or_else(|| "[path redacted]".to_string())
 }
 
 impl std::fmt::Display for AppError {
@@ -172,6 +202,7 @@ mod tests {
         ),
         (AppErrorCode::TranslationFailed, "TRANSLATION_FAILED"),
         (AppErrorCode::TranslationCancelled, "TRANSLATION_CANCELLED"),
+        (AppErrorCode::FileNotFound, "FILE_NOT_FOUND"),
         (AppErrorCode::ProviderKeyMissing, "PROVIDER_KEY_MISSING"),
         (
             AppErrorCode::ProviderConnectionFailed,
@@ -208,7 +239,7 @@ mod tests {
 
     #[test]
     fn app_error_code_serializes_to_expected_contract_literals() {
-        assert_eq!(ALL_ERROR_CODES.len(), 24);
+        assert_eq!(ALL_ERROR_CODES.len(), 25);
 
         for (code, expected) in ALL_ERROR_CODES {
             assert_eq!(
@@ -246,6 +277,18 @@ mod tests {
         assert_eq!(value["message"], "数据库损坏");
         assert_eq!(value["retryable"], false);
         assert!(value.get("details").is_none());
+    }
+
+    #[test]
+    fn app_error_sanitizes_path_details() {
+        let error = AppError::new(AppErrorCode::DocumentNotFound, "missing", false)
+            .with_detail("filePath", "/Users/demo/Documents/paper.pdf")
+            .with_detail("pythonpath", "/secret/site-packages:/secret/project");
+
+        let value = serde_json::to_value(&error).unwrap();
+
+        assert_eq!(value["details"]["filePath"], "paper.pdf");
+        assert_eq!(value["details"]["pythonpath"], "[paths redacted]");
     }
 
     #[test]

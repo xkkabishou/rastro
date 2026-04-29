@@ -220,13 +220,18 @@ void ipcEvents.onAiStreamChunk((payload) => {
   const state = useChatStore.getState();
   if (state.activeStreamId !== payload.streamId) return;
 
-  // streamId 变了则立即 flush 上一个流的缓冲
+  // streamId 变了则立即 flush 上一个流的缓冲，并显式清空所有缓冲
+  // 防御式清理：即使 _flushStreamBuffer 内部 early-return（例如 activeStreamId
+  // 在 race 情况下已变更），也保证新 streamId 的 token 不会拼接到旧 buffer 上
   if (_rafStreamId && _rafStreamId !== payload.streamId) {
     if (_rafHandle !== null) {
       cancelAnimationFrame(_rafHandle);
       _rafHandle = null;
     }
     _flushStreamBuffer();
+    _rafStreamId = null;
+    _rafContent = '';
+    _rafThinking = '';
   }
 
   _rafStreamId = payload.streamId;

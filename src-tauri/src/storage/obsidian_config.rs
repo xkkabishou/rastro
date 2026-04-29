@@ -39,7 +39,7 @@ pub fn get_vault_path(connection: &Connection) -> rusqlite::Result<Option<String
 
 /// 获取自动同步开关（默认 false）
 pub fn get_auto_sync(connection: &Connection) -> rusqlite::Result<bool> {
-    get(connection, "auto_sync").map(|v| v.map_or(false, |s| s == "true"))
+    get(connection, "auto_sync").map(|v| v.is_some_and(|s| s == "true"))
 }
 
 #[cfg(test)]
@@ -95,13 +95,7 @@ mod tests {
     #[test]
     fn auto_sync_returns_true_when_set() {
         let connection = setup_connection();
-        upsert(
-            &connection,
-            "auto_sync",
-            "true",
-            "2026-03-20T00:00:00Z",
-        )
-        .unwrap();
+        upsert(&connection, "auto_sync", "true", "2026-03-20T00:00:00Z").unwrap();
         assert!(get_auto_sync(&connection).unwrap());
     }
 }
