@@ -186,3 +186,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: Wave2-3收尾 — spawn_blocking补漏 + 熔断器300s + ErrorBoundary
+
+**Date**: 2026-04-29
+**Task**: Wave2-3收尾 — spawn_blocking补漏 + 熔断器300s + ErrorBoundary
+**Branch**: `main`
+
+### Summary
+
+Wave2: provider_registry test_connection spawn_blocking 补漏，engine_supervisor BACKOFF_SEQUENCE 加 300s。Wave3: ErrorBoundary fallback prop + ChatPanel/SettingsPanel 包裹。spec: react-pitfalls.md 新增流完成竞态模式文档。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d71134b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
