@@ -9,11 +9,17 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  /** 自定义错误回退 UI，若不提供则使用默认全屏错误提示 */
+  fallback?: React.ReactNode;
+}
+
 export class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
+  ErrorBoundaryProps,
   ErrorBoundaryState
 > {
-  constructor(props: { children: React.ReactNode }) {
+  constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
   }
@@ -28,6 +34,12 @@ export class ErrorBoundary extends React.Component<
 
   render() {
     if (this.state.hasError) {
+      // 如果调用方提供了自定义 fallback，直接使用
+      if (this.props.fallback !== undefined) {
+        return <>{this.props.fallback}</>;
+      }
+
+      // 默认全屏错误回退
       return (
         <div className="flex h-screen w-full items-center justify-center bg-[var(--color-bg)] text-[var(--color-text)]">
           <div className="flex flex-col items-center gap-4 max-w-md text-center">

@@ -3,6 +3,7 @@ import { useChatStore } from '../../stores/useChatStore';
 import { useDocumentStore } from '../../stores/useDocumentStore';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
+import { ErrorBoundary } from '../ErrorBoundary';
 import { ipcClient } from '../../lib/ipc-client';
 import { extractPdfText } from '../../lib/pdf-text-extractor';
 import { Sparkles, MessageSquare, Trash2, BookOpen, Loader2 } from 'lucide-react';
@@ -258,7 +259,9 @@ export const ChatPanel: React.FC = () => {
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
-                  <ChatMessage message={message} />
+                  <ErrorBoundary fallback={<div className="py-3 px-4 text-sm text-[var(--color-text-quaternary)] italic">消息加载出错</div>}>
+                    <ChatMessage message={message} />
+                  </ErrorBoundary>
                 </div>
               );
             })}

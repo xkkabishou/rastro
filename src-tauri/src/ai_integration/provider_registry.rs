@@ -454,7 +454,14 @@ pub async fn test_connection(
     provider: ProviderId,
     model: Option<String>,
 ) -> Result<ProviderConnectivityResult, AppError> {
-    let config = resolve_runtime_config(ai, Some(provider), model)?;
+    // resolve_runtime_config 内部访问 SQLite 与 Keychain，走 spawn_blocking 避免阻塞 tokio worker
+    let ai_for_block = ai.clone();
+    let model_for_block = model.clone();
+    let config = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+        resolve_runtime_config(&ai_for_block, Some(provider), model_for_block)
+    })
+    .await
+    .map_err(|join_err| AppError::internal(format!("数据库任务异常退出: {join_err}")))??;
     let request = build_test_request(&ai.client, &config);
     let started = Instant::now();
     let response = request.send().await?;

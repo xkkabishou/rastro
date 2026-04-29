@@ -23,10 +23,11 @@ const ORPHAN_SHUTDOWN_GRACE: u64 = 3;
 const ORPHAN_PORT_RELEASE_WAIT: Duration = Duration::from_millis(500);
 const ORPHAN_PORT_RELEASE_TIMEOUT: Duration = Duration::from_secs(4);
 const CIRCUIT_WINDOW: Duration = Duration::from_secs(5 * 60);
-const BACKOFF_SEQUENCE: [Duration; 3] = [
+const BACKOFF_SEQUENCE: [Duration; 4] = [
     Duration::from_secs(30),
     Duration::from_secs(60),
     Duration::from_secs(180),
+    Duration::from_secs(300),
 ];
 const RUNTIME_PID_FILE: &str = "translation-engine.pid";
 

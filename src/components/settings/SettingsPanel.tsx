@@ -4,6 +4,7 @@ import { PromptSettings } from './PromptSettings';
 import { ObsidianSettings } from './ObsidianSettings';
 import { Settings, Zap, BarChart3, RefreshCw, HardDrive, Trash2, AlertTriangle, MessageSquareText } from 'lucide-react';
 import { ipcClient } from '../../lib/ipc-client';
+import { ErrorBoundary } from '../ErrorBoundary';
 import type { UsageStatsDto, CacheStatsDto } from '../../shared/types';
 
 // ---------------------------------------------------------------------------
@@ -62,63 +63,70 @@ export const SettingsPanel: React.FC = () => {
   }, [activeTab, loadUsageStats, loadCacheStats]);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* 头部 */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--color-border)] shrink-0">
-        <Settings size={16} className="text-[var(--color-text-secondary)]" />
-        <span className="font-semibold text-sm text-[var(--color-text)]">设置</span>
+    <ErrorBoundary fallback={
+      <div className="flex flex-col h-full items-center justify-center gap-3 p-6 text-center">
+        <AlertTriangle size={24} className="text-[var(--color-warning)]" />
+        <p className="text-sm text-[var(--color-text-secondary)]">设置面板加载出错，请尝试切换 Tab 重试</p>
       </div>
+    }>
+      <div className="flex flex-col h-full">
+        {/* 头部 */}
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--color-border)] shrink-0">
+          <Settings size={16} className="text-[var(--color-text-secondary)]" />
+          <span className="font-semibold text-sm text-[var(--color-text)]">设置</span>
+        </div>
 
-      {/* Tab 切换 */}
-      <div className="flex gap-1 px-3 py-2 border-b border-[var(--color-border)] shrink-0">
-        <TabButton
-          icon={<Zap size={14} />}
-          label="模型配置"
-          active={activeTab === 'model'}
-          onClick={() => setActiveTab('model')}
-        />
-        <TabButton
-          icon={<BarChart3 size={14} />}
-          label="使用统计"
-          active={activeTab === 'usage'}
-          onClick={() => setActiveTab('usage')}
-        />
-        <TabButton
-          icon={<HardDrive size={14} />}
-          label="存储管理"
-          active={activeTab === 'storage'}
-          onClick={() => setActiveTab('storage')}
-        />
-        <TabButton
-          icon={<MessageSquareText size={14} />}
-          label="提示词"
-          active={activeTab === 'prompts'}
-          onClick={() => setActiveTab('prompts')}
-        />
-      </div>
+        {/* Tab 切换 */}
+        <div className="flex gap-1 px-3 py-2 border-b border-[var(--color-border)] shrink-0">
+          <TabButton
+            icon={<Zap size={14} />}
+            label="模型配置"
+            active={activeTab === 'model'}
+            onClick={() => setActiveTab('model')}
+          />
+          <TabButton
+            icon={<BarChart3 size={14} />}
+            label="使用统计"
+            active={activeTab === 'usage'}
+            onClick={() => setActiveTab('usage')}
+          />
+          <TabButton
+            icon={<HardDrive size={14} />}
+            label="存储管理"
+            active={activeTab === 'storage'}
+            onClick={() => setActiveTab('storage')}
+          />
+          <TabButton
+            icon={<MessageSquareText size={14} />}
+            label="提示词"
+            active={activeTab === 'prompts'}
+            onClick={() => setActiveTab('prompts')}
+          />
+        </div>
 
-      {/* 内容区域 */}
-      <div className="flex-1 overflow-y-auto p-3">
-        {activeTab === 'model' && <ModelSettings />}
-        {activeTab === 'usage' && (
-          <UsageView stats={usageStats} onRefresh={loadUsageStats} />
-        )}
-        {activeTab === 'storage' && (
-          <>
-            <StorageView
-              stats={cacheStats}
-              error={cacheError}
-              onRefresh={loadCacheStats}
-              onStatsChange={setCacheStats}
-            />
-            <div className="mt-3">
-              <ObsidianSettings />
-            </div>
-          </>
-        )}
-        {activeTab === 'prompts' && <PromptSettings />}
+        {/* 内容区域 */}
+        <div className="flex-1 overflow-y-auto p-3">
+          {activeTab === 'model' && <ModelSettings />}
+          {activeTab === 'usage' && (
+            <UsageView stats={usageStats} onRefresh={loadUsageStats} />
+          )}
+          {activeTab === 'storage' && (
+            <>
+              <StorageView
+                stats={cacheStats}
+                error={cacheError}
+                onRefresh={loadCacheStats}
+                onStatsChange={setCacheStats}
+              />
+              <div className="mt-3">
+                <ObsidianSettings />
+              </div>
+            </>
+          )}
+          {activeTab === 'prompts' && <PromptSettings />}
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 };
 
